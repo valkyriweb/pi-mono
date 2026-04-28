@@ -98,7 +98,11 @@ Pi loads `AGENTS.md` or `CLAUDE.md` at startup from:
 - parent directories, walking up from the current working directory
 - the current directory
 
-Use context files for project conventions, commands, safety rules, and preferences. Disable loading with `--no-context-files` or `-nc`.
+Use context files for project conventions, commands, safety rules, and preferences.
+
+Context files support native Claude-Code-style `@` imports before the system prompt is built. Use `@path`, `@./path`, `@../path`, `@~/path`, or `@/absolute/path` to include another text file. Pi strips `#fragments`, supports escaped spaces like `@docs/my\ file.md`, and ignores imports inside fenced/indented code blocks, inline code, and HTML comments. Missing, duplicate/circular, non-file, and unsupported-extension imports are skipped with diagnostics.
+
+Disable loading with `--no-context-files` or `-nc`. If you previously installed an extension that patches the system prompt to expand `AGENTS.md` imports, disable it after upgrading to native support.
 
 ### System Prompt Files
 

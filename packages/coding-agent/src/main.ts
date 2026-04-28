@@ -553,6 +553,10 @@ export async function main(args: string[], options?: MainOptions) {
 				type: "error" as const,
 				message: `Failed to load extension "${path}": ${error}`,
 			})),
+			...(resourceLoader.getAgentsFiles().diagnostics ?? []).map((diagnostic) => ({
+				type: diagnostic.type === "error" ? ("error" as const) : ("warning" as const),
+				message: diagnostic.path ? `${diagnostic.message} (${diagnostic.path})` : diagnostic.message,
+			})),
 		];
 
 		const modelPatterns = parsed.models ?? settingsManager.getEnabledModels();

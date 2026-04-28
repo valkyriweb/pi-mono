@@ -9,6 +9,12 @@ import type { ResourceDiagnostic } from "./diagnostics.js";
 export type { ResourceCollision, ResourceDiagnostic } from "./diagnostics.js";
 
 import { canonicalizePath, isLocalPath } from "../utils/paths.js";
+import {
+	type ContextFile,
+	type ContextFileImportCache,
+	createContextFileImportCache,
+	expandContextFilesImports,
+} from "./context-file-imports.js";
 import { createEventBus, type EventBus } from "./event-bus.js";
 import { createExtensionRuntime, loadExtensionFromFactory, loadExtensions } from "./extensions/loader.js";
 import type { Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult } from "./extensions/types.js";
@@ -31,7 +37,7 @@ export interface ResourceLoader {
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
 	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] };
 	getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] };
-	getAgentsFiles(): { agentsFiles: Array<{ path: string; content: string }> };
+	getAgentsFiles(): { agentsFiles: ContextFile[]; diagnostics?: ResourceDiagnostic[] };
 	getSystemPrompt(): string | undefined;
 	getAppendSystemPrompt(): string[];
 	extendResources(paths: ResourceExtensionPaths): void;
@@ -55,7 +61,7 @@ function resolvePromptInput(input: string | undefined, description: string): str
 	return input;
 }
 
-function loadContextFileFromDir(dir: string): { path: string; content: string } | null {
+function loadContextFileFromDir(dir: string): ContextFile | null {
 	const candidates = ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 	for (const filename of candidates) {
 		const filePath = join(dir, filename);
@@ -73,14 +79,11 @@ function loadContextFileFromDir(dir: string): { path: string; content: string } 
 	return null;
 }
 
-export function loadProjectContextFiles(options: {
-	cwd: string;
-	agentDir: string;
-}): Array<{ path: string; content: string }> {
+export function loadProjectContextFiles(options: { cwd: string; agentDir: string }): ContextFile[] {
 	const resolvedCwd = options.cwd;
 	const resolvedAgentDir = options.agentDir;
 
-	const contextFiles: Array<{ path: string; content: string }> = [];
+	const contextFiles: ContextFile[] = [];
 	const seenPaths = new Set<string>();
 
 	const globalContext = loadContextFileFromDir(resolvedAgentDir);
@@ -89,7 +92,7 @@ export function loadProjectContextFiles(options: {
 		seenPaths.add(globalContext.path);
 	}
 
-	const ancestorContextFiles: Array<{ path: string; content: string }> = [];
+	const ancestorContextFiles: ContextFile[] = [];
 
 	let currentDir = resolvedCwd;
 	const root = resolve("/");
@@ -143,8 +146,9 @@ export interface DefaultResourceLoaderOptions {
 		themes: Theme[];
 		diagnostics: ResourceDiagnostic[];
 	};
-	agentsFilesOverride?: (base: { agentsFiles: Array<{ path: string; content: string }> }) => {
-		agentsFiles: Array<{ path: string; content: string }>;
+	agentsFilesOverride?: (base: { agentsFiles: ContextFile[]; diagnostics: ResourceDiagnostic[] }) => {
+		agentsFiles: ContextFile[];
+		diagnostics?: ResourceDiagnostic[];
 	};
 	systemPromptOverride?: (base: string | undefined) => string | undefined;
 	appendSystemPromptOverride?: (base: string[]) => string[];
@@ -181,8 +185,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 		themes: Theme[];
 		diagnostics: ResourceDiagnostic[];
 	};
-	private agentsFilesOverride?: (base: { agentsFiles: Array<{ path: string; content: string }> }) => {
-		agentsFiles: Array<{ path: string; content: string }>;
+	private agentsFilesOverride?: (base: { agentsFiles: ContextFile[]; diagnostics: ResourceDiagnostic[] }) => {
+		agentsFiles: ContextFile[];
+		diagnostics?: ResourceDiagnostic[];
 	};
 	private systemPromptOverride?: (base: string | undefined) => string | undefined;
 	private appendSystemPromptOverride?: (base: string[]) => string[];
@@ -194,7 +199,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private promptDiagnostics: ResourceDiagnostic[];
 	private themes: Theme[];
 	private themeDiagnostics: ResourceDiagnostic[];
-	private agentsFiles: Array<{ path: string; content: string }>;
+	private agentsFiles: ContextFile[];
+	private agentsFileDiagnostics: ResourceDiagnostic[];
+	private contextFileImportCache: ContextFileImportCache;
 	private systemPrompt?: string;
 	private appendSystemPrompt: string[];
 	private lastSkillPaths: string[];
@@ -242,6 +249,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.themes = [];
 		this.themeDiagnostics = [];
 		this.agentsFiles = [];
+		this.agentsFileDiagnostics = [];
+		this.contextFileImportCache = createContextFileImportCache();
 		this.appendSystemPrompt = [];
 		this.lastSkillPaths = [];
 		this.extensionSkillSourceInfos = new Map();
@@ -267,8 +276,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 		return { themes: this.themes, diagnostics: this.themeDiagnostics };
 	}
 
-	getAgentsFiles(): { agentsFiles: Array<{ path: string; content: string }> } {
-		return { agentsFiles: this.agentsFiles };
+	getAgentsFiles(): { agentsFiles: ContextFile[]; diagnostics: ResourceDiagnostic[] } {
+		return { agentsFiles: this.agentsFiles, diagnostics: this.agentsFileDiagnostics };
 	}
 
 	getSystemPrompt(): string | undefined {
@@ -452,11 +461,20 @@ export class DefaultResourceLoader implements ResourceLoader {
 			}
 		}
 
+		const loadedAgentsFiles = this.noContextFiles
+			? { contextFiles: [], diagnostics: [] }
+			: expandContextFilesImports(loadProjectContextFiles({ cwd: this.cwd, agentDir: this.agentDir }), {
+					cwd: this.cwd,
+					agentDir: this.agentDir,
+					cache: this.contextFileImportCache,
+				});
 		const agentsFiles = {
-			agentsFiles: this.noContextFiles ? [] : loadProjectContextFiles({ cwd: this.cwd, agentDir: this.agentDir }),
+			agentsFiles: loadedAgentsFiles.contextFiles,
+			diagnostics: loadedAgentsFiles.diagnostics,
 		};
 		const resolvedAgentsFiles = this.agentsFilesOverride ? this.agentsFilesOverride(agentsFiles) : agentsFiles;
 		this.agentsFiles = resolvedAgentsFiles.agentsFiles;
+		this.agentsFileDiagnostics = resolvedAgentsFiles.diagnostics ?? agentsFiles.diagnostics;
 
 		const baseSystemPrompt = resolvePromptInput(
 			this.systemPromptSource ?? this.discoverSystemPromptFile(),

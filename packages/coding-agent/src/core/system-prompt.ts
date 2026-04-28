@@ -3,6 +3,7 @@
  */
 
 import { getDocsPath, getExamplesPath, getReadmePath } from "../config.js";
+import type { ContextFile } from "./context-file-imports.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
 
 export interface BuildSystemPromptOptions {
@@ -19,7 +20,7 @@ export interface BuildSystemPromptOptions {
 	/** Working directory. */
 	cwd: string;
 	/** Pre-loaded context files. */
-	contextFiles?: Array<{ path: string; content: string }>;
+	contextFiles?: ContextFile[];
 	/** Pre-loaded skills. */
 	skills?: Skill[];
 }
