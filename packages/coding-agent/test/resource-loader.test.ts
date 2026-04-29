@@ -335,6 +335,26 @@ Content`,
 			expect(diagnostics[0].message).toContain("does not exist");
 		});
 
+		it("should dedupe context-file roots reached via symlink to the same realpath", async () => {
+			// Mirrors the user's setup: ~/.pi/agent/AGENTS.md is a symlink to a
+			// project AGENTS.md, and the cwd is that same project. Without dedup,
+			// pi loads the file twice and re-imports the whole tree.
+			const projectAgents = join(cwd, "AGENTS.md");
+			const globalAgents = join(agentDir, "AGENTS.md");
+			writeFileSync(projectAgents, "# Project Guidelines\n\n@shared.md");
+			writeFileSync(join(cwd, "shared.md"), "shared instructions");
+			symlinkSync(projectAgents, globalAgents);
+
+			const loader = new DefaultResourceLoader({ cwd, agentDir });
+			await loader.reload();
+
+			const { agentsFiles } = loader.getAgentsFiles();
+			const paths = agentsFiles.map((f) => f.path);
+			// AGENTS.md (one canonical entry) + shared.md (one entry)
+			expect(paths).toHaveLength(2);
+			expect(paths.filter((p) => p.endsWith("shared.md"))).toHaveLength(1);
+		});
+
 		it("should skip AGENTS.md and CLAUDE.md discovery when noContextFiles is true", async () => {
 			writeFileSync(join(cwd, "AGENTS.md"), "# Project Guidelines\n\nBe helpful.");
 			writeFileSync(join(cwd, "CLAUDE.md"), "# Claude Guidelines\n\nBe helpful.");

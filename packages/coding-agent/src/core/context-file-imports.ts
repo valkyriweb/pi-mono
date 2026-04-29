@@ -191,10 +191,19 @@ export function expandContextFilesImports(
 ): ExpandContextFilesResult {
 	const expanded: ContextFile[] = [];
 	const diagnostics: ResourceDiagnostic[] = [];
+	// Cross-root dedup by realpath so an @import shared between roots is
+	// included once. Mirrors Claude Code's single processedPaths Set across
+	// the whole memory-loading pass.
+	const seenRealPaths = new Set<string>();
 
 	for (const contextFile of contextFiles) {
 		const entry = expandRootContextFile(contextFile, options);
-		expanded.push(...entry.files);
+		for (const file of entry.files) {
+			const realPath = normalizePath(realPathOrResolved(file.path));
+			if (seenRealPaths.has(realPath)) continue;
+			seenRealPaths.add(realPath);
+			expanded.push(file);
+		}
 		diagnostics.push(...entry.diagnostics);
 	}
 
@@ -421,7 +430,10 @@ function normalizePath(path: string): string {
 
 function realPathOrResolved(path: string): string {
 	try {
-		return realpathSync(path);
+		// .native canonicalises case on case-insensitive filesystems (macOS APFS,
+		// Windows NTFS) so AGENTS.md and AGENTS.MD dedup as one. The pure-JS
+		// realpathSync preserves input casing and would leave them distinct.
+		return realpathSync.native(path);
 	} catch {
 		return resolve(path);
 	}

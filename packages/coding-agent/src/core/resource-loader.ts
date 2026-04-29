@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import chalk from "chalk";
@@ -79,17 +79,41 @@ function loadContextFileFromDir(dir: string): ContextFile | null {
 	return null;
 }
 
+/**
+ * Resolve a context-file path to its canonical realpath for dedup. Uses
+ * realpathSync.native so case-insensitive filesystems (macOS APFS default,
+ * Windows NTFS) collapse case-different paths to a single canonical string.
+ * The JS-implemented realpathSync preserves input casing on macOS, which is
+ * not enough to dedup AGENTS.md vs AGENTS.MD. Falls back to input on any
+ * fs error (broken link, EACCES, ENOENT) so callers always get a stable
+ * string.
+ *
+ * Catches three real-world dupes:
+ *   1. Symlink: ~/.pi/agent/AGENTS.md -> ~/Projects/foo/AGENTS.md
+ *   2. Case-insensitive FS: AGENTS.md vs AGENTS.MD on the same volume
+ *   3. Walk-up reaching the same physical file via different parent paths
+ */
+function realpathOrSelf(filePath: string): string {
+	try {
+		return realpathSync.native(filePath);
+	} catch {
+		return filePath;
+	}
+}
+
 export function loadProjectContextFiles(options: { cwd: string; agentDir: string }): ContextFile[] {
 	const resolvedCwd = options.cwd;
 	const resolvedAgentDir = options.agentDir;
 
 	const contextFiles: ContextFile[] = [];
-	const seenPaths = new Set<string>();
+	// Dedup by realpath so the same physical file reached via symlink,
+	// case-different paths, or `.`/`..`-noisy paths is only loaded once.
+	const seenRealPaths = new Set<string>();
 
 	const globalContext = loadContextFileFromDir(resolvedAgentDir);
 	if (globalContext) {
 		contextFiles.push(globalContext);
-		seenPaths.add(globalContext.path);
+		seenRealPaths.add(realpathOrSelf(globalContext.path));
 	}
 
 	const ancestorContextFiles: ContextFile[] = [];
@@ -99,9 +123,12 @@ export function loadProjectContextFiles(options: { cwd: string; agentDir: string
 
 	while (true) {
 		const contextFile = loadContextFileFromDir(currentDir);
-		if (contextFile && !seenPaths.has(contextFile.path)) {
-			ancestorContextFiles.unshift(contextFile);
-			seenPaths.add(contextFile.path);
+		if (contextFile) {
+			const realPath = realpathOrSelf(contextFile.path);
+			if (!seenRealPaths.has(realPath)) {
+				ancestorContextFiles.unshift(contextFile);
+				seenRealPaths.add(realPath);
+			}
 		}
 
 		if (currentDir === root) break;

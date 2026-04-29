@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -220,5 +220,34 @@ describe("context file @ imports", () => {
 	it("extracts only path-like @ references", () => {
 		const imports = extractContextFileImports("email@example.com @ok.md @@no.md @#no", join(projectDir, "AGENTS.md"));
 		expect(imports.map((i) => i.path)).toEqual([join(projectDir, "ok.md")]);
+	});
+
+	it("dedupes the same file imported by multiple roots (cross-root realpath dedup)", () => {
+		writeFileSync(join(projectDir, "shared.md"), "shared content");
+
+		const result = expandContextFilesImports(
+			[file(join(projectDir, "a.md"), "@shared.md"), file(join(projectDir, "b.md"), "@shared.md")],
+			{ cwd: projectDir, agentDir, cache: createContextFileImportCache() },
+		);
+
+		const paths = result.contextFiles.map((f) => f.path);
+		expect(paths).toEqual([join(projectDir, "a.md"), join(projectDir, "shared.md"), join(projectDir, "b.md")]);
+		expect(paths.filter((p) => p === join(projectDir, "shared.md"))).toHaveLength(1);
+	});
+
+	it("dedupes a root reached via symlink against the same file reached directly", () => {
+		const real = join(projectDir, "AGENTS.md");
+		const link = join(projectDir, "AGENTS.link.md");
+		writeFileSync(real, "root content");
+		symlinkSync(real, link);
+
+		const result = expandContextFilesImports([file(real, "root content"), file(link, "root content")], {
+			cwd: projectDir,
+			agentDir,
+			cache: createContextFileImportCache(),
+		});
+
+		expect(result.contextFiles).toHaveLength(1);
+		expect(result.contextFiles[0].path).toBe(real);
 	});
 });
