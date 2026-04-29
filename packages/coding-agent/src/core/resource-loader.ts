@@ -14,6 +14,7 @@ import {
 	type ContextFileImportCache,
 	createContextFileImportCache,
 	expandContextFilesImports,
+	expandSystemPromptImports,
 } from "./context-file-imports.js";
 import { createEventBus, type EventBus } from "./event-bus.js";
 import { createExtensionRuntime, loadExtensionFromFactory, loadExtensions } from "./extensions/loader.js";
@@ -44,14 +45,26 @@ export interface ResourceLoader {
 	reload(): Promise<void>;
 }
 
-function resolvePromptInput(input: string | undefined, description: string): string | undefined {
+function resolvePromptInput(
+	input: string | undefined,
+	description: string,
+	options?: { expandImports?: boolean; diagnosticsSink?: ResourceDiagnostic[] },
+): string | undefined {
 	if (!input) {
 		return undefined;
 	}
 
 	if (existsSync(input)) {
 		try {
-			return readFileSync(input, "utf-8");
+			const raw = readFileSync(input, "utf-8");
+			if (!options?.expandImports) {
+				return raw;
+			}
+			const { content, diagnostics } = expandSystemPromptImports(raw, input);
+			if (options.diagnosticsSink && diagnostics.length > 0) {
+				options.diagnosticsSink.push(...diagnostics);
+			}
+			return content;
 		} catch (error) {
 			console.error(chalk.yellow(`Warning: Could not read ${description} file ${input}: ${error}`));
 			return input;
@@ -503,17 +516,29 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.agentsFiles = resolvedAgentsFiles.agentsFiles;
 		this.agentsFileDiagnostics = resolvedAgentsFiles.diagnostics ?? agentsFiles.diagnostics;
 
-		const baseSystemPrompt = resolvePromptInput(
-			this.systemPromptSource ?? this.discoverSystemPromptFile(),
-			"system prompt",
-		);
+		// Discovered SYSTEM.md / APPEND_SYSTEM.md paths are real files on disk
+		// and support @-imports via inline substitution. SDK-provided literal
+		// strings (systemPromptSource / appendSystemPromptSource) are passed
+		// through verbatim — callers passing a literal prompt are not asking
+		// for filesystem expansion.
+		const systemPromptSource = this.systemPromptSource ?? this.discoverSystemPromptFile();
+		const systemPromptIsDiscoveredFile = !this.systemPromptSource && systemPromptSource !== undefined;
+		const baseSystemPrompt = resolvePromptInput(systemPromptSource, "system prompt", {
+			expandImports: systemPromptIsDiscoveredFile,
+			diagnosticsSink: this.agentsFileDiagnostics,
+		});
 		this.systemPrompt = this.systemPromptOverride ? this.systemPromptOverride(baseSystemPrompt) : baseSystemPrompt;
 
-		const appendSources =
-			this.appendSystemPromptSource ??
-			(this.discoverAppendSystemPromptFile() ? [this.discoverAppendSystemPromptFile()!] : []);
+		const discoveredAppend = this.discoverAppendSystemPromptFile();
+		const appendSources = this.appendSystemPromptSource ?? (discoveredAppend ? [discoveredAppend] : []);
+		const appendIsDiscoveredFile = !this.appendSystemPromptSource;
 		const baseAppend = appendSources
-			.map((s) => resolvePromptInput(s, "append system prompt"))
+			.map((s) =>
+				resolvePromptInput(s, "append system prompt", {
+					expandImports: appendIsDiscoveredFile,
+					diagnosticsSink: this.agentsFileDiagnostics,
+				}),
+			)
 			.filter((s): s is string => s !== undefined);
 		this.appendSystemPrompt = this.appendSystemPromptOverride
 			? this.appendSystemPromptOverride(baseAppend)

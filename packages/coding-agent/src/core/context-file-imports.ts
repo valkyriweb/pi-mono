@@ -210,6 +210,169 @@ export function expandContextFilesImports(
 	return { contextFiles: expanded, diagnostics };
 }
 
+export interface ExpandSystemPromptImportsResult {
+	content: string;
+	diagnostics: ResourceDiagnostic[];
+}
+
+interface InlineSubstitutionState {
+	seenRealPaths: Set<string>;
+	diagnostics: ResourceDiagnostic[];
+	depth: number;
+}
+
+/**
+ * Expand @-imports in a system-prompt-style file (SYSTEM.md, APPEND_SYSTEM.md)
+ * via inline substitution. Each `@path` token is replaced in place with the
+ * imported file's content, recursively, instead of being rendered as a sibling
+ * "## /path" section the way AGENTS.md/CLAUDE.md children are.
+ *
+ * Why a different model from expandContextFilesImports:
+ * - AGENTS.md content is rendered as a list of project-context blocks, each
+ *   prefixed with "## /path". Children naturally become siblings.
+ * - SYSTEM.md / APPEND_SYSTEM.md content is rendered as one continuous string
+ *   pasted into the system prompt. Children must inline so the surrounding
+ *   prose still reads correctly and so path strings aren't injected as
+ *   spurious markdown headings.
+ *
+ * The inline scanner walks the file line-by-line and respects fenced code
+ * blocks (```/~~~) so `@paths` inside code samples are preserved as written.
+ * Limitations: @-paths inside inline code spans (`...`) and multi-line HTML
+ * comments are still expanded — keep imports on their own logical line for
+ * predictable behavior.
+ *
+ * Reuses the same realpath dedup, cycle protection, depth limit, file-type
+ * gating, and diagnostics surface as the AGENTS.md expander, so behavior is
+ * symmetric across the two surfaces.
+ */
+export function expandSystemPromptImports(
+	content: string,
+	parentPath: string,
+): ExpandSystemPromptImportsResult {
+	const parentReal = realPathOrResolved(parentPath);
+	const state: InlineSubstitutionState = {
+		seenRealPaths: new Set([normalizePath(parentReal)]),
+		diagnostics: [],
+		depth: 1,
+	};
+	const expanded = substituteImportsInline(content, parentReal, state);
+	return { content: expanded, diagnostics: state.diagnostics };
+}
+
+function substituteImportsInline(content: string, parentRealPath: string, state: InlineSubstitutionState): string {
+	if (state.depth >= MAX_CONTEXT_IMPORT_DEPTH) {
+		for (const ref of extractContextFileImports(content, parentRealPath)) {
+			state.diagnostics.push({
+				type: "warning",
+				message: `Maximum context import depth reached at ${ref.path}`,
+				path: ref.path,
+			});
+		}
+		return content;
+	}
+
+	const lines = content.split("\n");
+	const out: string[] = [];
+	let inFence = false;
+
+	for (const line of lines) {
+		if (/^\s*(```|~~~)/.test(line)) {
+			inFence = !inFence;
+			out.push(line);
+			continue;
+		}
+		if (inFence) {
+			out.push(line);
+			continue;
+		}
+		out.push(substituteImportsInLine(line, parentRealPath, state));
+	}
+
+	return out.join("\n");
+}
+
+function substituteImportsInLine(line: string, parentRealPath: string, state: InlineSubstitutionState): string {
+	INCLUDE_PATH_PATTERN.lastIndex = 0;
+	return line.replace(INCLUDE_PATH_PATTERN, (match, prefix: string, rawPath: string) => {
+		const cleaned = cleanImportPath(rawPath ?? "");
+		if (!isImportPath(cleaned)) return match;
+
+		const resolvedPath = resolveImportPath(cleaned, dirname(parentRealPath));
+		const normalized = normalizePath(resolvedPath);
+
+		if (!existsSync(normalized)) {
+			state.diagnostics.push({
+				type: "warning",
+				message: `Context import does not exist: ${normalized}`,
+				path: normalized,
+			});
+			return match;
+		}
+
+		let stats: Stats;
+		try {
+			stats = statSync(normalized);
+		} catch (error) {
+			state.diagnostics.push({
+				type: "warning",
+				message: `Could not stat context import ${normalized}: ${error}`,
+				path: normalized,
+			});
+			return match;
+		}
+
+		if (!stats.isFile()) {
+			state.diagnostics.push({
+				type: "warning",
+				message: `Context import is not a file: ${normalized}`,
+				path: normalized,
+			});
+			return match;
+		}
+
+		if (!isTextFile(normalized)) {
+			state.diagnostics.push({
+				type: "warning",
+				message: `Context import has unsupported file extension: ${normalized}`,
+				path: normalized,
+			});
+			return match;
+		}
+
+		const realPath = realPathOrResolved(normalized);
+		const realKey = normalizePath(realPath);
+		if (state.seenRealPaths.has(realKey)) {
+			state.diagnostics.push({
+				type: "warning",
+				message: `Skipping duplicate or circular context import: ${normalized}`,
+				path: normalized,
+			});
+			// Drop the @-token entirely; the imported content was already inlined
+			// at its first occurrence (or in an enclosing scope).
+			return prefix;
+		}
+		state.seenRealPaths.add(realKey);
+
+		let importedContent: string;
+		try {
+			importedContent = readFileSync(realPath, "utf-8");
+		} catch (error) {
+			state.diagnostics.push({
+				type: "warning",
+				message: `Could not read context import ${normalized}: ${error}`,
+				path: normalized,
+			});
+			return match;
+		}
+
+		state.depth += 1;
+		const expanded = substituteImportsInline(importedContent, realPath, state);
+		state.depth -= 1;
+
+		return prefix + expanded;
+	});
+}
+
 function expandRootContextFile(contextFile: ContextFile, options: ExpandContextFilesOptions): CacheEntry {
 	const rootPath = normalizePath(contextFile.path);
 	const rootRealPath = realPathOrResolved(rootPath);

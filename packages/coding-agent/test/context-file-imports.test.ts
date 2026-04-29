@@ -6,6 +6,7 @@ import {
 	type ContextFile,
 	createContextFileImportCache,
 	expandContextFilesImports,
+	expandSystemPromptImports,
 	extractContextFileImports,
 	MAX_CONTEXT_IMPORT_DEPTH,
 } from "../src/core/context-file-imports.js";
@@ -249,5 +250,99 @@ describe("context file @ imports", () => {
 
 		expect(result.contextFiles).toHaveLength(1);
 		expect(result.contextFiles[0].path).toBe(real);
+	});
+});
+
+describe("system-prompt @ imports (inline substitution)", () => {
+	let tempDir: string;
+	let projectDir: string;
+
+	beforeEach(() => {
+		tempDir = join(process.cwd(), ".tmp-system-imports", `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		projectDir = join(tempDir, "project");
+		mkdirSync(projectDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	it("substitutes a single @import inline", () => {
+		const child = join(projectDir, "persona.md");
+		writeFileSync(child, "You are a helpful agent.");
+		const parent = join(projectDir, "APPEND_SYSTEM.md");
+		const input = "Override:\n@persona.md\n\nAlways use TypeScript.";
+		writeFileSync(parent, input);
+
+		const result = expandSystemPromptImports(input, parent);
+
+		expect(result.content).toBe("Override:\nYou are a helpful agent.\n\nAlways use TypeScript.");
+		expect(result.diagnostics).toEqual([]);
+	});
+
+	it("substitutes recursively", () => {
+		const leaf = join(projectDir, "leaf.md");
+		writeFileSync(leaf, "leaf content");
+		const mid = join(projectDir, "mid.md");
+		writeFileSync(mid, "before\n@leaf.md\nafter");
+		const root = join(projectDir, "SYSTEM.md");
+		const input = "root\n@mid.md\ndone";
+		writeFileSync(root, input);
+
+		const result = expandSystemPromptImports(input, root);
+
+		expect(result.content).toBe("root\nbefore\nleaf content\nafter\ndone");
+	});
+
+	it("leaves @imports inside fenced code blocks unchanged", () => {
+		const child = join(projectDir, "frag.md");
+		writeFileSync(child, "frag content");
+		const parent = join(projectDir, "SYSTEM.md");
+		const input = "Use this:\n```\n@frag.md\n```\n@frag.md";
+		writeFileSync(parent, input);
+
+		const result = expandSystemPromptImports(input, parent);
+
+		expect(result.content).toBe("Use this:\n```\n@frag.md\n```\nfrag content");
+	});
+
+	it("warns and preserves token for missing imports", () => {
+		const parent = join(projectDir, "APPEND_SYSTEM.md");
+		writeFileSync(parent, "@missing.md");
+
+		const result = expandSystemPromptImports("@missing.md", parent);
+
+		expect(result.content).toBe("@missing.md");
+		expect(result.diagnostics).toHaveLength(1);
+		expect(result.diagnostics[0].message).toContain("does not exist");
+	});
+
+	it("breaks cycles via realpath dedup", () => {
+		const a = join(projectDir, "a.md");
+		const b = join(projectDir, "b.md");
+		writeFileSync(a, "A1\n@b.md\nA2");
+		writeFileSync(b, "B1\n@a.md\nB2");
+
+		const result = expandSystemPromptImports("A1\n@b.md\nA2", a);
+
+		// b.md inlines, then b.md's @a.md is dropped (cycle), leaving B1/B2 around.
+		expect(result.content).toBe("A1\nB1\n\nB2\nA2");
+		expect(result.diagnostics.some((d) => d.message.includes("duplicate or circular"))).toBe(true);
+	});
+
+	it("caps recursion at MAX_CONTEXT_IMPORT_DEPTH", () => {
+		// Build a chain longer than the depth cap.
+		const names = ["a", "b", "c", "d", "e", "f"];
+		for (let i = 0; i < names.length; i++) {
+			const next = names[i + 1];
+			const path = join(projectDir, `${names[i]}.md`);
+			writeFileSync(path, next ? `${names[i]}\n@${next}.md` : "f");
+		}
+		const root = join(projectDir, "a.md");
+
+		const result = expandSystemPromptImports("a\n@b.md", root);
+		expect(result.diagnostics.some((d) => d.message.includes("Maximum context import depth"))).toBe(true);
+		expect(result.content.startsWith("a\nb\n")).toBe(true);
+		expect(MAX_CONTEXT_IMPORT_DEPTH).toBe(5);
 	});
 });
