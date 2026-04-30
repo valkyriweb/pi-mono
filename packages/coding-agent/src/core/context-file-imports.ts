@@ -245,10 +245,7 @@ interface InlineSubstitutionState {
  * gating, and diagnostics surface as the AGENTS.md expander, so behavior is
  * symmetric across the two surfaces.
  */
-export function expandSystemPromptImports(
-	content: string,
-	parentPath: string,
-): ExpandSystemPromptImportsResult {
+export function expandSystemPromptImports(content: string, parentPath: string): ExpandSystemPromptImportsResult {
 	const parentReal = realPathOrResolved(parentPath);
 	const state: InlineSubstitutionState = {
 		seenRealPaths: new Set([normalizePath(parentReal)]),
@@ -570,6 +567,7 @@ function cleanImportPath(rawPath: string): string {
 
 function isImportPath(path: string): boolean {
 	if (!path || path.startsWith("@")) return false;
+	if (!extname(path)) return false;
 	if (path.startsWith("./") || path.startsWith("../") || path.startsWith("~/")) return true;
 	if (path.startsWith("/") && path !== "/") return true;
 	return /^[a-zA-Z0-9._-]/.test(path) && !/^[#%^&*()]+/.test(path);

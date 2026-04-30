@@ -238,6 +238,7 @@ export class ExtensionRunner {
 	private getContextUsageFn: () => ContextUsage | undefined = () => undefined;
 	private compactFn: (options?: CompactOptions) => void = () => {};
 	private getSystemPromptFn: () => string = () => "";
+	private getEffectiveSystemPromptFn: () => Promise<string> = async () => this.getSystemPromptFn();
 	private newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	private forkHandler: ForkHandler = async () => ({ cancelled: false });
 	private navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });
@@ -297,6 +298,7 @@ export class ExtensionRunner {
 		this.getContextUsageFn = contextActions.getContextUsage;
 		this.compactFn = contextActions.compact;
 		this.getSystemPromptFn = contextActions.getSystemPrompt;
+		this.getEffectiveSystemPromptFn = contextActions.getEffectiveSystemPrompt;
 
 		// Flush provider registrations queued during extension loading
 		for (const { name, config, extensionPath } of this.runtime.pendingProviderRegistrations) {
@@ -630,6 +632,10 @@ export class ExtensionRunner {
 				runner.assertActive();
 				return runner.getSystemPromptFn();
 			},
+			getEffectiveSystemPrompt: async () => {
+				runner.assertActive();
+				return runner.getEffectiveSystemPromptFn();
+			},
 		};
 	}
 
@@ -927,6 +933,29 @@ export class ExtensionRunner {
 		systemPrompt: string,
 		systemPromptOptions: BuildSystemPromptOptions,
 	): Promise<BeforeAgentStartCombinedResult | undefined> {
+		return this._runBeforeAgentStart(prompt, images, systemPrompt, systemPromptOptions, false);
+	}
+
+	/**
+	 * Dry-run preview: returns the system prompt after all `before_agent_start`
+	 * handlers have applied their rewrites, with `event.preview = true` so
+	 * handlers can skip side effects. Messages/other results are discarded.
+	 */
+	async previewSystemPromptRewrites(
+		systemPrompt: string,
+		systemPromptOptions: BuildSystemPromptOptions,
+	): Promise<string> {
+		const result = await this._runBeforeAgentStart("", undefined, systemPrompt, systemPromptOptions, true);
+		return result?.systemPrompt ?? systemPrompt;
+	}
+
+	private async _runBeforeAgentStart(
+		prompt: string,
+		images: ImageContent[] | undefined,
+		systemPrompt: string,
+		systemPromptOptions: BuildSystemPromptOptions,
+		preview: boolean,
+	): Promise<BeforeAgentStartCombinedResult | undefined> {
 		let currentSystemPrompt = systemPrompt;
 		const ctx = Object.defineProperties(
 			{},
@@ -951,12 +980,13 @@ export class ExtensionRunner {
 						images,
 						systemPrompt: currentSystemPrompt,
 						systemPromptOptions,
+						...(preview ? { preview: true } : {}),
 					};
 					const handlerResult = await handler(event, ctx);
 
 					if (handlerResult) {
 						const result = handlerResult as BeforeAgentStartEventResult;
-						if (result.message) {
+						if (result.message && !preview) {
 							messages.push(result.message);
 						}
 						if (result.systemPrompt !== undefined) {

@@ -78,6 +78,7 @@ describe("ExtensionRunner", () => {
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",
+		getEffectiveSystemPrompt: async () => "",
 	};
 
 	describe("shortcut conflicts", () => {

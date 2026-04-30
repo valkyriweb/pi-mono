@@ -780,6 +780,17 @@ export class AgentSession {
 		return this.agent.state.systemPrompt;
 	}
 
+	/**
+	 * Returns the system prompt as it would appear after all `before_agent_start`
+	 * handlers have applied their rewrites in preview mode (no side effects).
+	 * Used by diagnostic UIs (e.g. /context) so the displayed prompt matches
+	 * what the LLM will actually see, even before the first turn.
+	 */
+	async getEffectiveSystemPrompt(): Promise<string> {
+		if (!this._baseSystemPromptOptions) return this.systemPrompt;
+		return this._extensionRunner.previewSystemPromptRewrites(this._baseSystemPrompt, this._baseSystemPromptOptions);
+	}
+
 	/** Current retry attempt (0 if not retrying) */
 	get retryAttempt(): number {
 		return this._retryAttempt;
@@ -2237,6 +2248,7 @@ export class AgentSession {
 					})();
 				},
 				getSystemPrompt: () => this.systemPrompt,
+				getEffectiveSystemPrompt: () => this.getEffectiveSystemPrompt(),
 			},
 			{
 				registerProvider: (name, config) => {

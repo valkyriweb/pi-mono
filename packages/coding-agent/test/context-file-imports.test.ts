@@ -219,8 +219,18 @@ describe("context file @ imports", () => {
 	});
 
 	it("extracts only path-like @ references", () => {
-		const imports = extractContextFileImports("email@example.com @ok.md @@no.md @#no", join(projectDir, "AGENTS.md"));
+		const imports = extractContextFileImports(
+			"email@example.com @ok.md @@no.md @#no @valkyriweb @import",
+			join(projectDir, "AGENTS.md"),
+		);
 		expect(imports.map((i) => i.path)).toEqual([join(projectDir, "ok.md")]);
+	});
+
+	it("ignores extensionless @ mentions before resolving paths", () => {
+		const result = expand("Handles: @valkyriweb\n@import ./TOOLS.md");
+
+		expect(result.contextFiles).toHaveLength(1);
+		expect(result.diagnostics).toEqual([]);
 	});
 
 	it("dedupes the same file imported by multiple roots (cross-root realpath dedup)", () => {
@@ -315,6 +325,17 @@ describe("system-prompt @ imports (inline substitution)", () => {
 		expect(result.content).toBe("@missing.md");
 		expect(result.diagnostics).toHaveLength(1);
 		expect(result.diagnostics[0].message).toContain("does not exist");
+	});
+
+	it("leaves extensionless @ mentions unchanged without diagnostics", () => {
+		const parent = join(projectDir, "APPEND_SYSTEM.md");
+		const input = "Handles: @valkyriweb\n@import ./TOOLS.md";
+		writeFileSync(parent, input);
+
+		const result = expandSystemPromptImports(input, parent);
+
+		expect(result.content).toBe(input);
+		expect(result.diagnostics).toEqual([]);
 	});
 
 	it("breaks cycles via realpath dedup", () => {
