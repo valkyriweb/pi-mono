@@ -273,9 +273,9 @@ function updateTargetIncludesExtensions(target: UpdateTarget): boolean {
 	return target.type === "all" || target.type === "extensions";
 }
 
-function printSelfUpdateUnavailable(npmCommand?: string[]): void {
+function printSelfUpdateUnavailable(npmCommand?: string[], sourceUpdateCommand?: string[]): void {
 	console.error(`error: ${APP_NAME} cannot self-update this installation.`);
-	console.error(getSelfUpdateUnavailableInstruction(PACKAGE_NAME, npmCommand));
+	console.error(getSelfUpdateUnavailableInstruction(PACKAGE_NAME, npmCommand, sourceUpdateCommand));
 
 	const entrypoint = process.argv[1];
 	if (entrypoint) {
@@ -404,7 +404,9 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 	const agentDir = getAgentDir();
 	const settingsManager = SettingsManager.create(cwd, agentDir);
 	reportSettingsErrors(settingsManager, "package command");
-	const selfUpdateNpmCommand = settingsManager.getGlobalSettings().npmCommand;
+	const globalSettings = settingsManager.getGlobalSettings();
+	const selfUpdateNpmCommand = globalSettings.npmCommand;
+	const selfUpdateSourceCommand = globalSettings.sourceUpdateCommand;
 
 	const packageManager = new DefaultPackageManager({ cwd, agentDir, settingsManager });
 
@@ -480,9 +482,13 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 					}
 				}
 				if (updateTargetIncludesSelf(target)) {
-					const selfUpdateCommand = getSelfUpdateCommand(PACKAGE_NAME, selfUpdateNpmCommand);
+					const selfUpdateCommand = getSelfUpdateCommand(
+						PACKAGE_NAME,
+						selfUpdateNpmCommand,
+						selfUpdateSourceCommand,
+					);
 					if (!selfUpdateCommand) {
-						printSelfUpdateUnavailable(selfUpdateNpmCommand);
+						printSelfUpdateUnavailable(selfUpdateNpmCommand, selfUpdateSourceCommand);
 						process.exitCode = 1;
 						return true;
 					}

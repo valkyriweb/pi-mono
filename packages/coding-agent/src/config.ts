@@ -26,12 +26,46 @@ export const isBunRuntime = !!process.versions.bun;
 // Install Method Detection
 // =============================================================================
 
-export type InstallMethod = "bun-binary" | "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+export type InstallMethod = "bun-binary" | "source-checkout" | "npm" | "pnpm" | "yarn" | "bun" | "unknown";
 
 export interface SelfUpdateCommand {
 	command: string;
 	args: string[];
 	display: string;
+}
+
+function quoteCommandArg(arg: string): string {
+	return /\s/.test(arg) ? `"${arg}"` : arg;
+}
+
+function commandDisplay(command: string, args: string[]): string {
+	return [command, ...args].map(quoteCommandArg).join(" ");
+}
+
+function findSourceCheckoutRoot(): string | undefined {
+	let dir = getPackageDir();
+	while (dir !== dirname(dir)) {
+		if (existsSync(join(dir, ".git")) && existsSync(join(dir, "packages", "coding-agent", "package.json"))) {
+			return dir;
+		}
+		dir = dirname(dir);
+	}
+	return undefined;
+}
+
+function getSourceUpdateCommand(configuredCommand?: string[]): SelfUpdateCommand | undefined {
+	const envCommand = process.env.PI_SOURCE_UPDATE_COMMAND?.trim();
+	if (envCommand) {
+		const command = process.env.SHELL || (process.platform === "win32" ? "cmd" : "sh");
+		const args = process.platform === "win32" ? ["/d", "/s", "/c", envCommand] : ["-lc", envCommand];
+		return { command, args, display: envCommand };
+	}
+
+	if (!configuredCommand?.length) {
+		return undefined;
+	}
+	const [command, ...args] = configuredCommand;
+	return { command, args, display: commandDisplay(command, args) };
 }
 
 export function detectInstallMethod(): InstallMethod {
@@ -52,6 +86,9 @@ export function detectInstallMethod(): InstallMethod {
 	}
 	if (resolvedPath.includes("/npm/") || resolvedPath.includes("/node_modules/")) {
 		return "npm";
+	}
+	if (findSourceCheckoutRoot()) {
+		return "source-checkout";
 	}
 
 	return "unknown";
@@ -85,10 +122,13 @@ function getSelfUpdateCommandForMethod(
 	method: InstallMethod,
 	packageName: string,
 	npmCommand?: string[],
+	sourceUpdateCommand?: string[],
 ): SelfUpdateCommand | undefined {
 	switch (method) {
 		case "bun-binary":
 			return undefined;
+		case "source-checkout":
+			return getSourceUpdateCommand(sourceUpdateCommand);
 		case "pnpm":
 			return { command: "pnpm", args: ["install", "-g", packageName], display: `pnpm install -g ${packageName}` };
 		case "yarn":
@@ -99,7 +139,7 @@ function getSelfUpdateCommandForMethod(
 			const [command = "npm", ...npmArgs] = npmCommand ?? [];
 			const inferred = npmCommand?.length ? undefined : getInferredNpmInstall(packageName);
 			const args = [...npmArgs, ...(inferred ? ["--prefix", inferred.prefix] : []), "install", "-g", packageName];
-			const display = [command, ...args].map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(" ");
+			const display = commandDisplay(command, args);
 			return { command, args, display };
 		}
 		case "unknown":
@@ -163,6 +203,7 @@ function getGlobalPackageRoots(method: InstallMethod, packageName: string, npmCo
 			return roots;
 		}
 		case "bun-binary":
+		case "source-checkout":
 		case "unknown":
 			return [];
 	}
@@ -210,21 +251,35 @@ function isManagedByGlobalPackageManager(method: InstallMethod, packageName: str
 	);
 }
 
-export function getSelfUpdateCommand(packageName: string, npmCommand?: string[]): SelfUpdateCommand | undefined {
+export function getSelfUpdateCommand(
+	packageName: string,
+	npmCommand?: string[],
+	sourceUpdateCommand?: string[],
+): SelfUpdateCommand | undefined {
 	const method = detectInstallMethod();
-	const command = getSelfUpdateCommandForMethod(method, packageName, npmCommand);
+	const command = getSelfUpdateCommandForMethod(method, packageName, npmCommand, sourceUpdateCommand);
+	if (method === "source-checkout") {
+		return command;
+	}
 	if (!command || !isManagedByGlobalPackageManager(method, packageName, npmCommand) || !isSelfUpdatePathWritable()) {
 		return undefined;
 	}
 	return command;
 }
 
-export function getSelfUpdateUnavailableInstruction(packageName: string, npmCommand?: string[]): string {
+export function getSelfUpdateUnavailableInstruction(
+	packageName: string,
+	npmCommand?: string[],
+	sourceUpdateCommand?: string[],
+): string {
 	const method = detectInstallMethod();
 	if (method === "bun-binary") {
 		return `Download from: https://github.com/badlogic/pi-mono/releases/latest`;
 	}
-	const command = getSelfUpdateCommandForMethod(method, packageName, npmCommand);
+	if (method === "source-checkout") {
+		return `This installation is a source checkout. Configure a source update command with PI_SOURCE_UPDATE_COMMAND or settings.sourceUpdateCommand.`;
+	}
+	const command = getSelfUpdateCommandForMethod(method, packageName, npmCommand, sourceUpdateCommand);
 	if (command) {
 		if (isManagedByGlobalPackageManager(method, packageName, npmCommand) && !isSelfUpdatePathWritable()) {
 			return `This installation is managed by a global ${method} install, but the install path is not writable. Update it yourself with: ${command.display}`;
