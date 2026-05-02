@@ -353,7 +353,18 @@ Built-in agents: `general-purpose`, `worker`, `explore`, `plan`, `scout`, `revie
 
 Context modes: `default` loads normal project context without the parent transcript, `fork` includes a filtered parent transcript, `slim` omits project context and skills, and `none` keeps only Pi's base prompt plus the selected agent prompt. Child tools are bounded by the parent's active tools and recursive `agent` calls are denied.
 
-Use `/agents` to list agents and insert a prompt scaffold.
+Use `/agents` to list agents and insert a prompt scaffold. Native slash ergonomics also cover:
+
+- `/agents run <agent> -- <task>` - insert a single-agent scaffold
+- `/agents parallel <agent-a>,<agent-b> -- <task>` - insert a native parallel-agent scaffold
+- `/agents run-chain <name> -- <task>` - insert a saved-chain scaffold
+- `/agents list-chains` - list saved chains from `~/.pi/agent/chains/*.json` and `.pi/chains/*.json`
+- `/agents doctor` or `/agents-doctor` - diagnose native agent definitions, tools, models, chains, and runtime services
+- `/agents status` or `/agents-status` - show recent native child-agent runs; pass a run id (for example `/agents-status agent-1`) for per-child details
+
+Saved chains are JSON files with `name`, optional `description`, and a native `chain` array of `{ "agent": "...", "task": "..." }` steps. Project chains override user chains with the same name.
+
+Migration note: native Pi now covers the core `pi-subagents` affordances used for single/parallel/chain delegation, diagnostics, recent-run status, and saved reusable chains. You can disable or remove `pi-subagents` if you do not need its intentionally unported background async/resume/control UI or manager-specific editing screens.
 
 ### Extensions
 
@@ -486,7 +497,7 @@ Pi is aggressively extensible so it doesn't have to dictate your workflow. Featu
 
 **No MCP.** Build CLI tools with READMEs (see [Skills](#skills)), or build an extension that adds MCP support. [Why?](https://mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/)
 
-**No sub-agents.** There's many ways to do this. Spawn pi instances via tmux, or build your own with [extensions](#extensions), or install a package that does it your way.
+**Native agents, not background sub-process orchestration.** Pi includes an in-process `agent` tool for bounded child sessions, parallel runs, chains, diagnostics, recent-run status, saved chains, live child progress (current tool, tool counts, duration, usage when available, skills, session/output refs), and durable child session refs. Use `/agents-status <run-id>` to inspect child details. Use extensions or tmux for background async/resume/control workflows.
 
 **No permission popups.** Run in a container, or build your own confirmation flow with [extensions](#extensions) inline with your environment and security requirements.
 

@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, AssistantMessage, Model, TextContent, Usage } from "@mariozechner/pi-ai";
 import { createAgentSessionFromServices, createAgentSessionServices } from "../agent-session-services.js";
 import type { AuthStorage } from "../auth-storage.js";
 import { DEFAULT_THINKING_LEVEL } from "../defaults.js";
@@ -17,6 +17,7 @@ import {
 } from "./context.js";
 import { writeAgentOutput } from "./output.js";
 import { findAgentDefinition, formatAvailableAgents, loadAgentRegistry } from "./registry.js";
+import { failAgentRecentRun, finishAgentRecentRun, startAgentRecentRun } from "./status.js";
 import type {
 	AgentDefinition,
 	AgentExecutionProgress,
@@ -75,6 +76,8 @@ interface RunChildOptions extends AgentExecutorOptions {
 	toolModel?: string;
 	toolThinking?: ThinkingLevel;
 	chainDir?: string;
+	progressInput: AgentToolExecutionInput;
+	progressRuns: AgentRunDetails[];
 }
 
 function normalizeOutputMode(mode: AgentOutputMode | undefined): AgentOutputMode {
@@ -203,7 +206,79 @@ function createInitialRunDetails(options: {
 		durationMs: Date.now() - options.startedAt,
 		toolCallCount: 0,
 		messageCount: 0,
+		recentToolCalls: [],
+		recentOutputSnippets: [],
+		loadedSkills: [],
+		invokedSkills: { count: 0, names: [] },
 	};
+}
+
+function previewValue(value: unknown, maxLength = 240): string | undefined {
+	if (value === undefined) return undefined;
+	let text: string;
+	try {
+		text = typeof value === "string" ? value : JSON.stringify(value);
+	} catch {
+		text = String(value);
+	}
+	const compact = text.replace(/\s+/g, " ").trim();
+	return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
+}
+
+function extractTextPreview(content: unknown, maxLength = 240): string | undefined {
+	if (typeof content === "string") return previewValue(content, maxLength);
+	if (!Array.isArray(content)) return previewValue(content, maxLength);
+	const text = content
+		.filter((part): part is TextContent => {
+			return Boolean(
+				part &&
+					typeof part === "object" &&
+					(part as { type?: unknown }).type === "text" &&
+					typeof (part as { text?: unknown }).text === "string",
+			);
+		})
+		.map((part) => part.text)
+		.join("\n");
+	return previewValue(text, maxLength);
+}
+
+function getLastAssistantUsage(
+	messages: readonly { role: string; usage?: Usage; stopReason?: string }[],
+): Usage | undefined {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const message = messages[i];
+		if (
+			message.role === "assistant" &&
+			message.usage &&
+			message.stopReason !== "aborted" &&
+			message.stopReason !== "error"
+		) {
+			return message.usage;
+		}
+	}
+	return undefined;
+}
+
+function recordSkillInvocation(details: AgentRunDetails, toolName: string, args: unknown): void {
+	if (toolName !== "skill" && toolName !== "skill_search") return;
+	details.invokedSkills.count += 1;
+	const argRecord = args && typeof args === "object" ? (args as Record<string, unknown>) : undefined;
+	const candidates = [argRecord?.name, argRecord?.parent, argRecord?.child].filter(
+		(value): value is string => typeof value === "string" && value.length > 0,
+	);
+	for (const candidate of candidates) {
+		if (!details.invokedSkills.names.includes(candidate)) details.invokedSkills.names.push(candidate);
+	}
+}
+
+function refreshRunDetailsFromSession(
+	details: AgentRunDetails,
+	session: { messages: readonly unknown[] },
+	startedAt: number,
+): void {
+	details.durationMs = Date.now() - startedAt;
+	details.messageCount = session.messages.length;
+	details.usage = getLastAssistantUsage(session.messages as AssistantMessage[]);
 }
 
 async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
@@ -252,7 +327,10 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		modelRegistry: options.parentServices.modelRegistry,
 		resourceLoaderOptions: getChildResourceLoaderOptions(policy, agent),
 	});
-	const childSessionManager = SessionManager.inMemory(options.parentServices.cwd);
+	const childSessionManager = SessionManager.create(options.parentServices.cwd);
+	childSessionManager.newSession({ parentSession: options.parentSessionManager.getSessionFile() });
+	details.sessionId = childSessionManager.getSessionId();
+	details.sessionPath = childSessionManager.getSessionFile();
 	const { session } = await createAgentSessionFromServices({
 		services: childServices,
 		sessionManager: childSessionManager,
@@ -266,12 +344,44 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		session.state.messages = getFilteredForkMessages(options.parentSessionManager);
 	}
 
+	details.loadedSkills = childServices.resourceLoader.getSkills().skills.map((skill) => skill.name);
+
 	const unsubscribe = session.subscribe((event) => {
-		details.durationMs = Date.now() - startedAt;
-		details.messageCount = session.messages.length;
+		if (!options.progressRuns.includes(details)) options.progressRuns.push(details);
+		refreshRunDetailsFromSession(details, session, startedAt);
+		if (event.type === "message_update" && event.message.role === "assistant") {
+			const snippet = extractTextPreview(event.message.content, 200);
+			if (snippet && snippet !== details.recentOutputSnippets[details.recentOutputSnippets.length - 1]) {
+				details.recentOutputSnippets.push(snippet);
+				details.recentOutputSnippets = details.recentOutputSnippets.slice(-5);
+			}
+		}
+		if (event.type === "message_end" && event.message.role === "assistant") {
+			details.usage = event.message.usage;
+		}
 		if (event.type === "tool_execution_start") {
 			details.toolCallCount += 1;
+			details.currentToolName = event.toolName;
+			details.currentToolArgsPreview = previewValue(event.args);
+			details.recentToolCalls.push({
+				name: event.toolName,
+				argsPreview: details.currentToolArgsPreview,
+				startedAt: Date.now(),
+			});
+			details.recentToolCalls = details.recentToolCalls.slice(-8);
+			recordSkillInvocation(details, event.toolName, event.args);
 		}
+		if (event.type === "tool_execution_end") {
+			const active = details.recentToolCalls.find((tool) => !tool.endedAt && tool.name === event.toolName);
+			if (active) {
+				active.endedAt = Date.now();
+				active.isError = event.isError;
+				active.resultPreview = extractTextPreview(event.result.content, 200);
+			}
+			details.currentToolName = undefined;
+			details.currentToolArgsPreview = undefined;
+		}
+		emitProgress(options.progressInput, options.progressRuns, options.onProgress);
 	});
 
 	try {
@@ -285,16 +395,14 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 			chainDir: options.chainDir,
 		});
 		details.status = "completed";
-		details.durationMs = Date.now() - startedAt;
-		details.messageCount = session.messages.length;
+		refreshRunDetailsFromSession(details, session, startedAt);
 		details.outputPath = output.outputPath;
 		details.finalOutput = output.displayText;
 		details.rawOutput = output.rawContent;
 		return details;
 	} catch (error) {
 		details.status = options.signal?.aborted ? "cancelled" : "failed";
-		details.durationMs = Date.now() - startedAt;
-		details.messageCount = session.messages.length;
+		refreshRunDetailsFromSession(details, session, startedAt);
 		details.error = error instanceof Error ? error.message : String(error);
 		throw Object.assign(new Error(details.error), { details });
 	} finally {
@@ -352,6 +460,7 @@ export async function executeAgentTool(
 	options: AgentExecutorOptions,
 ): Promise<AgentToolDetails> {
 	const registry = await loadAgentRegistry({ cwd: options.parentServices.cwd, agentScope: input.agentScope });
+	const recentRun = startAgentRecentRun(input.mode, input.tasks);
 	const runs: AgentRunDetails[] = [];
 	const concurrency = Math.max(1, Math.min(input.concurrency ?? DEFAULT_CONCURRENCY, MAX_CONCURRENCY));
 	if (input.mode === "parallel" && input.tasks.length > MAX_PARALLEL_TASKS) {
@@ -374,8 +483,10 @@ export async function executeAgentTool(
 					task: normalized,
 					toolThinking: input.thinking,
 					chainDir: input.chainDir,
+					progressInput: input,
+					progressRuns: runs,
 				});
-				runs.push(result);
+				if (!runs.includes(result)) runs.push(result);
 				previous = result.rawOutput ?? result.finalOutput ?? "";
 				emitProgress(input, runs, options.onProgress);
 			}
@@ -388,8 +499,10 @@ export async function executeAgentTool(
 					task,
 					toolThinking: input.thinking,
 					chainDir: input.chainDir,
+					progressInput: input,
+					progressRuns: runs,
 				});
-				runs.push(result);
+				if (!runs.includes(result)) runs.push(result);
 				emitProgress(input, runs, options.onProgress);
 				return result;
 			});
@@ -401,28 +514,37 @@ export async function executeAgentTool(
 				task: makeTask(input.tasks[0]),
 				toolThinking: input.thinking,
 				chainDir: input.chainDir,
+				progressInput: input,
+				progressRuns: runs,
 			});
-			runs.push(result);
+			if (!runs.includes(result)) runs.push(result);
 			emitProgress(input, runs, options.onProgress);
 		}
 	} catch (error) {
 		const details = getErrorDetails(error);
-		if (!details) throw error;
+		if (!details) {
+			failAgentRecentRun(recentRun, error);
+			throw error;
+		}
 		if (!runs.includes(details)) runs.push(details);
-		return {
+		const failedDetails: AgentToolDetails = {
 			mode: input.mode,
 			status: details.status === "cancelled" ? "cancelled" : "failed",
 			runs,
 			concurrency,
 			chainDir: input.chainDir,
 		};
+		finishAgentRecentRun(recentRun, failedDetails);
+		return failedDetails;
 	}
 
-	return {
+	const completedDetails: AgentToolDetails = {
 		mode: input.mode,
 		status: "completed",
 		runs,
 		concurrency: input.mode === "parallel" ? concurrency : undefined,
 		chainDir: input.chainDir,
 	};
+	finishAgentRecentRun(recentRun, completedDetails);
+	return completedDetails;
 }

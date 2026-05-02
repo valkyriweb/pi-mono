@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, Model, Usage } from "@mariozechner/pi-ai";
 
 export type AgentSource = "builtin" | "user" | "project";
 export type ContextMode = "default" | "fork" | "slim" | "none";
@@ -65,6 +65,20 @@ export interface ResolvedContextPolicy {
 	includeAppendSystemPrompt: boolean;
 }
 
+export interface AgentToolCallSummary {
+	name: string;
+	argsPreview?: string;
+	startedAt: number;
+	endedAt?: number;
+	isError?: boolean;
+	resultPreview?: string;
+}
+
+export interface AgentSkillInvocationSummary {
+	count: number;
+	names: string[];
+}
+
 export interface AgentRunDetails {
 	agent: string;
 	source: AgentSource;
@@ -79,8 +93,16 @@ export interface AgentRunDetails {
 	durationMs: number;
 	toolCallCount: number;
 	messageCount: number;
+	currentToolName?: string;
+	currentToolArgsPreview?: string;
+	recentToolCalls: AgentToolCallSummary[];
+	recentOutputSnippets: string[];
+	loadedSkills: string[];
+	invokedSkills: AgentSkillInvocationSummary;
+	sessionId?: string;
+	sessionPath?: string;
 	outputPath?: string;
-	usage?: unknown;
+	usage?: Usage;
 	error?: string;
 	finalOutput?: string;
 	rawOutput?: string;

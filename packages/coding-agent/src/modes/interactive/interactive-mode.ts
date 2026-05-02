@@ -57,7 +57,10 @@ import {
 } from "../../config.js";
 import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.js";
 import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.js";
+import { findAgentChain, loadAgentChainRegistry } from "../../core/agents/chains.js";
+import { buildAgentDoctorReport } from "../../core/agents/doctor.js";
 import { loadAgentRegistry } from "../../core/agents/registry.js";
+import { formatAgentStatus } from "../../core/agents/status.js";
 import type { AgentDefinition } from "../../core/agents/types.js";
 import type {
 	AutocompleteProviderFactory,
@@ -2441,10 +2444,21 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/agents" || text.startsWith("/agents ")) {
-				const agentId = text.startsWith("/agents ") ? text.slice(8).trim() : undefined;
+			if (text === "/agents-doctor") {
 				this.editor.setText("");
-				await this.handleAgentsCommand(agentId);
+				await this.handleAgentsDoctorCommand();
+				return;
+			}
+			if (text === "/agents-status" || text.startsWith("/agents-status ")) {
+				this.editor.setText("");
+				const detailId = text.startsWith("/agents-status ") ? text.slice(15).trim() : undefined;
+				this.showStatus(formatAgentStatus(undefined, detailId));
+				return;
+			}
+			if (text === "/agents" || text.startsWith("/agents ")) {
+				const agentArgs = text.startsWith("/agents ") ? text.slice(8).trim() : undefined;
+				this.editor.setText("");
+				await this.handleAgentsCommand(agentArgs);
 				return;
 			}
 			if (text === "/scoped-models") {
@@ -3885,21 +3899,89 @@ export class InteractiveMode {
 		});
 	}
 
-	private async handleAgentsCommand(agentId?: string): Promise<void> {
+	private async handleAgentsCommand(args?: string): Promise<void> {
 		const registry = await loadAgentRegistry({ cwd: this.sessionManager.getCwd(), agentScope: "user" });
-		if (agentId) {
-			const agent = registry.agents.find((candidate) => candidate.id === agentId);
-			if (!agent) {
-				this.showStatus(`Unknown agent: ${agentId}`);
-				return;
-			}
-			const tools = Array.isArray(agent.tools) ? agent.tools.join(", ") : (agent.tools ?? "*");
+		if (!args) {
+			this.showAgentsSelector(registry.agents);
+			return;
+		}
+		if (args === "status" || args.startsWith("status ")) {
+			const detailId = args.startsWith("status ") ? args.slice(7).trim() : undefined;
+			this.showStatus(formatAgentStatus(undefined, detailId));
+			return;
+		}
+		if (args === "doctor") {
+			await this.handleAgentsDoctorCommand();
+			return;
+		}
+		if (args === "list-chains") {
+			const chains = await loadAgentChainRegistry(this.sessionManager.getCwd());
 			this.showStatus(
-				`${agent.id} [${agent.source}] — ${agent.description} | context: ${agent.defaultContext ?? "default"} | tools: ${tools}`,
+				chains.chains.length > 0
+					? chains.chains.map((chain) => `${chain.name} [${chain.source}]`).join(", ")
+					: "No saved chains found",
 			);
 			return;
 		}
-		this.showAgentsSelector(registry.agents);
+		if (args.startsWith("run ")) {
+			const [agentId, task = ""] = args.slice(4).split(/\s+--\s+/, 2);
+			await this.session.prompt(`Use the native agent tool to run ${agentId} with this task: ${task}`);
+			return;
+		}
+		if (args.startsWith("parallel ")) {
+			const [agentsRaw, task = ""] = args.slice(9).split(/\s+--\s+/, 2);
+			const agents = agentsRaw
+				.split(",")
+				.map((agent) => agent.trim())
+				.filter(Boolean);
+			await this.session.prompt(
+				`Use the native agent tool parallel mode for these agents: ${agents.join(", ")}. Task for each: ${task}`,
+			);
+			return;
+		}
+		if (args.startsWith("run-chain ")) {
+			const [chainName, task = ""] = args.slice(10).split(/\s+--\s+/, 2);
+			const chains = await loadAgentChainRegistry(this.sessionManager.getCwd());
+			const chain = findAgentChain(chains, chainName);
+			if (!chain) {
+				this.showStatus(`Unknown chain: ${chainName}`);
+				return;
+			}
+			const chainInput = JSON.stringify({
+				chain: chain.chain,
+				context: chain.context,
+				model: chain.model,
+				tools: chain.tools,
+				thinking: chain.thinking,
+				outputMode: chain.outputMode,
+			});
+			await this.session.prompt(
+				`Use the native agent tool chain mode to run saved chain ${chain.name}${task ? ` for this task: ${task}` : ""}. Chain input: ${chainInput}`,
+			);
+			return;
+		}
+		const agent = registry.agents.find((candidate) => candidate.id === args);
+		if (!agent) {
+			this.showStatus(`Unknown agent or /agents subcommand: ${args}`);
+			return;
+		}
+		const tools = Array.isArray(agent.tools) ? agent.tools.join(", ") : (agent.tools ?? "*");
+		this.showStatus(
+			`${agent.id} [${agent.source}] — ${agent.description} | context: ${agent.defaultContext ?? "default"} | tools: ${tools}`,
+		);
+	}
+
+	private async handleAgentsDoctorCommand(): Promise<void> {
+		const activeTools = this.session.getActiveToolNames();
+		const report = await buildAgentDoctorReport({
+			cwd: this.sessionManager.getCwd(),
+			activeTools,
+			modelRegistry: this.session.modelRegistry,
+			parentModel: this.session.model,
+			parentThinkingLevel: this.session.thinkingLevel,
+			runtimeServicesAvailable: activeTools.includes("agent"),
+		});
+		this.showStatus(report);
 	}
 
 	private async handleModelCommand(searchTerm?: string): Promise<void> {
