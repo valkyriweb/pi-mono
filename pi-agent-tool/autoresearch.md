@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `actual_eval_score` (unitless, higher is better) — actual A/B eval progress: real startup/scenario captures and filled scorecard/findings evidence.
-- **Secondary**: `startup_captures`, `scenario_captures`, `scorecard_rows_touched`, `findings_sections_touched`, `max_iterations`.
+- **Primary**: `actual_eval_score` (unitless, higher is better) — actual A/B eval progress: real startup/scenario captures, portable capture timestamps, and filled scorecard/findings evidence.
+- **Secondary**: `startup_captures`, `scenario_captures`, `scorecard_rows_touched`, `findings_sections_touched`, `timestamp_syntax_ok`, `max_iterations`.
 
 ## How to Run
 

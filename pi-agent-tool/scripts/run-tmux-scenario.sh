@@ -34,7 +34,7 @@ sleep 5
 {
   echo "# Scenario capture: $name"
   echo "# Prompt: $prompt"
-  echo "# $(date -Is)"
+  echo "# $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo
   tmux capture-pane -t "$session" -p
 } > "$out"

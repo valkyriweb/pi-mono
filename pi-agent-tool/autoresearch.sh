@@ -32,6 +32,12 @@ done
 scenario_captures=$(find captures -maxdepth 1 -type f \( -name 'native-s*.txt' -o -name 'subagents-s*.txt' \) 2>/dev/null | wc -l | tr -d ' ')
 scorecard_rows_touched=$(grep -Ec '\| S[0-9][0-9] .*\| (native|pi-subagents) \| [^ ]' scorecard-template.md 2>/dev/null || true)
 findings_sections_touched=$(grep -Ec '^- (Native|`pi-subagents`|Winner|Evidence): .+' findings-template.md 2>/dev/null || true)
+timestamp_syntax_ok=0
+if grep -q "date -u '+%Y-%m-%dT%H:%M:%SZ'" scripts/capture-startup.sh scripts/run-tmux-scenario.sh; then
+  if ! grep -q 'date -Is' scripts/capture-startup.sh scripts/run-tmux-scenario.sh; then
+    timestamp_syntax_ok=1
+  fi
+fi
 
 actual_eval_score=0
 actual_eval_score=$((actual_eval_score + startup_captures * 20))
@@ -39,10 +45,12 @@ if [[ "$scenario_captures" -ge 16 ]]; then actual_eval_score=$((actual_eval_scor
 if [[ "$scorecard_rows_touched" -ge 16 ]]; then actual_eval_score=$((actual_eval_score + 40)); else actual_eval_score=$((actual_eval_score + scorecard_rows_touched * 2)); fi
 if [[ "$findings_sections_touched" -ge 32 ]]; then actual_eval_score=$((actual_eval_score + 40)); else actual_eval_score=$((actual_eval_score + findings_sections_touched)); fi
 if [[ "$max_iterations" -ge 60 ]]; then actual_eval_score=$((actual_eval_score + 10)); fi
+[[ "$timestamp_syntax_ok" -eq 1 ]] && actual_eval_score=$((actual_eval_score + 10))
 
 printf 'METRIC actual_eval_score=%s\n' "$actual_eval_score"
 printf 'METRIC startup_captures=%s\n' "$startup_captures"
 printf 'METRIC scenario_captures=%s\n' "$scenario_captures"
 printf 'METRIC scorecard_rows_touched=%s\n' "$scorecard_rows_touched"
 printf 'METRIC findings_sections_touched=%s\n' "$findings_sections_touched"
+printf 'METRIC timestamp_syntax_ok=%s\n' "$timestamp_syntax_ok"
 printf 'METRIC max_iterations=%s\n' "$max_iterations"

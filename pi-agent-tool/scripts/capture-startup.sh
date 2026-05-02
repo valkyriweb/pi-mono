@@ -29,7 +29,7 @@ tmux send-keys -t "$session" "$launch_command" Enter
 sleep 5
 {
   echo "# Startup capture: $mode"
-  echo "# $(date -Is)"
+  echo "# $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo
   tmux capture-pane -t "$session" -p
 } > "$out"
