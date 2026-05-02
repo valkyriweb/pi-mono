@@ -6,7 +6,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
-import { ensureTool } from "../../utils/tools-manager.js";
+import { ensureTool, getOptionalSearchToolPath, toolDisplayName } from "../../utils/tools-manager.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { resolveToCwd } from "./path-utils.js";
 import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.js";
@@ -23,15 +23,125 @@ const findSchema = Type.Object({
 	}),
 	path: Type.Optional(Type.String({ description: "Directory to search in (default: current directory)" })),
 	limit: Type.Optional(Type.Number({ description: "Maximum number of results (default: 1000)" })),
+	timeout: Type.Optional(
+		Type.Number({ description: "Timeout in seconds (default: 30, max 300)", exclusiveMinimum: 0, maximum: 300 }),
+	),
 });
 
 export type FindToolInput = Static<typeof findSchema>;
 
 const DEFAULT_LIMIT = 1000;
+const DEFAULT_TIMEOUT_SECONDS = 30;
+const MAX_TIMEOUT_SECONDS = 300;
+const VCS_DIRS = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
+
+type FindBackend = "bfs" | "fd";
+
+interface FindBackendCommand {
+	backend: FindBackend;
+	command: string;
+	args: string[];
+}
+
+export function buildBfsArgs(input: { pattern: string; searchPath: string; limit: number }): string[] {
+	const args = [input.searchPath, "-s"];
+	for (const vcsDir of VCS_DIRS) args.push("-exclude", "-name", vcsDir);
+	args.push("-type", "f");
+	if (input.pattern.includes("/")) {
+		const normalizedPattern = input.pattern.replace(/^\.\//, "");
+		const pathPattern = path.isAbsolute(input.searchPath) ? `*/${normalizedPattern}` : `./${normalizedPattern}`;
+		args.push("-path", pathPattern);
+	} else {
+		args.push("-name", input.pattern);
+	}
+	args.push("-print", "-limit", String(input.limit));
+	return args;
+}
+
+export function buildFdArgs(input: { pattern: string; searchPath: string; limit: number }): string[] {
+	const args = ["--glob", "--color=never", "--hidden", "--no-require-git", "--max-results", String(input.limit)];
+
+	// fd --glob matches against the basename unless --full-path is set; in --full-path
+	// mode it matches against the absolute candidate path, so a path-containing
+	// pattern like 'src/**/*.spec.ts' needs a leading '**/' to match anything.
+	let effectivePattern = input.pattern;
+	if (input.pattern.includes("/")) {
+		args.push("--full-path");
+		if (!input.pattern.startsWith("/") && !input.pattern.startsWith("**/") && input.pattern !== "**") {
+			effectivePattern = `**/${input.pattern}`;
+		}
+	}
+	args.push("--", effectivePattern, input.searchPath);
+	return args;
+}
+
+async function resolveFindBackend(input: {
+	pattern: string;
+	searchPath: string;
+	limit: number;
+	backend?: FindBackend | "auto";
+}): Promise<FindBackendCommand | undefined> {
+	if (input.backend !== "fd") {
+		const bfsPath = getOptionalSearchToolPath("bfs");
+		if (bfsPath) return { backend: "bfs", command: bfsPath, args: buildBfsArgs(input) };
+	}
+
+	const fdPath = await ensureTool("fd", true);
+	if (fdPath) return { backend: "fd", command: fdPath, args: buildFdArgs(input) };
+	return undefined;
+}
 
 export interface FindToolDetails {
 	truncation?: TruncationResult;
 	resultLimitReached?: number;
+	timedOut?: boolean;
+	timeoutMs?: number;
+	path?: string;
+	pattern?: string;
+	entriesReturned?: number;
+}
+
+function timeoutMsFromSeconds(timeout: number | undefined): number {
+	const seconds = typeof timeout === "number" && Number.isFinite(timeout) ? timeout : DEFAULT_TIMEOUT_SECONDS;
+	return Math.min(Math.max(seconds, Number.MIN_VALUE), MAX_TIMEOUT_SECONDS) * 1000;
+}
+
+function formatTimeoutSeconds(timeoutMs: number): string {
+	const seconds = timeoutMs / 1000;
+	return seconds >= 1 ? `${Math.round(seconds)}s` : `${timeoutMs}ms`;
+}
+
+function formatFindTimeoutResult(args: {
+	pattern: string;
+	path: string;
+	timeoutMs: number;
+	entriesReturned: number;
+	partialOutput?: string;
+}) {
+	const timeout = formatTimeoutSeconds(args.timeoutMs);
+	const partial = args.partialOutput?.trim();
+	const text = [
+		`find timed out after ${timeout} while searching ${args.path}.`,
+		`Retry with a narrower path/glob, or explicitly raise timeout up to ${MAX_TIMEOUT_SECONDS}s.`,
+		partial ? `\nPartial entries returned before timeout:\n${partial}` : undefined,
+	]
+		.filter(Boolean)
+		.join("\n");
+	return {
+		content: [{ type: "text" as const, text }],
+		isError: true,
+		details: {
+			timedOut: true,
+			timeoutMs: args.timeoutMs,
+			path: args.path,
+			pattern: args.pattern,
+			entriesReturned: args.entriesReturned,
+		},
+	};
+}
+
+function isAbortError(error: unknown): boolean {
+	return error instanceof Error && /abort/i.test(error.name || error.message);
 }
 
 /**
@@ -52,8 +162,10 @@ const defaultFindOperations: FindOperations = {
 };
 
 export interface FindToolOptions {
-	/** Custom operations for find. Default: local filesystem plus fd */
+	/** Custom operations for find. Default: local filesystem plus bfs/fd */
 	operations?: FindOperations;
+	/** Internal backend override for deterministic tests and fallback verification. */
+	backend?: FindBackend | "auto";
 }
 
 function formatFindCall(
@@ -114,15 +226,21 @@ export function createFindToolDefinition(
 	options?: FindToolOptions,
 ): ToolDefinition<typeof findSchema, FindToolDetails | undefined> {
 	const customOps = options?.operations;
+	const preferredBackend = options?.backend ?? "auto";
 	return {
 		name: "find",
 		label: "find",
-		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
-		promptSnippet: "Find files by glob pattern (respects .gitignore)",
+		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Prefers bfs when available, falling back to fd. The fd fallback respects .gitignore; bfs matches Claude Code Glob behavior and does not filter .gitignore. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
+		promptSnippet: "Find files by glob pattern",
 		parameters: findSchema,
 		async execute(
 			_toolCallId,
-			{ pattern, path: searchDir, limit }: { pattern: string; path?: string; limit?: number },
+			{
+				pattern,
+				path: searchDir,
+				limit,
+				timeout,
+			}: { pattern: string; path?: string; limit?: number; timeout?: number },
 			signal?: AbortSignal,
 			_onUpdate?,
 			_ctx?,
@@ -135,9 +253,14 @@ export function createFindToolDefinition(
 
 				let settled = false;
 				let stopChild: (() => void) | undefined;
+				let timeoutId: NodeJS.Timeout | undefined;
+				let killTimeoutId: NodeJS.Timeout | undefined;
+				const timeoutMs = timeoutMsFromSeconds(timeout);
 				const settle = (fn: () => void) => {
 					if (settled) return;
 					settled = true;
+					if (timeoutId) clearTimeout(timeoutId);
+					if (killTimeoutId) clearTimeout(killTimeoutId);
 					signal?.removeEventListener("abort", onAbort);
 					stopChild = undefined;
 					fn();
@@ -164,10 +287,34 @@ export function createFindToolDefinition(
 								settle(() => reject(new Error("Operation aborted")));
 								return;
 							}
-							const results = await ops.glob(pattern, searchPath, {
+							let customTimedOut = false;
+							let timeoutHandle: NodeJS.Timeout | undefined;
+							const timeoutPromise = new Promise<never>((resolve) => {
+								timeoutHandle = setTimeout(() => {
+									customTimedOut = true;
+									resolve(undefined as never);
+								}, timeoutMs);
+							});
+							const globPromise = ops.glob(pattern, searchPath, {
 								ignore: ["**/node_modules/**", "**/.git/**"],
 								limit: effectiveLimit,
 							});
+							const results =
+								timeoutMs > 0 ? await Promise.race([globPromise, timeoutPromise]) : await globPromise;
+							if (timeoutHandle) clearTimeout(timeoutHandle);
+							if (customTimedOut) {
+								settle(() =>
+									resolve(
+										formatFindTimeoutResult({
+											pattern,
+											path: searchPath,
+											timeoutMs,
+											entriesReturned: 0,
+										}) as any,
+									),
+								);
+								return;
+							}
 							if (signal?.aborted) {
 								settle(() => reject(new Error("Operation aborted")));
 								return;
@@ -213,51 +360,44 @@ export function createFindToolDefinition(
 							return;
 						}
 
-						// Default implementation uses fd.
-						const fdPath = await ensureTool("fd", true);
+						const backendCommand = await resolveFindBackend({
+							pattern,
+							searchPath,
+							limit: effectiveLimit,
+							backend: preferredBackend,
+						});
 						if (signal?.aborted) {
 							settle(() => reject(new Error("Operation aborted")));
 							return;
 						}
-						if (!fdPath) {
+						if (!backendCommand) {
 							settle(() => reject(new Error("fd is not available and could not be downloaded")));
 							return;
 						}
 
-						// Build fd arguments. --no-require-git makes fd apply hierarchical .gitignore
-						// semantics whether or not the search path is inside a git repository, without
-						// leaking sibling-directory rules the way --ignore-file (a global source) would.
-						const args: string[] = [
-							"--glob",
-							"--color=never",
-							"--hidden",
-							"--no-require-git",
-							"--max-results",
-							String(effectiveLimit),
-						];
-
-						// fd --glob matches against the basename unless --full-path is set; in --full-path
-						// mode it matches against the absolute candidate path, so a path-containing
-						// pattern like 'src/**/*.spec.ts' needs a leading '**/' to match anything.
-						let effectivePattern = pattern;
-						if (pattern.includes("/")) {
-							args.push("--full-path");
-							if (!pattern.startsWith("/") && !pattern.startsWith("**/") && pattern !== "**") {
-								effectivePattern = `**/${pattern}`;
-							}
-						}
-						args.push("--", effectivePattern, searchPath);
-
-						const child = spawn(fdPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+						const child = spawn(backendCommand.command, backendCommand.args, {
+							stdio: ["ignore", "pipe", "pipe"],
+						});
 						const rl = createInterface({ input: child.stdout });
 						let stderr = "";
+						let timedOut = false;
 						const lines: string[] = [];
 
 						stopChild = () => {
 							if (!child.killed) {
-								child.kill();
+								child.kill("SIGTERM");
+								killTimeoutId = setTimeout(() => {
+									if (!child.killed) child.kill("SIGKILL");
+								}, 5000);
 							}
 						};
+
+						if (timeoutMs > 0) {
+							timeoutId = setTimeout(() => {
+								timedOut = true;
+								stopChild?.();
+							}, timeoutMs);
+						}
 
 						const cleanup = () => {
 							rl.close();
@@ -273,7 +413,9 @@ export function createFindToolDefinition(
 
 						child.on("error", (error) => {
 							cleanup();
-							settle(() => reject(new Error(`Failed to run fd: ${error.message}`)));
+							settle(() =>
+								reject(new Error(`Failed to run ${toolDisplayName(backendCommand.command)}: ${error.message}`)),
+							);
 						});
 
 						child.on("close", (code) => {
@@ -282,9 +424,38 @@ export function createFindToolDefinition(
 								settle(() => reject(new Error("Operation aborted")));
 								return;
 							}
+							if (timedOut) {
+								const relativized: string[] = [];
+								for (const rawLine of lines) {
+									const line = rawLine.replace(/\r$/, "").trim();
+									if (!line) continue;
+									const hadTrailingSlash = line.endsWith("/") || line.endsWith("\\");
+									let relativePath = line;
+									if (line.startsWith(searchPath)) relativePath = line.slice(searchPath.length + 1);
+									else relativePath = path.relative(searchPath, line);
+									if (hadTrailingSlash && !relativePath.endsWith("/")) relativePath += "/";
+									relativized.push(toPosixPath(relativePath));
+								}
+								const partialOutput = truncateHead(relativized.join("\n"), {
+									maxLines: Number.MAX_SAFE_INTEGER,
+								}).content;
+								settle(() =>
+									resolve(
+										formatFindTimeoutResult({
+											pattern,
+											path: searchPath,
+											timeoutMs,
+											entriesReturned: relativized.length,
+											partialOutput,
+										}) as any,
+									),
+								);
+								return;
+							}
 							const output = lines.join("\n");
 							if (code !== 0) {
-								const errorMsg = stderr.trim() || `fd exited with code ${code}`;
+								const backendName = toolDisplayName(backendCommand.command);
+								const errorMsg = stderr.trim() || `${backendName} exited with code ${code}`;
 								if (!output) {
 									settle(() => reject(new Error(errorMsg)));
 									return;
@@ -342,7 +513,7 @@ export function createFindToolDefinition(
 							);
 						});
 					} catch (e) {
-						if (signal?.aborted) {
+						if (signal?.aborted || isAbortError(e)) {
 							settle(() => reject(new Error("Operation aborted")));
 							return;
 						}

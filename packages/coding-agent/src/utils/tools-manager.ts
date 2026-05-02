@@ -3,7 +3,7 @@ import { spawnSync } from "child_process";
 import extractZip from "extract-zip";
 import { chmodSync, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "fs";
 import { arch, platform } from "os";
-import { join } from "path";
+import { basename, join } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { APP_NAME, getBinDir } from "../config.js";
@@ -82,16 +82,20 @@ function commandExists(cmd: string): boolean {
 	}
 }
 
+function getLocalToolPath(binaryName: string): string | null {
+	const localPath = join(TOOLS_DIR, binaryName + (platform() === "win32" ? ".exe" : ""));
+	if (existsSync(localPath)) return localPath;
+	return null;
+}
+
 // Get the path to a tool (system-wide or in our tools dir)
 export function getToolPath(tool: "fd" | "rg"): string | null {
 	const config = TOOLS[tool];
 	if (!config) return null;
 
 	// Check our tools directory first
-	const localPath = join(TOOLS_DIR, config.binaryName + (platform() === "win32" ? ".exe" : ""));
-	if (existsSync(localPath)) {
-		return localPath;
-	}
+	const localPath = getLocalToolPath(config.binaryName);
+	if (localPath) return localPath;
 
 	// Check system PATH - if found, just return the command name (it's in PATH)
 	const systemBinaryNames = config.systemBinaryNames ?? [config.binaryName];
@@ -102,6 +106,23 @@ export function getToolPath(tool: "fd" | "rg"): string | null {
 	}
 
 	return null;
+}
+
+export type OptionalSearchTool = "ugrep" | "bfs";
+
+// Get optional search backends from Pi's controlled tools dir or the system PATH.
+// These are not downloaded yet: their release packaging differs enough that fd/rg
+// remain the portable managed fallback.
+export function getOptionalSearchToolPath(tool: OptionalSearchTool): string | null {
+	const localPath = getLocalToolPath(tool);
+	if (localPath) return localPath;
+
+	if (commandExists(tool)) return tool;
+	return null;
+}
+
+export function toolDisplayName(command: string): string {
+	return basename(command);
 }
 
 // Fetch latest release version from GitHub

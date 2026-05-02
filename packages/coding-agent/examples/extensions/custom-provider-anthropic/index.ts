@@ -186,14 +186,15 @@ function sanitizeSurrogates(text: string): string {
 }
 
 function convertContentBlocks(
-	content: (TextContent | ImageContent)[],
+	content: (TextContent | ImageContent | { type: "tool_reference"; name: string })[],
 ): string | Array<{ type: "text"; text: string } | { type: "image"; source: any }> {
-	const hasImages = content.some((c) => c.type === "image");
+	const contentWithoutToolReferences = content.filter((c) => c.type !== "tool_reference");
+	const hasImages = contentWithoutToolReferences.some((c) => c.type === "image");
 	if (!hasImages) {
-		return sanitizeSurrogates(content.map((c) => (c as TextContent).text).join("\n"));
+		return sanitizeSurrogates(contentWithoutToolReferences.map((c) => (c as TextContent).text).join("\n"));
 	}
 
-	const blocks = content.map((block) => {
+	const blocks = contentWithoutToolReferences.map((block) => {
 		if (block.type === "text") {
 			return { type: "text" as const, text: sanitizeSurrogates(block.text) };
 		}

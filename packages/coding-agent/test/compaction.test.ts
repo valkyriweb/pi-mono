@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { AssistantMessage, Usage } from "@mariozechner/pi-ai";
+import type { AssistantMessage, TextContent, Usage } from "@mariozechner/pi-ai";
 import { getModel } from "@mariozechner/pi-ai";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -147,18 +147,19 @@ function extractText(messages: AgentMessage[]): string {
 								.join(" ");
 				case "assistant":
 					return message.content
-						.filter((block): block is { type: "text"; text: string } => block.type === "text")
+						.filter((block): block is TextContent => block.type === "text")
 						.map((block) => block.text)
 						.join(" ");
 				case "branchSummary":
 				case "compactionSummary":
 					return message.summary;
 				case "custom":
+					return message.content;
 				case "toolResult":
 					return typeof message.content === "string"
 						? message.content
 						: message.content
-								.filter((block): block is { type: "text"; text: string } => block.type === "text")
+								.filter((block): block is TextContent => block.type === "text")
 								.map((block) => block.text)
 								.join(" ");
 				case "bashExecution":

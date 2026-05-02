@@ -42,6 +42,12 @@ import {
 	shouldCompact,
 } from "./compaction/index.js";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
+import { ensureDeferredToolSearchDefinition } from "./deferred-tool-registry.js";
+import {
+	createDeferredToolStateEntryData,
+	DEFERRED_TOOL_STATE_CUSTOM_TYPE,
+	scanDeferredToolStateEntries,
+} from "./deferred-tools.js";
 import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.js";
 import { createToolHtmlRenderer } from "./export-html/tool-renderer.js";
 import {
@@ -111,6 +117,10 @@ export function parseSkillBlock(text: string): ParsedSkillBlock | null {
 	};
 }
 
+function estimateSystemPromptTokens(systemPrompt: string): number {
+	return Math.ceil(systemPrompt.length / 4);
+}
+
 /** Session-specific events that extend the core AgentEvent */
 export type AgentSessionEvent =
 	| AgentEvent
@@ -153,7 +163,7 @@ export interface AgentSessionConfig {
 	customTools?: ToolDefinition[];
 	/** Model registry for API key resolution and model discovery */
 	modelRegistry: ModelRegistry;
-	/** Initial active built-in tool names. Default: [read, bash, edit, write] */
+	/** Initial active built-in tool names. Default: all built-in tools. */
 	initialActiveToolNames?: string[];
 	/** Optional allowlist of tool names. When provided, only these tool names are exposed. */
 	allowedToolNames?: string[];
@@ -303,6 +313,7 @@ export class AgentSession {
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
 	private _toolDefinitions: Map<string, ToolDefinitionEntry> = new Map();
+	private _discoveredDeferredToolNames: string[] = [];
 	private _toolPromptSnippets: Map<string, string> = new Map();
 	private _toolPromptGuidelines: Map<string, string[]> = new Map();
 
@@ -324,6 +335,7 @@ export class AgentSession {
 		this._allowedToolNames = config.allowedToolNames ? new Set(config.allowedToolNames) : undefined;
 		this._baseToolsOverride = config.baseToolsOverride;
 		this._agentToolServices = config.agentToolServices;
+		this._discoveredDeferredToolNames = scanDeferredToolStateEntries(this.sessionManager.getBranch());
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
 
 		// Always subscribe to agent events for internal handling
@@ -825,6 +837,18 @@ export class AgentSession {
 		return this._toolDefinitions.get(name)?.definition;
 	}
 
+	private _setDiscoveredDeferredToolNames(toolNames: string[]): void {
+		const next = [...new Set(toolNames)];
+		if (
+			next.length === this._discoveredDeferredToolNames.length &&
+			next.every((name, index) => name === this._discoveredDeferredToolNames[index])
+		) {
+			return;
+		}
+		this._discoveredDeferredToolNames = next;
+		this.sessionManager.appendCustomEntry(DEFERRED_TOOL_STATE_CUSTOM_TYPE, createDeferredToolStateEntryData(next));
+	}
+
 	/**
 	 * Set active tools by name.
 	 * Only tools in the registry can be enabled. Unknown tool names are ignored.
@@ -834,9 +858,12 @@ export class AgentSession {
 	setActiveToolsByName(toolNames: string[]): void {
 		const tools: AgentTool[] = [];
 		const validToolNames: string[] = [];
+		const seenToolNames = new Set<string>();
 		for (const name of toolNames) {
+			if (seenToolNames.has(name)) continue;
 			const tool = this._toolRegistry.get(name);
 			if (tool) {
+				seenToolNames.add(name);
 				tools.push(tool);
 				validToolNames.push(name);
 			}
@@ -2303,6 +2330,18 @@ export class AgentSession {
 				sourceInfo: tool.sourceInfo,
 			});
 		}
+		ensureDeferredToolSearchDefinition(definitionRegistry, {
+			getToolDefinitions: () => Array.from(this._toolDefinitions.values()).map(({ definition }) => definition),
+			getModel: () => this.model,
+			getDiscoveredToolNames: () => this._discoveredDeferredToolNames,
+			setDiscoveredToolNames: (toolNames) => {
+				this._setDiscoveredDeferredToolNames(toolNames);
+			},
+			actions: {
+				getActiveToolNames: () => this.getActiveToolNames(),
+				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
+			},
+		});
 		this._toolDefinitions = definitionRegistry;
 		this._toolPromptSnippets = new Map(
 			Array.from(definitionRegistry.values())
@@ -2336,6 +2375,11 @@ export class AgentSession {
 		for (const tool of wrappedExtensionTools as AgentTool[]) {
 			toolRegistry.set(tool.name, tool);
 		}
+		const deferredToolSearchEntry = definitionRegistry.get("tool_search");
+		if (deferredToolSearchEntry && !toolRegistry.has("tool_search")) {
+			const [toolSearch] = wrapRegisteredTools([deferredToolSearchEntry], runner);
+			toolRegistry.set(toolSearch.name, toolSearch);
+		}
 		this._toolRegistry = toolRegistry;
 
 		const nextActiveToolNames = (
@@ -2360,6 +2404,9 @@ export class AgentSession {
 			}
 		}
 
+		if (this._toolRegistry.has("tool_search")) {
+			nextActiveToolNames.push("tool_search");
+		}
 		this.setActiveToolsByName([...new Set(nextActiveToolNames)]);
 	}
 
@@ -2418,7 +2465,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write", "agent"];
+			: ["read", "bash", "edit", "write", "agent", "grep", "find", "ls"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,
@@ -3026,10 +3073,12 @@ export class AgentSession {
 		}
 
 		const estimate = estimateContextTokens(this.messages);
-		const percent = (estimate.tokens / contextWindow) * 100;
+		const systemPromptTokens = estimateSystemPromptTokens(this.systemPrompt);
+		const tokens = estimate.tokens + (estimate.lastUsageIndex === null ? systemPromptTokens : 0);
+		const percent = (tokens / contextWindow) * 100;
 
 		return {
-			tokens: estimate.tokens,
+			tokens,
 			contextWindow,
 			percent,
 		};

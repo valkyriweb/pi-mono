@@ -179,6 +179,11 @@ export interface ImageContent {
 	mimeType: string; // e.g., "image/jpeg", "image/png"
 }
 
+export interface ToolReferenceContent {
+	type: "tool_reference";
+	name: string;
+}
+
 export interface ToolCall {
 	type: "toolCall";
 	id: string;
@@ -212,7 +217,7 @@ export interface UserMessage {
 
 export interface AssistantMessage {
 	role: "assistant";
-	content: (TextContent | ThinkingContent | ToolCall)[];
+	content: (TextContent | ThinkingContent | ToolCall | ToolReferenceContent)[];
 	api: Api;
 	provider: Provider;
 	model: string;
@@ -228,7 +233,7 @@ export interface ToolResultMessage<TDetails = any> {
 	role: "toolResult";
 	toolCallId: string;
 	toolName: string;
-	content: (TextContent | ImageContent)[]; // Supports text and images
+	content: (TextContent | ImageContent | ToolReferenceContent)[]; // Supports text, images, and provider-native tool references
 	details?: TDetails;
 	isError: boolean;
 	timestamp: number; // Unix timestamp in milliseconds
@@ -242,6 +247,12 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	name: string;
 	description: string;
 	parameters: TParameters;
+	/** Provider-native hint to defer loading the full tool implementation/schema until discovered. */
+	deferLoading?: boolean;
+	/** Keep this tool eagerly loaded even when other tools are deferred. */
+	alwaysLoad?: boolean;
+	/** Concise searchable hint used by progressive tool discovery surfaces. */
+	searchHint?: string;
 }
 
 export interface Context {
@@ -335,6 +346,8 @@ export interface AnthropicMessagesCompat {
 	supportsEagerToolInputStreaming?: boolean;
 	/** Whether the provider supports Anthropic long cache retention (`cache_control.ttl: "1h"`). Default: true. */
 	supportsLongCacheRetention?: boolean;
+	/** Whether the provider supports native deferred tool schemas (`defer_loading`) and tool references. Default: true. */
+	supportsDeferredTools?: boolean;
 }
 
 /**

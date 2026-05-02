@@ -208,6 +208,8 @@ Child tools are computed from the parent active tools, requested tools, agent al
 
 Built-in tools: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`.
 
+`grep` uses ripgrep (`rg`) and `find` uses fd (`fd`) for fast .gitignore-aware traversal. Both default to a 30s timeout and accept `timeout` in seconds up to 300s. For huge trees, narrow `path`/`glob` first; raise `timeout` only for intentional broad searches.
+
 ### Resource Options
 
 | Option | Description |

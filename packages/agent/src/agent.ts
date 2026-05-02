@@ -412,6 +412,10 @@ export class Agent {
 		return {
 			model: this._state.model,
 			reasoning: this._state.thinkingLevel === "off" ? undefined : this._state.thinkingLevel,
+			refreshContext: () => ({
+				systemPrompt: this._state.systemPrompt,
+				tools: this._state.tools.slice(),
+			}),
 			sessionId: this.sessionId,
 			onPayload: this.onPayload,
 			onResponse: this.onResponse,

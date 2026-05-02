@@ -266,7 +266,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingLevel = "off";
 	}
 
-	const defaultActiveToolNames: ToolName[] = ["read", "bash", "edit", "write", "agent"];
+	const defaultActiveToolNames: ToolName[] = ["read", "bash", "edit", "write", "agent", "grep", "find", "ls"];
 	const allowedToolNames = options.tools ?? (options.noTools === "all" ? [] : undefined);
 	const initialActiveToolNames: string[] = options.tools
 		? [...options.tools]
@@ -284,13 +284,37 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return converted;
 		}
 		// Filter out ImageContent from all messages, replacing with text placeholder
-		return converted.map((msg) => {
-			if (msg.role === "user" || msg.role === "toolResult") {
+		return converted.map((msg): Message => {
+			if (msg.role === "user") {
 				const content = msg.content;
 				if (Array.isArray(content)) {
 					const hasImages = content.some((c) => c.type === "image");
 					if (hasImages) {
 						const filteredContent = content
+							.map((c) =>
+								c.type === "image" ? { type: "text" as const, text: "Image reading is disabled." } : c,
+							)
+							.filter(
+								(c, i, arr) =>
+									// Dedupe consecutive "Image reading is disabled." texts
+									!(
+										c.type === "text" &&
+										c.text === "Image reading is disabled." &&
+										i > 0 &&
+										arr[i - 1].type === "text" &&
+										(arr[i - 1] as { type: "text"; text: string }).text === "Image reading is disabled."
+									),
+							);
+						return { ...msg, content: filteredContent };
+					}
+				}
+			} else if (msg.role === "toolResult") {
+				const content = msg.content;
+				if (Array.isArray(content)) {
+					const safeContent = content;
+					const hasImages = safeContent.some((c) => c.type === "image");
+					if (hasImages) {
+						const filteredContent = safeContent
 							.map((c) =>
 								c.type === "image" ? { type: "text" as const, text: "Image reading is disabled." } : c,
 							)
