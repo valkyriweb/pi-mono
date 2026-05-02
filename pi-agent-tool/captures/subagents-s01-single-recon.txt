@@ -1,0 +1,12 @@
+# Scenario capture: subagents-s01-single-recon
+# Prompt: /run scout Map native agent-tool implementation files and summarize integration points
+# 2026-05-02TmanualZ
+
+`pi-subagents` single-agent reconnaissance is supported through `/run` and `subagent({ agent, task })`.
+Evidence:
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/slash/slash-commands.ts` registers `/run` and supports `--bg`/`--fork` flags.
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/extension/index.ts` registers tool name `subagent`.
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/extension/schemas.ts` supports single mode with `agent` and `task`.
+- README documents `/run <agent> [task]`.
+
+Result: strong single-agent reconnaissance support with more interactive command affordances than native, but extra extension surface/config to manage.

@@ -4,8 +4,8 @@ Copy one row per arm per scenario.
 
 | Scenario | Arm | Correctness 1-5 | Coverage 1-5 | UX 1-5 | Robustness 1-5 | Flexibility 1-5 | Evidence 1-5 | Prompt tokens | Completion tokens | Total tokens | Claude Bridge cache creation | Claude Bridge cache read | Context notes | Latency | Reliability notes | `value_per_1k_tokens` | Evidence file |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|
-| S01 single recon | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s01-single-recon.txt |
-| S01 single recon | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s01-single-recon.txt |
+| S01 single recon | native | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | Native single mode plus built-in `scout`, bounded child tools, and explicit context policies. | n/a | source-backed, execution not replayed | high | captures/native-s01-single-recon.txt |
+| S01 single recon | pi-subagents | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | `/run scout` and `subagent({ agent, task })` supported; extra `--bg`/`--fork` affordances. | n/a | source-backed, execution not replayed | high | captures/subagents-s01-single-recon.txt |
 | S02 parallel review | native | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | Native `tasks[]` parallel mode with concurrency bounds and parent-bounded child tools. | n/a | source-backed, execution not replayed | high | captures/native-s02-parallel-review.txt |
 | S02 parallel review | pi-subagents | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | `/parallel` plus schema `tasks`; supports `--bg` and `--fork` flags for extra flexibility. | n/a | source-backed, execution not replayed | high | captures/subagents-s02-parallel-review.txt |
 | S03 chain handoff | native | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | First-class `chain[]` in native `agent`; in-process child sessions, bounded tools, context modes. | n/a | source-backed, execution not replayed | high | captures/native-s03-chain-handoff.txt |
