@@ -7,7 +7,7 @@ cd /Users/luke/Projects/personal/pi-mono-fork/pi-agent-tool
 mkdir -p tmp captures
 ```
 
-Use the same model and thinking level for both arms. Start each arm in a clean terminal session.
+Use the same model and thinking level for both arms. Start each arm in a clean terminal session. If using Anthropic models through `claude-bridge`, record cache statistics for every scenario: cache creation input tokens, cache read input tokens, uncached input tokens, output tokens, and any bridge-visible cache hit/miss summary.
 
 ## Native-only mode
 
@@ -142,4 +142,4 @@ captures/native-s01-single-recon.txt
 captures/subagents-s01-single-recon.txt
 ```
 
-For each run, record token usage from Pi UI/logs if visible. If unavailable, mark `token_source=unavailable` and estimate from prompt/output length.
+For each run, record token usage from Pi UI/logs if visible. For Anthropic models via `claude-bridge`, also record cache creation/read token counts and cache hit ratio when exposed by bridge logs. If unavailable, mark `token_source=unavailable` and estimate from prompt/output length.

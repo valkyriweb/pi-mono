@@ -2,8 +2,8 @@
 
 Copy one row per arm per scenario.
 
-| Scenario | Arm | Correctness 1-5 | Coverage 1-5 | UX 1-5 | Robustness 1-5 | Flexibility 1-5 | Evidence 1-5 | Prompt tokens | Completion tokens | Total tokens | Context notes | Latency | Reliability notes | `value_per_1k_tokens` | Evidence file |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|
+| Scenario | Arm | Correctness 1-5 | Coverage 1-5 | UX 1-5 | Robustness 1-5 | Flexibility 1-5 | Evidence 1-5 | Prompt tokens | Completion tokens | Total tokens | Claude Bridge cache creation | Claude Bridge cache read | Context notes | Latency | Reliability notes | `value_per_1k_tokens` | Evidence file |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|
 | S01 single recon | native |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s01-single-recon.txt |
 | S01 single recon | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s01-single-recon.txt |
 | S02 parallel review | native |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s02-parallel-review.txt |

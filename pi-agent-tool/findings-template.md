@@ -20,6 +20,9 @@
 | Active tools |  |  |
 | Active slash commands |  |  |
 | Extension version | n/a |  |
+| Claude Bridge cache creation tokens |  |  |
+| Claude Bridge cache read tokens |  |  |
+| Claude Bridge cache hit notes |  |  |
 
 ## Score summary
 
