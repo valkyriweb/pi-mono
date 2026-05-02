@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `gate_score` (unitless, higher is better) — strict artifact gate covering required files, scenario/citation/cache coverage, executable scripts, bash syntax checks, and markdown table consistency.
-- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`.
+- **Primary**: `smoke_score` (unitless, higher is better) — execution-smoke readiness: artifact gate plus local runtime prerequisites for tmux capture helpers.
+- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`, `tmux_available`, `launcher_available`.
 
 ## How to Run
 
@@ -44,4 +44,4 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 - Scoring script initially checked artifact completeness rather than running expensive interactive evals.
 - The first metric saturated at 100 after enough required files/scenarios/citations/scripts were present.
 - The second metric saturated at 120 after adding Claude Bridge cache-stat accounting.
-- The third metric saturated at 140 after validating executability and table presence. Next loop uses `gate_score` to include bash syntax checks and markdown table column consistency, which are closer to whether Luke can run the eval cleanly.
+- The third metric saturated after validating executability and table consistency. Next loop uses `smoke_score` to include local runtime prerequisites: `tmux` availability and a Pi launcher (`../pi-test.sh` or `pi` on PATH).
