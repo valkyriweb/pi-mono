@@ -24,7 +24,7 @@
 
 Pi is a minimal terminal coding harness. Adapt pi to your workflows, not the other way around, without having to fork and modify pi internals. Extend it with TypeScript [Extensions](#extensions), [Skills](#skills), [Prompt Templates](#prompt-templates), and [Themes](#themes). Put your extensions, skills, prompt templates, and themes in [Pi Packages](#pi-packages) and share them with others via npm or git.
 
-Pi ships with powerful defaults but skips features like sub agents and plan mode. Instead, you can ask pi to build what you want or install a third party pi package that matches your workflow.
+Pi ships with powerful defaults and a native `agent` delegation tool. For broader workflow automation, you can ask pi to build what you want or install a third party pi package that matches your workflow.
 
 Pi runs in four modes: interactive, print or JSON, RPC for process integration, and an SDK for embedding in your own apps. See [openclaw/openclaw](https://github.com/openclaw/openclaw) for a real-world SDK integration.
 
@@ -61,6 +61,7 @@ I regularly publish my own `pi-mono` work sessions here:
 - [Customization](#customization)
   - [Prompt Templates](#prompt-templates)
   - [Skills](#skills)
+  - [Native Agents](#native-agents)
   - [Extensions](#extensions)
   - [Themes](#themes)
   - [Pi Packages](#pi-packages)
@@ -336,6 +337,20 @@ Use this skill when the user asks about X.
 
 Place in `~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/`, or `.agents/skills/` (from `cwd` up through parent directories) or a [pi package](#pi-packages) to share with others. See [docs/skills.md](docs/skills.md).
 
+### Native Agents
+
+Pi includes a built-in `agent` tool for child-agent delegation. It supports:
+
+- single: `{ agent, task }`
+- parallel: `{ tasks: [{ agent, task }, ...], concurrency }`
+- chain: `{ chain: [{ agent, task: "Use {previous}" }, ...] }`
+
+Built-in agents: `general-purpose`, `worker`, `explore`, `plan`, `scout`, `reviewer`, and `statusline-setup`. User agents can be added as Markdown files in `~/.pi/agent/agents/*.md`; project agents in `.pi/agents/*.md` require explicit `agentScope: "project"` or `"both"` and confirmation.
+
+Context modes: `default` loads normal project context without the parent transcript, `fork` includes a filtered parent transcript, `slim` omits project context and skills, and `none` keeps only Pi's base prompt plus the selected agent prompt. Child tools are bounded by the parent's active tools and recursive `agent` calls are denied.
+
+Use `/agents` to list agents and insert a prompt scaffold.
+
 ### Extensions
 
 <p align="center"><img src="docs/images/doom-extension.png" alt="Doom Extension" width="600"></p>
@@ -354,7 +369,7 @@ The default export can also be `async`. pi waits for async extension factories b
 
 **What's possible:**
 - Custom tools (or replace built-in tools entirely)
-- Sub-agents and plan mode
+- Legacy/reference sub-agent workflows and plan mode
 - Custom compaction and summarization
 - Permission gates and path protection
 - Custom editors and UI components

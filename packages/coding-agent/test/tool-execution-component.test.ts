@@ -3,6 +3,7 @@ import stripAnsi from "strip-ansi";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, test } from "vitest";
 import type { ToolDefinition } from "../src/core/extensions/types.js";
+import { createAgentToolDefinition } from "../src/core/tools/agent.js";
 import { type BashOperations, createBashToolDefinition } from "../src/core/tools/bash.js";
 import { createReadTool, createReadToolDefinition } from "../src/core/tools/read.js";
 import { createWriteToolDefinition } from "../src/core/tools/write.js";
@@ -63,6 +64,32 @@ describe("ToolExecutionComponent parity", () => {
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("custom call");
 		expect(rendered).toContain("custom result");
+	});
+
+	test("agent renderer displays single and expanded results", () => {
+		const component = new ToolExecutionComponent(
+			"agent",
+			"tool-agent-1",
+			{ agent: "scout", task: "Find files" },
+			{},
+			createAgentToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		let rendered = stripAnsi(component.render(120).join("\n"));
+		expect(rendered).toContain("agent");
+		expect(rendered).toContain("single: scout");
+
+		component.updateResult(
+			{
+				content: [{ type: "text", text: "agent single: completed\n1. scout: completed" }],
+				details: { mode: "single", status: "completed", runs: [] },
+				isError: false,
+			},
+			false,
+		);
+		rendered = stripAnsi(component.render(120).join("\n"));
+		expect(rendered).toContain("scout: completed");
 	});
 
 	test("uses built-in rendering for built-in overrides without custom renderers", () => {

@@ -40,6 +40,8 @@ Discovery rules:
 
 Disable discovery with `--no-skills` (explicit `--skill` paths still load).
 
+Native agents are separate from skills. Agent definitions live in `~/.pi/agent/agents/*.md` or explicit project `.pi/agents/*.md`; context modes such as `default` and `fork` can still inherit skills into child agent sessions, while `slim` and `none` omit them.
+
 ### Using Skills from Other Harnesses
 
 To use skills from Claude Code or OpenAI Codex, add their directories to settings:

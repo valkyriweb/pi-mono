@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a native built-in `agent` tool with single, parallel, and chain modes, built-in child agent definitions, user/project Markdown discovery, context modes, `/agents`, and migration docs for the legacy `subagent` extension example.
+
 ## [0.71.1] - 2026-05-01
 
 ### Added

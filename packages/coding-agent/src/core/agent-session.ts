@@ -28,6 +28,7 @@ import { isContextOverflow, modelsAreEqual, resetApiProviders, supportsXhigh } f
 import { theme } from "../modes/interactive/theme/theme.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
 import { sleep } from "../utils/sleep.js";
+import type { AgentToolParentServices } from "./agents/executor.js";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.js";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
 import {
@@ -165,6 +166,8 @@ export interface AgentSessionConfig {
 	baseToolsOverride?: Record<string, AgentTool>;
 	/** Mutable ref used by Agent to access the current ExtensionRunner */
 	extensionRunnerRef?: { current?: ExtensionRunner };
+	/** Services shared with native child agent sessions. */
+	agentToolServices?: AgentToolParentServices;
 	/** Session start event metadata emitted when extensions bind to this runtime. */
 	sessionStartEvent?: SessionStartEvent;
 }
@@ -287,6 +290,7 @@ export class AgentSession {
 	private _allowedToolNames?: Set<string>;
 	private _baseToolsOverride?: Record<string, AgentTool>;
 	private _sessionStartEvent: SessionStartEvent;
+	private _agentToolServices?: AgentToolParentServices;
 	private _extensionUIContext?: ExtensionUIContext;
 	private _extensionCommandContextActions?: ExtensionCommandContextActions;
 	private _extensionShutdownHandler?: ShutdownHandler;
@@ -319,6 +323,7 @@ export class AgentSession {
 		this._initialActiveToolNames = config.initialActiveToolNames;
 		this._allowedToolNames = config.allowedToolNames ? new Set(config.allowedToolNames) : undefined;
 		this._baseToolsOverride = config.baseToolsOverride;
+		this._agentToolServices = config.agentToolServices;
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
 
 		// Always subscribe to agent events for internal handling
@@ -2276,7 +2281,11 @@ export class AgentSession {
 				definition,
 				sourceInfo: createSyntheticSourceInfo(`<sdk:${definition.name}>`, { source: "sdk" }),
 			})),
-		].filter((tool) => isAllowedTool(tool.definition.name));
+		].filter(
+			(tool) =>
+				isAllowedTool(tool.definition.name) &&
+				!(tool.definition.name === "agent" && this._baseToolDefinitions.has("agent")),
+		);
 		const definitionRegistry = new Map<string, ToolDefinitionEntry>(
 			Array.from(this._baseToolDefinitions.entries())
 				.filter(([name]) => isAllowedTool(name))
@@ -2372,6 +2381,15 @@ export class AgentSession {
 			: createAllToolDefinitions(this._cwd, {
 					read: { autoResizeImages },
 					bash: { commandPrefix: shellCommandPrefix, shellPath },
+					agent: this._agentToolServices
+						? {
+								parentServices: this._agentToolServices,
+								getParentActiveTools: () => this.getActiveToolNames(),
+								getParentSessionManager: () => this.sessionManager,
+								getParentModel: () => this.model,
+								getParentThinkingLevel: () => this.thinkingLevel,
+							}
+						: undefined,
 				});
 
 		this._baseToolDefinitions = new Map(
@@ -2400,7 +2418,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write"];
+			: ["read", "bash", "edit", "write", "agent"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,

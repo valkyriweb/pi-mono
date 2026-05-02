@@ -57,6 +57,8 @@ import {
 } from "../../config.js";
 import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.js";
 import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.js";
+import { loadAgentRegistry } from "../../core/agents/registry.js";
+import type { AgentDefinition } from "../../core/agents/types.js";
 import type {
 	AutocompleteProviderFactory,
 	EditorFactory,
@@ -88,6 +90,7 @@ import { getPiUserAgent } from "../../utils/pi-user-agent.js";
 import { killTrackedDetachedChildren } from "../../utils/shell.js";
 import { ensureTool } from "../../utils/tools-manager.js";
 import { checkForNewPiVersion } from "../../utils/version-check.js";
+import { AgentsSelectorComponent } from "./components/agents-selector.js";
 import { ArminComponent } from "./components/armin.js";
 import { AssistantMessageComponent } from "./components/assistant-message.js";
 import { BashExecutionComponent } from "./components/bash-execution.js";
@@ -2438,6 +2441,12 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/agents" || text.startsWith("/agents ")) {
+				const agentId = text.startsWith("/agents ") ? text.slice(8).trim() : undefined;
+				this.editor.setText("");
+				await this.handleAgentsCommand(agentId);
+				return;
+			}
 			if (text === "/scoped-models") {
 				this.editor.setText("");
 				await this.showModelsSelector();
@@ -3876,6 +3885,23 @@ export class InteractiveMode {
 		});
 	}
 
+	private async handleAgentsCommand(agentId?: string): Promise<void> {
+		const registry = await loadAgentRegistry({ cwd: this.sessionManager.getCwd(), agentScope: "user" });
+		if (agentId) {
+			const agent = registry.agents.find((candidate) => candidate.id === agentId);
+			if (!agent) {
+				this.showStatus(`Unknown agent: ${agentId}`);
+				return;
+			}
+			const tools = Array.isArray(agent.tools) ? agent.tools.join(", ") : (agent.tools ?? "*");
+			this.showStatus(
+				`${agent.id} [${agent.source}] — ${agent.description} | context: ${agent.defaultContext ?? "default"} | tools: ${tools}`,
+			);
+			return;
+		}
+		this.showAgentsSelector(registry.agents);
+	}
+
 	private async handleModelCommand(searchTerm?: string): Promise<void> {
 		if (!searchTerm) {
 			this.showModelSelector();
@@ -3955,6 +3981,23 @@ export class InteractiveMode {
 		} catch {
 			// Ignore auth lookup failures for warning-only checks.
 		}
+	}
+
+	private showAgentsSelector(agents: AgentDefinition[]): void {
+		this.showSelector((done) => {
+			const selector = new AgentsSelectorComponent(
+				agents,
+				(agent) => {
+					done();
+					this.editor.setText(`Use the ${agent.id} agent to: `);
+					this.ui.setFocus(this.editor);
+				},
+				() => {
+					done();
+				},
+			);
+			return { component: selector, focus: selector };
+		});
 	}
 
 	private showModelSelector(initialSearchInput?: string): void {

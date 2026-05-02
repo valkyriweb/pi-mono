@@ -39,6 +39,7 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/model` | Switch models |
 | `/scoped-models` | Enable/disable models for Ctrl+P cycling |
 | `/settings` | Thinking level, theme, message delivery, transport |
+| `/agents` | List native child agents and insert an agent prompt scaffold |
 | `/resume` | Pick from previous sessions |
 | `/new` | Start a new session |
 | `/name <name>` | Set session display name |
@@ -181,11 +182,27 @@ cat README.md | pi -p "Summarize this text"
 | `--session-dir <dir>` | Custom session storage directory |
 | `--no-session` | Ephemeral mode; do not save |
 
+## Native Agent Tool
+
+The built-in `agent` tool delegates work to an in-process child `AgentSession` with its own transcript and bounded tools.
+
+Modes:
+
+```json
+{ "agent": "scout", "task": "Find auth-related files" }
+{ "tasks": [{ "agent": "scout", "task": "Find models" }, { "agent": "reviewer", "task": "Review API code" }], "concurrency": 2 }
+{ "chain": [{ "agent": "scout", "task": "Map the flow" }, { "agent": "plan", "task": "Plan from: {previous}" }] }
+```
+
+Options include `context` (`default`, `fork`, `slim`, `none`), `model`, `thinking`, `tools`, `output`, `outputMode` (`inline`, `file`, `both`), `chainDir`, and `agentScope` (`user`, `project`, `both`). Built-ins and user agents are available by default; project agents require explicit scope and confirmation.
+
+Child tools are computed from the parent active tools, requested tools, agent allow/deny lists, and a global recursive `agent` denial. `--tools`, `--no-builtin-tools`, and `--no-tools` continue to set the parent ceiling; children cannot gain tools the parent does not have active.
+
 ### Tool Options
 
 | Option | Description |
 |--------|-------------|
-| `--tools <list>`, `-t <list>` | Allowlist specific built-in, extension, and custom tools |
+| `--tools <list>`, `-t <list>` | Allowlist specific built-in, extension, and custom tools, including `agent` |
 | `--no-builtin-tools`, `-nbt` | Disable built-in tools but keep extension/custom tools enabled |
 | `--no-tools`, `-nt` | Disable all tools |
 
