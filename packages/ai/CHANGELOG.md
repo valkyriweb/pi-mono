@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.72.1] - 2026-05-02
+
 ## [0.72.0] - 2026-05-01
 
 ### Breaking Changes
@@ -23,6 +25,7 @@
 
 ### Fixed
 
+- Fixed OpenAI Codex Responses `streamSimple()` to honor the configured transport instead of always using SSE, and made `auto` the default transport with cached WebSocket context when available ([#4083](https://github.com/badlogic/pi-mono/issues/4083)).
 - Fixed Xiaomi MiMo model catalog to use the Token Plan Anthropic endpoint instead of the direct API ([#3912](https://github.com/badlogic/pi-mono/issues/3912)).
 
 ## [0.71.1] - 2026-05-01

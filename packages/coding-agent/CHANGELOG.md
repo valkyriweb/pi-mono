@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.72.1] - 2026-05-02
+
 ## [0.72.0] - 2026-05-01
 
 ### New Features
@@ -24,6 +26,7 @@
 
 ### Fixed
 
+- Fixed the default transport setting to use `auto`, allowing OpenAI Codex to use cached WebSocket context when available ([#4083](https://github.com/badlogic/pi-mono/issues/4083)).
 - Fixed `pi.registerProvider()` to honor per-model `baseUrl` overrides ([#4063](https://github.com/badlogic/pi-mono/issues/4063)).
 - Fixed self-update detection so `pi` correctly identifies when a newer version is available and applies updates ([#3942](https://github.com/badlogic/pi-mono/issues/3942), [#3980](https://github.com/badlogic/pi-mono/issues/3980), [#3922](https://github.com/badlogic/pi-mono/issues/3922)).
 
