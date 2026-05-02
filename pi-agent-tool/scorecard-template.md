@@ -10,8 +10,8 @@ Copy one row per arm per scenario.
 | S02 parallel review | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s02-parallel-review.txt |
 | S03 chain handoff | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s03-chain-handoff.txt |
 | S03 chain handoff | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s03-chain-handoff.txt |
-| S04 saved workflow | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s04-saved-workflow.txt |
-| S04 saved workflow | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s04-saved-workflow.txt |
+| S04 saved workflow | native | 3 | 3 | 3 | 4 | 3 | 4 | n/a | n/a | n/a | n/a | n/a | Native chain JSON is reusable via snippets/runbook, but no saved-chain manager found. | n/a | source-backed closest equivalent | medium | captures/native-s04-saved-workflow.txt |
+| S04 saved workflow | pi-subagents | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | `/run-chain`, `chainName`, and management schema support saved/reusable workflows. | n/a | source-backed, interactive run pending | high | captures/subagents-s04-saved-workflow.txt |
 | S05 async status | native | 2 | 1 | 2 | 4 | 1 | 4 | n/a | n/a | n/a | n/a | n/a | No explicit native background/status/control surface found; native agent runs are single/parallel/chain in-process. | n/a | supported gap, not runtime failure | low | captures/native-s05-async-status.txt |
 | S05 async status | pi-subagents | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | Source confirms `--bg` parsing and `/subagents-status` UI; interactive run capture pending. | n/a | source-backed, command capture pending | high | captures/subagents-s05-async-status.txt |
 | S06 doctor diagnostics | native | 2 | 1 | 2 | 4 | 1 | 4 | n/a | n/a | n/a | n/a | n/a | No native doctor equivalent found; startup/tool visibility is the closest diagnostic path. | n/a | supported gap, not runtime failure | low | captures/native-s06-doctor.txt |

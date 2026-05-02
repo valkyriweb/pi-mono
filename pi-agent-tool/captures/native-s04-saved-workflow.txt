@@ -1,0 +1,12 @@
+# Scenario capture: native-s04-saved-workflow
+# Prompt: define/run tiny saved chain or closest native equivalent
+# 2026-05-02TmanualZ
+
+Native Pi supports reusable delegation patterns through explicit `agent` tool JSON and prompt/runbook snippets, but no saved-chain manager was found in native source/docs.
+Evidence:
+- `packages/coding-agent/src/core/tools/agent.ts` supports `chain[]`, `chainDir`, `output`, and `outputMode`, which make reusable chain calls scriptable/documentable.
+- `packages/coding-agent/docs/usage.md` documents native chain mode JSON examples.
+- Native `/agents` inserts a scaffold, but source does not show a persisted saved-chain UI equivalent.
+
+Closest native equivalent: keep a reusable tool-call JSON/prompt snippet in `runbook.md` or captures.
+Result: workable but less ergonomic/reproducible than a saved chain manager.
