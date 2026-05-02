@@ -37,9 +37,36 @@ describe("agent tool", () => {
 			outputMode: "file",
 			content: "final report",
 		});
-		expect(result.contentForParent).toContain("Saved child agent output");
+		expect(result.displayText).toContain("Saved child agent output");
+		expect(result.rawContent).toBe("final report");
 		expect(result.outputPath).toBe(join(cwd, "reports", "scout.md"));
 		expect(await readFile(result.outputPath ?? "", "utf-8")).toBe("final report");
+	});
+
+	test("tool guidelines nudge parent toward concurrent tool-use blocks", () => {
+		const tool = createAgentToolDefinition(process.cwd());
+		expect(tool.promptGuidelines?.join("\n")).toContain("multiple agent tool-use blocks");
+	});
+
+	test("project agent confirmation cannot be bypassed by tool arguments", async () => {
+		const tool = createAgentToolDefinition(process.cwd(), {
+			parentServices: {} as NonNullable<Parameters<typeof createAgentToolDefinition>[1]>["parentServices"],
+			getParentActiveTools: () => [],
+			getParentSessionManager: () => {
+				throw new Error("should not reach execution");
+			},
+		});
+		const modelSuppliedParams = {
+			agent: "scout",
+			task: "find files",
+			agentScope: "project",
+			confirmProjectAgents: false,
+		} as unknown as Parameters<typeof tool.execute>[1];
+		await expect(
+			tool.execute("tool-1", modelSuppliedParams, undefined, undefined, {
+				hasUI: false,
+			} as Parameters<typeof tool.execute>[4]),
+		).rejects.toThrow("Project agents require interactive confirmation");
 	});
 
 	test("execute fails clearly when runtime child services are not wired", async () => {

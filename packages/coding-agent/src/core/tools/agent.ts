@@ -55,7 +55,6 @@ export const agentToolSchema = Type.Object({
 	outputMode: Type.Optional(outputModeSchema),
 	chainDir: Type.Optional(Type.String({ description: "Base directory for relative chain outputs" })),
 	agentScope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project"), Type.Literal("both")])),
-	confirmProjectAgents: Type.Optional(Type.Boolean({ default: true })),
 });
 
 export type AgentToolInput = Static<typeof agentToolSchema>;
@@ -146,11 +145,8 @@ async function confirmProjectAgentsIfNeeded(
 ): Promise<void> {
 	const scope = params.agentScope;
 	if (scope !== "project" && scope !== "both") return;
-	if (params.confirmProjectAgents === false) return;
 	if (!ctx.hasUI) {
-		throw new Error(
-			"Project agents require interactive confirmation. Set confirmProjectAgents:false only for trusted repositories.",
-		);
+		throw new Error("Project agents require interactive confirmation in this runtime.");
 	}
 	const confirmed = await ctx.ui.confirm(
 		"Run project agents?",
@@ -173,6 +169,7 @@ export function createAgentToolDefinition(
 		promptSnippet: "Delegate a task to a child agent with bounded tools",
 		promptGuidelines: [
 			"Use agent for delegated work that benefits from an isolated child context.",
+			"When parallel exploration or review is needed, send multiple agent tool-use blocks in one assistant message; Pi runs those calls concurrently. Use tasks[] only for explicit batched fan-out inside one agent call.",
 			"Do not use agent recursively; child agents cannot call agent.",
 		],
 		parameters: agentToolSchema,

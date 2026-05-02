@@ -39,7 +39,11 @@ describe("agent context inheritance", () => {
 			includeAppendSystemPrompt: true,
 		});
 		expect(resolveContextPolicy("fork").includeTranscript).toBe(true);
-		expect(resolveContextPolicy("slim")).toMatchObject({ includeProjectContext: false, includeSkills: false });
+		expect(resolveContextPolicy("slim")).toMatchObject({
+			includeProjectContext: false,
+			includeSkills: false,
+			includeAppendSystemPrompt: true,
+		});
 		expect(resolveContextPolicy("none")).toMatchObject({
 			includeTranscript: false,
 			includeProjectContext: false,
@@ -48,11 +52,16 @@ describe("agent context inheritance", () => {
 		});
 	});
 
-	test("child resource options strip context files, skills, and append prompt for slim/none", () => {
+	test("child resource options make slim and none observably different", () => {
 		const slim = getChildResourceLoaderOptions(resolveContextPolicy("slim"), agent);
 		expect(slim.noContextFiles).toBe(true);
 		expect(slim.noSkills).toBe(true);
-		expect(slim.appendSystemPromptOverride?.(["project append"])).toEqual(
+		expect(slim.appendSystemPromptOverride?.(["project append"])).toEqual(expect.arrayContaining(["project append"]));
+
+		const none = getChildResourceLoaderOptions(resolveContextPolicy("none"), agent);
+		expect(none.noContextFiles).toBe(true);
+		expect(none.noSkills).toBe(true);
+		expect(none.appendSystemPromptOverride?.(["project append"])).toEqual(
 			expect.not.arrayContaining(["project append"]),
 		);
 
@@ -101,5 +110,48 @@ describe("agent context inheritance", () => {
 		expect(messages).toContain(normalAssistant);
 		expect(messages).not.toContain(agentAssistant);
 		expect(messages).not.toContain(subagentResult);
+	});
+
+	test("fork filtering removes orphaned tool calls and tool results", () => {
+		const session = SessionManager.inMemory();
+		const mixedAssistant: AssistantMessage = {
+			...assistantBase,
+			role: "assistant",
+			content: [
+				{ type: "toolCall", id: "keep-call", name: "read", arguments: { path: "README.md" } },
+				{ type: "toolCall", id: "agent-call", name: "agent", arguments: { agent: "scout", task: "x" } },
+			],
+			stopReason: "toolUse",
+		};
+		const keepResult: ToolResultMessage = {
+			role: "toolResult",
+			toolCallId: "keep-call",
+			toolName: "read",
+			content: [{ type: "text", text: "read result" }],
+			isError: false,
+			timestamp: Date.now(),
+		};
+		const orphanResult: ToolResultMessage = {
+			role: "toolResult",
+			toolCallId: "missing-call",
+			toolName: "read",
+			content: [{ type: "text", text: "orphan" }],
+			isError: false,
+			timestamp: Date.now(),
+		};
+		session.appendMessage(mixedAssistant);
+		session.appendMessage(keepResult);
+		session.appendMessage(orphanResult);
+
+		const messages = getFilteredForkMessages(session);
+		expect(messages).toHaveLength(2);
+		const assistant = messages[0];
+		expect(assistant?.role).toBe("assistant");
+		if (assistant?.role === "assistant") {
+			expect(assistant.content).toEqual([
+				{ type: "toolCall", id: "keep-call", name: "read", arguments: { path: "README.md" } },
+			]);
+		}
+		expect(messages[1]).toBe(keepResult);
 	});
 });

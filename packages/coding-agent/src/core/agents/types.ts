@@ -83,6 +83,7 @@ export interface AgentRunDetails {
 	usage?: unknown;
 	error?: string;
 	finalOutput?: string;
+	rawOutput?: string;
 }
 
 export interface AgentToolDetails {

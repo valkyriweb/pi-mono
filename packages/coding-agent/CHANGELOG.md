@@ -6,6 +6,10 @@
 
 - Added a native built-in `agent` tool with single, parallel, and chain modes, built-in child agent definitions, user/project Markdown discovery, context modes, `/agents`, and migration docs for the legacy `subagent` extension example.
 
+### Changed
+
+- Deferred the built-in `statusline-setup` agent until Pi's statusline target is defined.
+
 ## [0.71.1] - 2026-05-01
 
 ### Added

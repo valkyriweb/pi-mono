@@ -12,7 +12,6 @@ describe("built-in agent definitions", () => {
 			"plan",
 			"reviewer",
 			"scout",
-			"statusline-setup",
 			"worker",
 		]);
 		for (const agent of agents) {
@@ -27,6 +26,16 @@ describe("built-in agent definitions", () => {
 			expect(agent.denyTools).toEqual(expect.arrayContaining(["agent", "edit", "write", "bash"]));
 			expect(agent.tools).toEqual(["read", "grep", "find", "ls"]);
 		}
+	});
+
+	test("built-in prompts require structured output", () => {
+		const agents = new Map(getBuiltinAgentDefinitions().map((agent) => [agent.id, agent.prompt]));
+		expect(agents.get("plan")).toContain("### Critical Files for Implementation");
+		expect(agents.get("explore")).toContain("### Findings");
+		expect(agents.get("explore")).toContain("### Files");
+		expect(agents.get("explore")).toContain("### Open Questions");
+		expect(agents.get("reviewer")).toContain("VERDICT: PASS|FAIL|PARTIAL");
+		expect(agents.get("scout")).toContain("### Key Files");
 	});
 
 	test("general-purpose and worker deny recursive agent", () => {

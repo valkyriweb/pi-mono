@@ -20,7 +20,7 @@ export function resolveContextPolicy(mode: ContextMode): ResolvedContextPolicy {
 				includeTranscript: false,
 				includeProjectContext: false,
 				includeSkills: false,
-				includeAppendSystemPrompt: false,
+				includeAppendSystemPrompt: true,
 			};
 		case "none":
 			return {
@@ -66,27 +66,65 @@ export function getChildResourceLoaderOptions(
 	};
 }
 
-function contentHasToolName(content: unknown, deniedToolNames: Set<string>): boolean {
-	if (!Array.isArray(content)) return false;
-	return content.some((part) => {
-		if (!part || typeof part !== "object") return false;
-		const record = part as Record<string, unknown>;
-		const name = record.name;
-		return typeof name === "string" && deniedToolNames.has(name);
-	});
+function filterDeniedToolArtifacts(messages: AgentMessage[], deniedToolNames: Set<string>): AgentMessage[] {
+	return messages
+		.map((message): AgentMessage | undefined => {
+			if (message.role === "toolResult") {
+				return deniedToolNames.has(message.toolName) ? undefined : message;
+			}
+			if (message.role !== "assistant") return message;
+			const filteredContent = message.content.filter((part) => {
+				return part.type !== "toolCall" || !deniedToolNames.has(part.name);
+			});
+			if (filteredContent.length === message.content.length) return message;
+			if (filteredContent.length === 0) return undefined;
+			return { ...message, content: filteredContent };
+		})
+		.filter((message): message is AgentMessage => Boolean(message));
+}
+
+function collectToolCallIds(messages: AgentMessage[]): Set<string> {
+	const ids = new Set<string>();
+	for (const message of messages) {
+		if (message.role !== "assistant") continue;
+		for (const part of message.content) {
+			if (part.type === "toolCall") ids.add(part.id);
+		}
+	}
+	return ids;
+}
+
+function collectToolResultIds(messages: AgentMessage[]): Set<string> {
+	const ids = new Set<string>();
+	for (const message of messages) {
+		if (message.role === "toolResult") ids.add(message.toolCallId);
+	}
+	return ids;
+}
+
+export function filterIncompleteToolCalls(messages: AgentMessage[]): AgentMessage[] {
+	const toolCallIds = collectToolCallIds(messages);
+	const toolResultIds = collectToolResultIds(messages);
+	return messages
+		.map((message): AgentMessage | undefined => {
+			if (message.role === "toolResult") {
+				return toolCallIds.has(message.toolCallId) ? message : undefined;
+			}
+			if (message.role !== "assistant") return message;
+			const filteredContent = message.content.filter((part) => {
+				return part.type !== "toolCall" || toolResultIds.has(part.id);
+			});
+			if (filteredContent.length === message.content.length) return message;
+			if (filteredContent.length === 0) return undefined;
+			return { ...message, content: filteredContent };
+		})
+		.filter((message): message is AgentMessage => Boolean(message));
 }
 
 export function getFilteredForkMessages(sessionManager: ReadonlySessionManager): AgentMessage[] {
 	const deniedToolNames = new Set(["agent", "subagent"]);
-	return buildSessionContext(sessionManager.getEntries(), sessionManager.getLeafId()).messages.filter((message) => {
-		if (message.role === "assistant" && contentHasToolName(message.content, deniedToolNames)) return false;
-		if (message.role === "toolResult") {
-			const toolName = "toolName" in message ? message.toolName : undefined;
-			if (typeof toolName === "string" && deniedToolNames.has(toolName)) return false;
-			if (contentHasToolName(message.content, deniedToolNames)) return false;
-		}
-		return true;
-	});
+	const messages = buildSessionContext(sessionManager.getEntries(), sessionManager.getLeafId()).messages;
+	return filterIncompleteToolCalls(filterDeniedToolArtifacts(messages, deniedToolNames));
 }
 
 export function buildChildTaskPrompt(task: AgentTaskConfig): string {

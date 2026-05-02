@@ -288,7 +288,8 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		details.durationMs = Date.now() - startedAt;
 		details.messageCount = session.messages.length;
 		details.outputPath = output.outputPath;
-		details.finalOutput = output.contentForParent;
+		details.finalOutput = output.displayText;
+		details.rawOutput = output.rawContent;
 		return details;
 	} catch (error) {
 		details.status = options.signal?.aborted ? "cancelled" : "failed";
@@ -375,7 +376,7 @@ export async function executeAgentTool(
 					chainDir: input.chainDir,
 				});
 				runs.push(result);
-				previous = result.finalOutput ?? "";
+				previous = result.rawOutput ?? result.finalOutput ?? "";
 				emitProgress(input, runs, options.onProgress);
 			}
 		} else if (input.mode === "parallel") {

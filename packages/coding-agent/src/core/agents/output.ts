@@ -4,7 +4,8 @@ import { withFileMutationQueue } from "../tools/file-mutation-queue.js";
 import type { AgentOutputMode } from "./types.js";
 
 export interface AgentOutputWriteResult {
-	contentForParent: string;
+	displayText: string;
+	rawContent: string;
 	outputPath?: string;
 }
 
@@ -21,7 +22,7 @@ export async function writeAgentOutput(options: {
 	chainDir?: string;
 }): Promise<AgentOutputWriteResult> {
 	if (!options.output || options.outputMode === "inline") {
-		return { contentForParent: options.content };
+		return { displayText: options.content, rawContent: options.content };
 	}
 
 	const outputPath = resolveAgentOutputPath(options.output, options.cwd, options.chainDir);
@@ -31,7 +32,11 @@ export async function writeAgentOutput(options: {
 	});
 
 	if (options.outputMode === "file") {
-		return { contentForParent: `Saved child agent output to ${outputPath}`, outputPath };
+		return { displayText: `Saved child agent output to ${outputPath}`, rawContent: options.content, outputPath };
 	}
-	return { contentForParent: `${options.content}\n\n[Saved child agent output to ${outputPath}]`, outputPath };
+	return {
+		displayText: `${options.content}\n\n[Saved child agent output to ${outputPath}]`,
+		rawContent: options.content,
+		outputPath,
+	};
 }
