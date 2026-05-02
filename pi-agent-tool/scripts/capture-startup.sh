@@ -20,7 +20,12 @@ launcher="pi"
 if [[ -x "$repo/pi-test.sh" ]]; then
   launcher="./pi-test.sh"
 fi
-tmux send-keys -t "$session" "cd $repo && $launcher" Enter
+launch_command="cd $repo && $launcher"
+if [[ "${PI_AGENT_EVAL_DRY_RUN:-0}" == "1" ]]; then
+  echo "DRY_RUN $launch_command"
+  exit 0
+fi
+tmux send-keys -t "$session" "$launch_command" Enter
 sleep 5
 {
   echo "# Startup capture: $mode"

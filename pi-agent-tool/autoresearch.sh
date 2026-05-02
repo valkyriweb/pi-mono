@@ -45,19 +45,29 @@ fi
 
 local_launcher_refs=$(grep -Eoh 'pi-test\.sh|launcher=' scripts/capture-startup.sh scripts/run-tmux-scenario.sh 2>/dev/null | wc -l | tr -d ' ')
 
-launcher_score=0
-launcher_score=$((launcher_score + required_files * 10))
-if [[ "$scenario_count" -ge 8 ]]; then launcher_score=$((launcher_score + 15)); else launcher_score=$((launcher_score + scenario_count)); fi
-if [[ "$citation_count" -ge 20 ]]; then launcher_score=$((launcher_score + 15)); else launcher_score=$((launcher_score + citation_count / 2)); fi
-if [[ "$cache_field_count" -ge 10 ]]; then launcher_score=$((launcher_score + 10)); else launcher_score=$((launcher_score + cache_field_count)); fi
-launcher_score=$((launcher_score + executable_scripts * 5))
-[[ "$bash_syntax_ok" -eq 1 ]] && launcher_score=$((launcher_score + 10))
-[[ "$table_consistency_ok" -eq 1 ]] && launcher_score=$((launcher_score + 10))
-[[ "$tmux_available" -eq 1 ]] && launcher_score=$((launcher_score + 5))
-[[ "$launcher_available" -eq 1 ]] && launcher_score=$((launcher_score + 5))
-if [[ "$local_launcher_refs" -ge 4 ]]; then launcher_score=$((launcher_score + 10)); else launcher_score=$((launcher_score + local_launcher_refs * 2)); fi
+dry_run_ok=0
+if PI_AGENT_EVAL_DRY_RUN=1 scripts/capture-startup.sh native 2>/dev/null | grep -q '^DRY_RUN cd '; then
+  if PI_AGENT_EVAL_DRY_RUN=1 scripts/run-tmux-scenario.sh dry-run-test '/agents' 2>/dev/null | grep -q '^DRY_RUN prompt=/agents'; then
+    dry_run_ok=1
+  fi
+fi
 
-printf 'METRIC launcher_score=%s\n' "$launcher_score"
+base_score=0
+base_score=$((base_score + required_files * 10))
+if [[ "$scenario_count" -ge 8 ]]; then base_score=$((base_score + 15)); else base_score=$((base_score + scenario_count)); fi
+if [[ "$citation_count" -ge 20 ]]; then base_score=$((base_score + 15)); else base_score=$((base_score + citation_count / 2)); fi
+if [[ "$cache_field_count" -ge 10 ]]; then base_score=$((base_score + 10)); else base_score=$((base_score + cache_field_count)); fi
+base_score=$((base_score + executable_scripts * 5))
+[[ "$bash_syntax_ok" -eq 1 ]] && base_score=$((base_score + 10))
+[[ "$table_consistency_ok" -eq 1 ]] && base_score=$((base_score + 10))
+[[ "$tmux_available" -eq 1 ]] && base_score=$((base_score + 5))
+[[ "$launcher_available" -eq 1 ]] && base_score=$((base_score + 5))
+if [[ "$local_launcher_refs" -ge 4 ]]; then base_score=$((base_score + 10)); else base_score=$((base_score + local_launcher_refs * 2)); fi
+
+dry_run_score=$base_score
+[[ "$dry_run_ok" -eq 1 ]] && dry_run_score=$((dry_run_score + 10))
+
+printf 'METRIC dry_run_score=%s\n' "$dry_run_score"
 printf 'METRIC required_files=%s\n' "$required_files"
 printf 'METRIC scenario_count=%s\n' "$scenario_count"
 printf 'METRIC citation_count=%s\n' "$citation_count"
@@ -68,3 +78,4 @@ printf 'METRIC table_consistency_ok=%s\n' "$table_consistency_ok"
 printf 'METRIC tmux_available=%s\n' "$tmux_available"
 printf 'METRIC launcher_available=%s\n' "$launcher_available"
 printf 'METRIC local_launcher_refs=%s\n' "$local_launcher_refs"
+printf 'METRIC dry_run_ok=%s\n' "$dry_run_ok"
