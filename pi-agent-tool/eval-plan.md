@@ -13,6 +13,7 @@ Measure practical return on token spend for Pi's native delegation against the i
 - Context policies live in `packages/coding-agent/src/core/agents/context.ts`; supported modes are `default`, `fork`, `slim`, and `none`; fork filtering strips native `agent` and legacy `subagent` artifacts.
 - Built-ins live in `packages/coding-agent/src/core/agents/definitions.ts`: `general-purpose`, `worker`, `explore`, `plan`, `scout`, `reviewer`; read-only agents restrict tools and recursive `agent` is denied.
 - Native `/agents` is registered in `packages/coding-agent/src/core/slash-commands.ts` and handled in `packages/coding-agent/src/modes/interactive/interactive-mode.ts`; it opens a selector and inserts `Use the <agent-id> agent to: ` scaffolding rather than executing directly.
+- Native child-session wiring is in `packages/coding-agent/src/core/sdk.ts` and `packages/coding-agent/src/core/agent-session.ts`, where parent services and active-tool ceilings are passed into runtime construction.
 - Tests cover validation, outputs, permissions, context inheritance, model selection, and selector behavior in `packages/coding-agent/test/agent-tool.test.ts`, `agent-context-inheritance.test.ts`, `agent-permissions.test.ts`, `agent-model-selection.test.ts`, and `interactive-mode-agents-command.test.ts`.
 - Docs: `packages/coding-agent/docs/usage.md`, `packages/coding-agent/docs/tui.md`, and `packages/coding-agent/README.md` document native modes, bounded tools, context modes, project-agent confirmation, and TUI rendering.
 
