@@ -6,14 +6,18 @@ import type {
 	Model,
 	TextContent,
 	ToolCall,
+	ToolReferenceContent,
 	ToolResultMessage,
 } from "../types.js";
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
 const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
 
-function replaceImagesWithPlaceholder(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
-	const result: TextContent[] = [];
+function replaceImagesWithPlaceholder(
+	content: (TextContent | ImageContent | ToolReferenceContent)[],
+	placeholder: string,
+): (TextContent | ToolReferenceContent)[] {
+	const result: (TextContent | ToolReferenceContent)[] = [];
 	let previousWasPlaceholder = false;
 
 	for (const block of content) {
@@ -25,6 +29,13 @@ function replaceImagesWithPlaceholder(content: (TextContent | ImageContent)[], p
 			continue;
 		}
 
+		if (block.type === "tool_reference") {
+			result.push(block);
+			previousWasPlaceholder = false;
+			continue;
+		}
+
+		if (block.type !== "text") continue;
 		result.push(block);
 		previousWasPlaceholder = block.text === placeholder;
 	}
@@ -41,7 +52,9 @@ function downgradeUnsupportedImages<TApi extends Api>(messages: Message[], model
 		if (msg.role === "user" && Array.isArray(msg.content)) {
 			return {
 				...msg,
-				content: replaceImagesWithPlaceholder(msg.content, NON_VISION_USER_IMAGE_PLACEHOLDER),
+				content: replaceImagesWithPlaceholder(msg.content, NON_VISION_USER_IMAGE_PLACEHOLDER).filter(
+					(block): block is TextContent => block.type === "text",
+				),
 			};
 		}
 

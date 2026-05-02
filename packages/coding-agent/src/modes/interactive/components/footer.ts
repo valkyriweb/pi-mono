@@ -88,6 +88,7 @@ export class FooterComponent implements Component {
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
+		const contextTokens = contextUsage?.tokens ?? null;
 
 		// Replace home directory with ~
 		let pwd = this.session.sessionManager.getCwd();
@@ -125,10 +126,11 @@ export class FooterComponent implements Component {
 		// Colorize context percentage based on usage
 		let contextPercentStr: string;
 		const autoIndicator = this.autoCompactEnabled ? " (auto)" : "";
+		const contextTokensDisplay = contextTokens === null ? "?" : formatTokens(contextTokens);
 		const contextPercentDisplay =
 			contextPercent === "?"
-				? `?/${formatTokens(contextWindow)}${autoIndicator}`
-				: `${contextPercent}%/${formatTokens(contextWindow)}${autoIndicator}`;
+				? `? ${contextTokensDisplay}/${formatTokens(contextWindow)}${autoIndicator}`
+				: `${contextPercent}% ${contextTokensDisplay}/${formatTokens(contextWindow)}${autoIndicator}`;
 		if (contextPercentValue > 90) {
 			contextPercentStr = theme.fg("error", contextPercentDisplay);
 		} else if (contextPercentValue > 70) {

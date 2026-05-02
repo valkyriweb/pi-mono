@@ -187,6 +187,16 @@ async function runLoop(
 				pendingMessages = [];
 			}
 
+			// Refresh model-facing context just before each provider request.
+			// Tools can mutate the live Agent state (for example deferred tool activation),
+			// and the next LLM call in the same agent run must see that updated tool schema.
+			if (config.refreshContext) {
+				const refreshed = await config.refreshContext();
+				if (refreshed.systemPrompt !== undefined) currentContext.systemPrompt = refreshed.systemPrompt;
+				if (refreshed.tools !== undefined) currentContext.tools = refreshed.tools;
+				if (refreshed.messages !== undefined) currentContext.messages = refreshed.messages;
+			}
+
 			// Stream assistant response
 			const message = await streamAssistantResponse(currentContext, config, signal, emit, streamFn);
 			newMessages.push(message);

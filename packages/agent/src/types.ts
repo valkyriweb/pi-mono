@@ -8,6 +8,7 @@ import type {
 	streamSimple,
 	TextContent,
 	Tool,
+	ToolReferenceContent,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import type { Static, TSchema } from "typebox";
@@ -62,7 +63,7 @@ export interface BeforeToolCallResult {
  * There is no deep merge for `content` or `details`.
  */
 export interface AfterToolCallResult {
-	content?: (TextContent | ImageContent)[];
+	content?: (TextContent | ImageContent | ToolReferenceContent)[];
 	details?: unknown;
 	isError?: boolean;
 	/**
@@ -130,6 +131,16 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * ```
 	 */
 	convertToLlm: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
+
+	/**
+	 * Optional hook called before each LLM request to refresh model-facing
+	 * context fields that may change during tool execution, such as dynamic
+	 * tool activation or system-prompt updates.
+	 *
+	 * The returned `messages` array, if present, replaces the current loop
+	 * transcript. Omit it to preserve in-loop assistant/tool-result messages.
+	 */
+	refreshContext?: () => Partial<AgentContext> | Promise<Partial<AgentContext>>;
 
 	/**
 	 * Optional transform applied to the context before `convertToLlm`.
@@ -290,10 +301,10 @@ export interface AgentState {
 
 /** Final or partial result produced by a tool. */
 export interface AgentToolResult<T> {
-	/** Text or image content returned to the model. */
-	content: (TextContent | ImageContent)[];
+	/** Text, image, or provider-native reference content returned to the model. */
+	content: (TextContent | ImageContent | ToolReferenceContent)[];
 	/** Arbitrary structured details for logs or UI rendering. */
-	details: T;
+	details?: T;
 	/**
 	 * Hint that the agent should stop after the current tool batch.
 	 * Early termination only happens when every finalized tool result in the batch sets this to true.

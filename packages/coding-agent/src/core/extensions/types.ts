@@ -26,6 +26,7 @@ import type {
 	OAuthLoginCallbacks,
 	SimpleStreamOptions,
 	TextContent,
+	ToolReferenceContent,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import type {
@@ -442,6 +443,12 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	promptSnippet?: string;
 	/** Optional guideline bullets appended to the default system prompt Guidelines section when this tool is active. */
 	promptGuidelines?: string[];
+	/** Mark this tool for progressive/provider-native deferred loading when supported. */
+	deferLoading?: boolean;
+	/** Keep this tool eagerly loaded even when other tools are deferred. */
+	alwaysLoad?: boolean;
+	/** Concise searchable hint used by tool discovery surfaces. */
+	searchHint?: string;
 	/** Parameter schema (TypeBox) */
 	parameters: TParams;
 	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */
@@ -849,7 +856,7 @@ interface ToolResultEventBase {
 	type: "tool_result";
 	toolCallId: string;
 	input: Record<string, unknown>;
-	content: (TextContent | ImageContent)[];
+	content: (TextContent | ImageContent | ToolReferenceContent)[];
 	isError: boolean;
 }
 
@@ -1012,7 +1019,7 @@ export interface UserBashEventResult {
 }
 
 export interface ToolResultEventResult {
-	content?: (TextContent | ImageContent)[];
+	content?: (TextContent | ImageContent | ToolReferenceContent)[];
 	details?: unknown;
 	isError?: boolean;
 }

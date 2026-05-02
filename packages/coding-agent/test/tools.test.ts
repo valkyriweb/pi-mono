@@ -5,10 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeBashWithOperations } from "../src/core/bash-executor.js";
 import { createBashTool, createLocalBashOperations } from "../src/core/tools/bash.js";
 import { computeEditsDiff } from "../src/core/tools/edit-diff.js";
+import { buildBfsArgs, buildFdArgs } from "../src/core/tools/find.js";
+import { buildRgArgs, buildUgrepArgs } from "../src/core/tools/grep.js";
 import {
 	createEditTool,
 	createFindTool,
+	createFindToolDefinition,
 	createGrepTool,
+	createGrepToolDefinition,
 	createLsTool,
 	createReadTool,
 	createWriteTool,
@@ -634,6 +638,103 @@ describe("Coding Agent Tools", () => {
 			expect(getTextOutput(result)).toContain("No matches found");
 			expect(existsSync(marker)).toBe(false);
 		});
+
+		it("should build ugrep argv with hidden, ignore-file, VCS exclusion, and glob defaults", () => {
+			const args = buildUgrepArgs({
+				pattern: "needle",
+				searchPath: testDir,
+				glob: "*.ts",
+				ignoreCase: true,
+				literal: true,
+			});
+
+			expect(args).toEqual(
+				expect.arrayContaining([
+					"--no-config",
+					"-r",
+					"-n",
+					"--with-filename",
+					"--ignore-files",
+					"-.",
+					"--color=never",
+					"--exclude-dir",
+					".git",
+					"--ignore-case",
+					"--fixed-strings",
+					"-g",
+					"*.ts",
+				]),
+			);
+			expect(args.slice(-3)).toEqual(["--", "needle", testDir]);
+		});
+
+		it("should preserve rg fallback argv", () => {
+			const args = buildRgArgs({ pattern: "needle", searchPath: testDir, glob: "*.ts" });
+
+			expect(args).toEqual([
+				"--json",
+				"--line-number",
+				"--color=never",
+				"--hidden",
+				"--glob",
+				"*.ts",
+				"--",
+				"needle",
+				testDir,
+			]);
+		});
+
+		it("should expose optional timeout in the schema", () => {
+			const definition = createGrepToolDefinition(process.cwd());
+			expect((definition.parameters as any).properties.timeout).toBeDefined();
+			expect((definition.parameters as any).properties.timeout.exclusiveMinimum).toBe(0);
+			expect((definition.parameters as any).properties.timeout.maximum).toBe(300);
+		});
+
+		it("should time out slow grep calls with an actionable result", async () => {
+			const slowFile = join(testDir, "slow.txt");
+			writeFileSync(slowFile, "match one\nmatch two\n");
+			const tool = createGrepTool(testDir);
+
+			const result = await tool.execute("test-call-grep-timeout", {
+				pattern: "match",
+				path: testDir,
+				timeout: 0.001,
+			});
+
+			expect((result as any).isError).toBe(true);
+			expect(result.details?.timedOut).toBe(true);
+			expect(result.details?.timeoutMs).toBe(1);
+			expect(result.details?.matchesReturned).toBeGreaterThanOrEqual(0);
+			expect(getTextOutput(result)).toContain("grep timed out after 1ms");
+			expect(getTextOutput(result)).toContain("Retry with a narrower path/glob/pattern");
+		});
+
+		it("should honor explicit higher grep timeout", async () => {
+			const testFile = join(testDir, "explicit-timeout.txt");
+			writeFileSync(testFile, "needle\n");
+
+			const result = await grepTool.execute("test-call-grep-explicit-timeout", {
+				pattern: "needle",
+				path: testFile,
+				timeout: 1,
+			});
+
+			expect(getTextOutput(result)).toContain("explicit-timeout.txt:1: needle");
+		});
+
+		it("should distinguish grep AbortSignal cancellation from timeout", async () => {
+			const controller = new AbortController();
+			controller.abort();
+
+			await expect(
+				grepTool.execute(
+					"test-call-grep-abort",
+					{ pattern: "needle", path: testDir, timeout: 1 },
+					controller.signal,
+				),
+			).rejects.toThrow("Operation aborted");
+		});
 	});
 
 	describe("find tool", () => {
@@ -657,12 +758,13 @@ describe("Coding Agent Tools", () => {
 			expect(outputLines).toContain(".secret/hidden.txt");
 		});
 
-		it("should respect .gitignore", async () => {
+		it("should respect .gitignore with the fd backend", async () => {
 			writeFileSync(join(testDir, ".gitignore"), "ignored.txt\n");
 			writeFileSync(join(testDir, "ignored.txt"), "ignored");
 			writeFileSync(join(testDir, "kept.txt"), "kept");
+			const fdFindTool = createFindTool(testDir, { backend: "fd" });
 
-			const result = await findTool.execute("test-call-14", {
+			const result = await fdFindTool.execute("test-call-14", {
 				pattern: "**/*.txt",
 				path: testDir,
 			});
@@ -673,8 +775,10 @@ describe("Coding Agent Tools", () => {
 		});
 
 		it("should surface fd glob parse errors", async () => {
+			const fdFindTool = createFindTool(testDir, { backend: "fd" });
+
 			await expect(
-				findTool.execute("test-call-15", {
+				fdFindTool.execute("test-call-15", {
 					pattern: "[",
 					path: testDir,
 				}),
@@ -688,6 +792,88 @@ describe("Coding Agent Tools", () => {
 			});
 
 			expect(getTextOutput(result)).toContain("No files found matching pattern");
+		});
+
+		it("should build bfs argv for future native file discovery", () => {
+			const args = buildBfsArgs({ pattern: "src/**/*.ts", searchPath: testDir, limit: 5 });
+
+			expect(args).toEqual(
+				expect.arrayContaining([
+					testDir,
+					"-s",
+					"-exclude",
+					"-name",
+					".git",
+					"-type",
+					"f",
+					"-path",
+					"*/src/**/*.ts",
+					"-print",
+					"-limit",
+					"5",
+				]),
+			);
+		});
+
+		it("should preserve fd fallback argv and ignore-aware defaults", () => {
+			const args = buildFdArgs({ pattern: "src/**/*.ts", searchPath: testDir, limit: 5 });
+
+			expect(args).toEqual([
+				"--glob",
+				"--color=never",
+				"--hidden",
+				"--no-require-git",
+				"--max-results",
+				"5",
+				"--full-path",
+				"--",
+				"**/src/**/*.ts",
+				testDir,
+			]);
+		});
+
+		it("should expose optional timeout in the schema", () => {
+			const definition = createFindToolDefinition(process.cwd());
+			expect((definition.parameters as any).properties.timeout).toBeDefined();
+			expect((definition.parameters as any).properties.timeout.exclusiveMinimum).toBe(0);
+			expect((definition.parameters as any).properties.timeout.maximum).toBe(300);
+		});
+
+		it("should time out slow find calls with an actionable result", async () => {
+			writeFileSync(join(testDir, "slow-find.txt"), "contents");
+			const result = await findTool.execute("test-call-find-timeout", {
+				pattern: "**/*",
+				path: testDir,
+				timeout: 0.001,
+			});
+
+			expect((result as any).isError).toBe(true);
+			expect(result.details?.timedOut).toBe(true);
+			expect(result.details?.timeoutMs).toBe(1);
+			expect(result.details?.entriesReturned).toBeGreaterThanOrEqual(0);
+			expect(getTextOutput(result)).toContain("find timed out after 1ms");
+			expect(getTextOutput(result)).toContain("Retry with a narrower path/glob");
+		});
+
+		it("should honor explicit higher find timeout", async () => {
+			writeFileSync(join(testDir, "explicit-timeout.ts"), "contents");
+
+			const result = await findTool.execute("test-call-find-explicit-timeout", {
+				pattern: "**/*.ts",
+				path: testDir,
+				timeout: 1,
+			});
+
+			expect(getTextOutput(result)).toContain("explicit-timeout.ts");
+		});
+
+		it("should distinguish find AbortSignal cancellation from timeout", async () => {
+			const controller = new AbortController();
+			controller.abort();
+
+			await expect(
+				findTool.execute("test-call-find-abort", { pattern: "**/*", path: testDir, timeout: 1 }, controller.signal),
+			).rejects.toThrow("Operation aborted");
 		});
 	});
 

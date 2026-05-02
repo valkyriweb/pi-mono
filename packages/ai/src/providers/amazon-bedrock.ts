@@ -721,11 +721,13 @@ function convertMessages(
 				toolResults.push({
 					toolResult: {
 						toolUseId: m.toolCallId,
-						content: m.content.map((c) =>
-							c.type === "image"
-								? { image: createImageBlock(c.mimeType, c.data) }
-								: { text: sanitizeSurrogates(c.text) },
-						),
+						content: m.content
+							.filter((c) => c.type !== "tool_reference")
+							.map((c) =>
+								c.type === "image"
+									? { image: createImageBlock(c.mimeType, c.data) }
+									: { text: sanitizeSurrogates(c.text) },
+							),
 						status: m.isError ? ToolResultStatus.ERROR : ToolResultStatus.SUCCESS,
 					},
 				});
@@ -737,11 +739,13 @@ function convertMessages(
 					toolResults.push({
 						toolResult: {
 							toolUseId: nextMsg.toolCallId,
-							content: nextMsg.content.map((c) =>
-								c.type === "image"
-									? { image: createImageBlock(c.mimeType, c.data) }
-									: { text: sanitizeSurrogates(c.text) },
-							),
+							content: nextMsg.content
+								.filter((c) => c.type !== "tool_reference")
+								.map((c) =>
+									c.type === "image"
+										? { image: createImageBlock(c.mimeType, c.data) }
+										: { text: sanitizeSurrogates(c.text) },
+								),
 							status: nextMsg.isError ? ToolResultStatus.ERROR : ToolResultStatus.SUCCESS,
 						},
 					});

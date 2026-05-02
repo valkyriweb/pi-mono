@@ -108,10 +108,11 @@ const fromClaudeCodeName = (name: string, tools?: Tool[]) => {
 /**
  * Convert content blocks to Anthropic API format
  */
-function convertContentBlocks(content: (TextContent | ImageContent)[]):
+function convertContentBlocks(content: (TextContent | ImageContent | { type: "tool_reference"; name: string })[]):
 	| string
 	| Array<
 			| { type: "text"; text: string }
+			| { type: "tool_reference"; tool_name: string }
 			| {
 					type: "image";
 					source: {
@@ -121,9 +122,16 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 					};
 			  }
 	  > {
+	const hasToolReferences = content.some((c) => c.type === "tool_reference");
+	if (hasToolReferences) {
+		return content
+			.filter((block): block is { type: "tool_reference"; name: string } => block.type === "tool_reference")
+			.map((block) => ({ type: "tool_reference" as const, tool_name: block.name }));
+	}
+
 	// If only text blocks, return as concatenated string for simplicity
-	const hasImages = content.some((c) => c.type === "image");
-	if (!hasImages) {
+	const hasStructuredBlocks = content.some((c) => c.type === "image");
+	if (!hasStructuredBlocks) {
 		return sanitizeSurrogates(content.map((c) => (c as TextContent).text).join("\n"));
 	}
 
@@ -133,6 +141,12 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 			return {
 				type: "text" as const,
 				text: sanitizeSurrogates(block.text),
+			};
+		}
+		if (block.type === "tool_reference") {
+			return {
+				type: "tool_reference" as const,
+				tool_name: block.name,
 			};
 		}
 		return {
@@ -157,17 +171,28 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 	return blocks;
 }
 
+function stripToolReferencesFromContent(
+	content: (TextContent | ImageContent | { type: "tool_reference"; name: string })[],
+): ReturnType<typeof convertContentBlocks> {
+	const filtered = content.filter((block) => block.type !== "tool_reference");
+	if (filtered.length === 0) return "[Tool references removed - tool search not enabled]";
+	return convertContentBlocks(filtered);
+}
+
 export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type AnthropicThinkingDisplay = "summarized" | "omitted";
 
 const FINE_GRAINED_TOOL_STREAMING_BETA = "fine-grained-tool-streaming-2025-05-14";
 const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
+const TOOL_SEARCH_BETA = "advanced-tool-use-2025-11-20";
 
 function getAnthropicCompat(model: Model<"anthropic-messages">): Required<AnthropicMessagesCompat> {
+	const modelSupportsDeferredTools = !model.id.toLowerCase().includes("haiku");
 	return {
 		supportsEagerToolInputStreaming: model.compat?.supportsEagerToolInputStreaming ?? true,
 		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
+		supportsDeferredTools: model.compat?.supportsDeferredTools ?? modelSupportsDeferredTools,
 	};
 }
 
@@ -223,6 +248,25 @@ function mergeHeaders(...headerSources: (Record<string, string | null> | undefin
 			Object.assign(merged, headers);
 		}
 	}
+	return merged;
+}
+
+function mergeHeadersWithAnthropicBetas(
+	requiredBetas: string[],
+	...headerSources: (Record<string, string | null> | undefined)[]
+): Record<string, string | null> {
+	const merged = mergeHeaders(...headerSources);
+	const betaSet = new Set<string>();
+	const existing = merged["anthropic-beta"];
+	if (typeof existing === "string") {
+		for (const beta of existing
+			.split(",")
+			.map((value) => value.trim())
+			.filter(Boolean))
+			betaSet.add(beta);
+	}
+	for (const beta of requiredBetas) betaSet.add(beta);
+	if (betaSet.size > 0) merged["anthropic-beta"] = Array.from(betaSet).join(",");
 	return merged;
 }
 
@@ -468,6 +512,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 					apiKey,
 					options?.interleavedThinking ?? true,
 					shouldUseFineGrainedToolStreamingBeta(model, context),
+					shouldUseToolSearchBeta(model, context),
 					options?.headers,
 					copilotDynamicHeaders,
 				);
@@ -767,6 +812,7 @@ function createClient(
 	apiKey: string,
 	interleavedThinking: boolean,
 	useFineGrainedToolStreamingBeta: boolean,
+	useToolSearchBeta: boolean,
 	optionsHeaders?: Record<string, string>,
 	dynamicHeaders?: Record<string, string>,
 ): { client: Anthropic; isOAuthToken: boolean } {
@@ -780,6 +826,9 @@ function createClient(
 	if (needsInterleavedBeta) {
 		betaFeatures.push(INTERLEAVED_THINKING_BETA);
 	}
+	if (useToolSearchBeta) {
+		betaFeatures.push(TOOL_SEARCH_BETA);
+	}
 
 	if (model.provider === "cloudflare-ai-gateway") {
 		const client = new Anthropic({
@@ -787,14 +836,14 @@ function createClient(
 			authToken: null,
 			baseURL: resolveCloudflareBaseUrl(model),
 			dangerouslyAllowBrowser: true,
-			defaultHeaders: mergeHeaders(
+			defaultHeaders: mergeHeadersWithAnthropicBetas(
+				betaFeatures,
 				{
 					accept: "application/json",
 					"anthropic-dangerous-direct-browser-access": "true",
 					"cf-aig-authorization": `Bearer ${apiKey}`,
 					"x-api-key": null,
 					Authorization: null,
-					...(betaFeatures.length > 0 ? { "anthropic-beta": betaFeatures.join(",") } : {}),
 				},
 				model.headers,
 				optionsHeaders,
@@ -811,11 +860,11 @@ function createClient(
 			authToken: apiKey,
 			baseURL: model.baseUrl,
 			dangerouslyAllowBrowser: true,
-			defaultHeaders: mergeHeaders(
+			defaultHeaders: mergeHeadersWithAnthropicBetas(
+				betaFeatures,
 				{
 					accept: "application/json",
 					"anthropic-dangerous-direct-browser-access": "true",
-					...(betaFeatures.length > 0 ? { "anthropic-beta": betaFeatures.join(",") } : {}),
 				},
 				model.headers,
 				dynamicHeaders,
@@ -833,11 +882,11 @@ function createClient(
 			authToken: apiKey,
 			baseURL: model.baseUrl,
 			dangerouslyAllowBrowser: true,
-			defaultHeaders: mergeHeaders(
+			defaultHeaders: mergeHeadersWithAnthropicBetas(
+				["claude-code-20250219", "oauth-2025-04-20", ...betaFeatures],
 				{
 					accept: "application/json",
 					"anthropic-dangerous-direct-browser-access": "true",
-					"anthropic-beta": ["claude-code-20250219", "oauth-2025-04-20", ...betaFeatures].join(","),
 					"user-agent": `claude-cli/${claudeCodeVersion}`,
 					"x-app": "cli",
 				},
@@ -854,11 +903,11 @@ function createClient(
 		apiKey,
 		baseURL: model.baseUrl,
 		dangerouslyAllowBrowser: true,
-		defaultHeaders: mergeHeaders(
+		defaultHeaders: mergeHeadersWithAnthropicBetas(
+			betaFeatures,
 			{
 				accept: "application/json",
 				"anthropic-dangerous-direct-browser-access": "true",
-				...(betaFeatures.length > 0 ? { "anthropic-beta": betaFeatures.join(",") } : {}),
 			},
 			model.headers,
 			optionsHeaders,
@@ -875,9 +924,10 @@ function buildParams(
 	options?: AnthropicOptions,
 ): MessageCreateParamsStreaming {
 	const { cacheControl } = getCacheControl(model, options?.cacheRetention);
+	const compat = getAnthropicCompat(model);
 	const params: MessageCreateParamsStreaming = {
 		model: model.id,
-		messages: convertMessages(context.messages, model, isOAuthToken, cacheControl),
+		messages: convertMessages(context.messages, model, isOAuthToken, cacheControl, compat.supportsDeferredTools),
 		max_tokens: options?.maxTokens || (model.maxTokens / 3) | 0,
 		stream: true,
 	};
@@ -918,7 +968,8 @@ function buildParams(
 		params.tools = convertTools(
 			context.tools,
 			isOAuthToken,
-			getAnthropicCompat(model).supportsEagerToolInputStreaming,
+			compat.supportsEagerToolInputStreaming,
+			compat.supportsDeferredTools,
 			cacheControl,
 		);
 	}
@@ -983,6 +1034,7 @@ function convertMessages(
 	model: Model<"anthropic-messages">,
 	isOAuthToken: boolean,
 	cacheControl?: CacheControlEphemeral,
+	supportsDeferredTools = true,
 ): MessageParam[] {
 	const params: MessageParam[] = [];
 
@@ -1072,6 +1124,8 @@ function convertMessages(
 						name: isOAuthToken ? toClaudeCodeName(block.name) : block.name,
 						input: block.arguments ?? {},
 					});
+				} else if (block.type === "tool_reference" && supportsDeferredTools) {
+					blocks.push({ type: "tool_reference", tool_name: block.name } as unknown as ContentBlockParam);
 				}
 			}
 			if (blocks.length === 0) continue;
@@ -1087,7 +1141,9 @@ function convertMessages(
 			toolResults.push({
 				type: "tool_result",
 				tool_use_id: msg.toolCallId,
-				content: convertContentBlocks(msg.content),
+				content: supportsDeferredTools
+					? convertContentBlocks(msg.content)
+					: stripToolReferencesFromContent(msg.content),
 				is_error: msg.isError,
 			});
 
@@ -1098,7 +1154,9 @@ function convertMessages(
 				toolResults.push({
 					type: "tool_result",
 					tool_use_id: nextMsg.toolCallId,
-					content: convertContentBlocks(nextMsg.content),
+					content: supportsDeferredTools
+						? convertContentBlocks(nextMsg.content)
+						: stripToolReferencesFromContent(nextMsg.content),
 					is_error: nextMsg.isError,
 				});
 				j++;
@@ -1146,10 +1204,29 @@ function shouldUseFineGrainedToolStreamingBeta(model: Model<"anthropic-messages"
 	return !!context.tools?.length && !getAnthropicCompat(model).supportsEagerToolInputStreaming;
 }
 
+function shouldUseToolSearchBeta(model: Model<"anthropic-messages">, context: Context): boolean {
+	if (!getAnthropicCompat(model).supportsDeferredTools) return false;
+	return hasDeferredTool(context) || hasToolReferenceContent(context);
+}
+
+function hasDeferredTool(context: Context): boolean {
+	return context.tools?.some((tool) => tool.deferLoading && !tool.alwaysLoad) ?? false;
+}
+
+function hasToolReferenceContent(context: Context): boolean {
+	return context.messages.some((message) => {
+		if (message.role === "assistant" || message.role === "toolResult") {
+			return message.content.some((block) => block.type === "tool_reference");
+		}
+		return false;
+	});
+}
+
 function convertTools(
 	tools: Tool[],
 	isOAuthToken: boolean,
 	supportsEagerToolInputStreaming: boolean,
+	supportsDeferredTools: boolean,
 	cacheControl?: CacheControlEphemeral,
 ): Anthropic.Messages.Tool[] {
 	if (!tools) return [];
@@ -1161,6 +1238,7 @@ function convertTools(
 			name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,
 			description: tool.description,
 			...(supportsEagerToolInputStreaming ? { eager_input_streaming: true } : {}),
+			...(supportsDeferredTools && tool.deferLoading && !tool.alwaysLoad ? { defer_loading: true } : {}),
 			input_schema: {
 				type: "object",
 				properties: schema.properties ?? {},
