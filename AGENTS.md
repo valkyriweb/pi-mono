@@ -96,6 +96,8 @@ tmux kill-session -t pi-test
 
 Fork-only changes go in root `FORK-CHANGELOG.md`. Keep `packages/*/CHANGELOG.md` reserved for upstream release notes or changes intended for upstream, which reduces merge conflicts when syncing `upstream/main`.
 
+For native-agent A/B testing, the installed `pi-subagents` extension manager command is locally aliased from `/agents` to `/subagents` so native `/agents` remains reachable. This patch lives in `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/slash/slash-commands.ts` and may need reapplying after `pi update`.
+
 Location: `packages/*/CHANGELOG.md` (each package has its own)
 
 ### Format
