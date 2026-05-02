@@ -39,7 +39,9 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/model` | Switch models |
 | `/scoped-models` | Enable/disable models for Ctrl+P cycling |
 | `/settings` | Thinking level, theme, message delivery, transport |
-| `/agents` | List native child agents and insert an agent prompt scaffold |
+| `/agents` | List native child agents, run native agent subcommands, or insert an agent prompt scaffold |
+| `/agents-doctor` | Diagnose native agent definitions, chains, tools, models, and runtime services |
+| `/agents-status [run-id]` | Show recent native child-agent runs, or inspect one run in detail |
 | `/resume` | Pick from previous sessions |
 | `/new` | Start a new session |
 | `/name <name>` | Set session display name |
@@ -196,6 +198,38 @@ Modes:
 
 Options include `context` (`default`, `fork`, `slim`, `none`), `model`, `thinking`, `tools`, `output`, `outputMode` (`inline`, `file`, `both`), `chainDir`, and `agentScope` (`user`, `project`, `both`). Built-ins and user agents are available by default; project agents require explicit scope and confirmation.
 
+Interactive slash helpers:
+
+```text
+/agents                         # selector
+/agents run scout -- map auth    # single-agent scaffold
+/agents parallel scout,reviewer -- inspect auth
+/agents run-chain review -- auth flow
+/agents list-chains
+/agents doctor                  # same report as /agents-doctor
+/agents status                  # same report as /agents-status
+/agents-status agent-1           # detail view for one native agent run
+```
+
+Saved chains live in `~/.pi/agent/chains/*.json` or project `.pi/chains/*.json`:
+
+```json
+{
+  "name": "review",
+  "description": "Scout, then review",
+  "chain": [
+    { "agent": "scout", "task": "Map the requested area" },
+    { "agent": "reviewer", "task": "Review this handoff: {previous}" }
+  ]
+}
+```
+
+Project chains override user chains with the same name. `/agents-status` tracks recent native foreground child-agent runs; background async/resume/control is intentionally not native in this pass. Detail mode shows the child session ref/path, status timeline summary, recent tool calls, invoked skills, usage, errors, and output refs.
+
+During a native `agent` tool call, collapsed rendering shows mode, agents, per-child status, current tool, tool count, token usage when known, duration, and session/output refs. Expanded rendering adds recent tools, recent output snippets, invoked/loaded skills, model/thinking, errors, and output paths.
+
+Child sessions are persisted as normal Pi sessions with the parent session recorded as their parent reference. Resume or inspect them via the printed session path; native read-only step-in is `/agents-status <run-id>` for now.
+
 Child tools are computed from the parent active tools, requested tools, agent allow/deny lists, and a global recursive `agent` denial. `--tools`, `--no-builtin-tools`, and `--no-tools` continue to set the parent ceiling; children cannot gain tools the parent does not have active.
 
 ### Tool Options
@@ -295,6 +329,6 @@ pi --tools read,grep,find,ls -p "Review the code"
 
 Pi keeps the core small and pushes workflow-specific behavior into extensions, skills, prompt templates, and packages.
 
-It intentionally does not include built-in MCP, sub-agents, permission popups, plan mode, to-dos, or background bash. You can build or install those workflows as extensions or packages, or use external tools such as containers and tmux.
+It intentionally does not include built-in MCP, permission popups, plan mode, to-dos, or background bash. Native `agent` covers bounded in-process child sessions, single/parallel/chain delegation, diagnostics, recent status, and saved chains. Background async/resume/control and manager editing screens remain extension territory.
 
 For the full rationale, read the [blog post](https://mariozechner.at/posts/2025-11-30-pi-coding-agent/).

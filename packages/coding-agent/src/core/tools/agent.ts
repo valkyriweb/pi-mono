@@ -101,16 +101,67 @@ export function normalizeAgentToolMode(params: AgentToolInput): {
 	return { mode: "chain", tasks: params.chain ?? [] };
 }
 
+function formatDuration(ms: number): string {
+	if (ms < 1000) return `${ms}ms`;
+	return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+}
+
+function formatUsage(run: AgentRunDetails): string | undefined {
+	if (!run.usage) return undefined;
+	return `${run.usage.totalTokens} tok`;
+}
+
 function summarizeRuns(runs: AgentRunDetails[]): string {
 	return runs
 		.map((run, index) => {
 			const label = run.description ? `${run.agent} (${run.description})` : run.agent;
 			const status = run.status === "completed" ? "completed" : run.status;
-			const suffix = run.outputPath ? ` -> ${run.outputPath}` : "";
+			const stats = [`${run.toolCallCount} tools`, formatUsage(run), formatDuration(run.durationMs)]
+				.filter((part): part is string => Boolean(part))
+				.join(", ");
+			const current = run.currentToolName ? ` current: ${run.currentToolName}` : "";
+			const refs = [
+				run.sessionId ? `session ${run.sessionId}` : undefined,
+				run.outputPath ? `output ${run.outputPath}` : undefined,
+			]
+				.filter((part): part is string => Boolean(part))
+				.join(", ");
+			const suffix = refs ? ` [${refs}]` : "";
 			const error = run.error ? ` (${run.error})` : "";
-			return `${index + 1}. ${label}: ${status}${suffix}${error}`;
+			return `${index + 1}. ${label}: ${status} · ${stats}${current}${suffix}${error}`;
 		})
 		.join("\n");
+}
+
+function formatExpandedRun(run: AgentRunDetails, index: number): string {
+	const lines = [
+		`${index + 1}. ${run.agent}: ${run.status}`,
+		`   model: ${run.model ? `${run.model.provider}/${run.model.id}` : "inherit"} · thinking: ${run.thinking ?? "off"}`,
+		`   tools: ${run.toolCallCount} · messages: ${run.messageCount} · duration: ${formatDuration(run.durationMs)}${formatUsage(run) ? ` · ${formatUsage(run)}` : ""}`,
+	];
+	if (run.currentToolName)
+		lines.push(
+			`   current: ${run.currentToolName}${run.currentToolArgsPreview ? ` ${run.currentToolArgsPreview}` : ""}`,
+		);
+	if (run.sessionPath || run.sessionId) lines.push(`   session: ${run.sessionPath ?? run.sessionId}`);
+	if (run.outputPath) lines.push(`   output: ${run.outputPath}`);
+	if (run.invokedSkills.count > 0)
+		lines.push(`   invoked skills: ${run.invokedSkills.names.join(", ")} (${run.invokedSkills.count})`);
+	if (run.loadedSkills.length > 0) lines.push(`   loaded skills: ${run.loadedSkills.join(", ")}`);
+	if (run.recentToolCalls.length > 0) {
+		lines.push("   recent tools:");
+		for (const tool of run.recentToolCalls.slice(-5)) {
+			lines.push(
+				`   - ${tool.name}${tool.argsPreview ? ` ${tool.argsPreview}` : ""}${tool.isError ? " (error)" : ""}`,
+			);
+		}
+	}
+	if (run.recentOutputSnippets.length > 0) {
+		lines.push("   recent output:");
+		for (const snippet of run.recentOutputSnippets.slice(-3)) lines.push(`   > ${snippet}`);
+	}
+	if (run.error) lines.push(`   error: ${run.error}`);
+	return lines.join("\n");
 }
 
 function formatProgress(progress: AgentExecutionProgress): string {
@@ -230,8 +281,13 @@ export function createAgentToolDefinition(
 				.map((part) => part.text)
 				.join("\n");
 			component.addChild(new Spacer(1));
-			if (options.expanded) {
-				component.addChild(new Text(text, 0, 0));
+			if (options.expanded && result.details) {
+				const details = result.details;
+				const expandedText = [
+					`agent ${details.mode}: ${details.status}`,
+					...details.runs.map(formatExpandedRun),
+				].join("\n");
+				component.addChild(new Text(expandedText, 0, 0));
 			} else {
 				component.addChild(new Text(text.split("\n").slice(0, 8).join("\n"), 0, 0));
 			}
