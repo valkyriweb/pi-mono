@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `quality_score` (unitless, higher is better) — richer rubric covering required files, scenario coverage, cited evidence, safe scripts, Claude Bridge cache-accounting fields, and runbook/finding template completeness.
-- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `script_count`, `cache_field_count`, `runbook_cache_mentions`.
+- **Primary**: `validation_score` (unitless, higher is better) — checks artifact completeness plus practical consistency: required files, scenario coverage, citations, safe scripts, cache-accounting references, executable scripts, and markdown table shape.
+- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `script_count`, `cache_field_count`, `runbook_cache_mentions`, `executable_scripts`, `table_header_count`.
 
 ## How to Run
 
@@ -42,4 +42,5 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 - Initial artifact set created from repo-local evidence: native source/tests/docs, installed `pi-subagents` source/changelog, local Codex/Pi lineage references.
 - Scoring script initially checked artifact completeness rather than running expensive interactive evals.
-- The first metric saturated at 100 after enough required files/scenarios/citations/scripts were present. Next loop uses `quality_score` to include Claude Bridge cache-stat accounting and template completeness, because Luke asked to keep an eye on Anthropic caching via `claude-bridge`.
+- The first metric saturated at 100 after enough required files/scenarios/citations/scripts were present.
+- The second metric saturated at 120 after adding Claude Bridge cache-stat accounting. Next loop uses `validation_score` to reward runnable scripts and markdown table consistency rather than adding more citation/cache text.
