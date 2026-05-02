@@ -45,11 +45,17 @@ fi
 
 local_launcher_refs=$(grep -Eoh 'pi-test\.sh|launcher=' scripts/capture-startup.sh scripts/run-tmux-scenario.sh 2>/dev/null | wc -l | tr -d ' ')
 
+before_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c '^pi-agent-eval-' || true)
 dry_run_ok=0
 if PI_AGENT_EVAL_DRY_RUN=1 scripts/capture-startup.sh native 2>/dev/null | grep -q '^DRY_RUN cd '; then
   if PI_AGENT_EVAL_DRY_RUN=1 scripts/run-tmux-scenario.sh dry-run-test '/agents' 2>/dev/null | grep -q '^DRY_RUN prompt=/agents'; then
     dry_run_ok=1
   fi
+fi
+after_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c '^pi-agent-eval-' || true)
+dry_run_no_leak=0
+if [[ "$before_sessions" -eq "$after_sessions" ]]; then
+  dry_run_no_leak=1
 fi
 
 base_score=0
@@ -66,11 +72,12 @@ if [[ "$local_launcher_refs" -ge 4 ]]; then base_score=$((base_score + 10)); els
 
 dry_run_doc_refs=$(grep -Eoh 'PI_AGENT_EVAL_DRY_RUN|smoke-check|dry-run' README.md runbook.md 2>/dev/null | wc -l | tr -d ' ')
 
-dry_run_docs_score=$base_score
-[[ "$dry_run_ok" -eq 1 ]] && dry_run_docs_score=$((dry_run_docs_score + 10))
-if [[ "$dry_run_doc_refs" -ge 4 ]]; then dry_run_docs_score=$((dry_run_docs_score + 10)); else dry_run_docs_score=$((dry_run_docs_score + dry_run_doc_refs * 2)); fi
+dry_run_leak_score=$base_score
+[[ "$dry_run_ok" -eq 1 ]] && dry_run_leak_score=$((dry_run_leak_score + 10))
+if [[ "$dry_run_doc_refs" -ge 4 ]]; then dry_run_leak_score=$((dry_run_leak_score + 10)); else dry_run_leak_score=$((dry_run_leak_score + dry_run_doc_refs * 2)); fi
+[[ "$dry_run_no_leak" -eq 1 ]] && dry_run_leak_score=$((dry_run_leak_score + 10))
 
-printf 'METRIC dry_run_docs_score=%s\n' "$dry_run_docs_score"
+printf 'METRIC dry_run_leak_score=%s\n' "$dry_run_leak_score"
 printf 'METRIC required_files=%s\n' "$required_files"
 printf 'METRIC scenario_count=%s\n' "$scenario_count"
 printf 'METRIC citation_count=%s\n' "$citation_count"
@@ -83,3 +90,4 @@ printf 'METRIC launcher_available=%s\n' "$launcher_available"
 printf 'METRIC local_launcher_refs=%s\n' "$local_launcher_refs"
 printf 'METRIC dry_run_ok=%s\n' "$dry_run_ok"
 printf 'METRIC dry_run_doc_refs=%s\n' "$dry_run_doc_refs"
+printf 'METRIC dry_run_no_leak=%s\n' "$dry_run_no_leak"

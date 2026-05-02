@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `dry_run_docs_score` (unitless, higher is better) — dry-run helper readiness plus operator documentation for cheap smoke checks.
-- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`, `tmux_available`, `launcher_available`, `local_launcher_refs`, `dry_run_ok`, `dry_run_doc_refs`.
+- **Primary**: `dry_run_leak_score` (unitless, higher is better) — dry-run helper readiness plus operator documentation and confirmation that dry-run mode does not leave tmux sessions behind.
+- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`, `tmux_available`, `launcher_available`, `local_launcher_refs`, `dry_run_ok`, `dry_run_doc_refs`, `dry_run_no_leak`.
 
 ## How to Run
 
@@ -47,4 +47,5 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 - The third metric saturated after validating executability and table consistency.
 - Smoke readiness confirmed `tmux` and a Pi launcher exist.
 - Launcher readiness confirmed helpers prefer repo-local `pi-test.sh`.
-- Dry-run support confirmed helpers can be smoke-checked without opening interactive Pi. Next loop uses `dry_run_docs_score` to ensure this cheap check is discoverable in README/runbook.
+- Dry-run support confirmed helpers can be smoke-checked without opening interactive Pi.
+- Dry-run docs confirmed README/runbook make the cheap check discoverable. Next loop uses `dry_run_leak_score` to ensure dry-run mode does not leak tmux sessions.
