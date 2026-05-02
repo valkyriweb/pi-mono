@@ -94,6 +94,8 @@ tmux kill-session -t pi-test
 
 ## Changelog
 
+Fork-only changes go in root `FORK-CHANGELOG.md`. Keep `packages/*/CHANGELOG.md` reserved for upstream release notes or changes intended for upstream, which reduces merge conflicts when syncing `upstream/main`.
+
 Location: `packages/*/CHANGELOG.md` (each package has its own)
 
 ### Format
