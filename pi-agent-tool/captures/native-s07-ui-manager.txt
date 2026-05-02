@@ -1,0 +1,36 @@
+# Scenario capture: native-s07-ui-manager
+# Prompt: /agents
+# 2026-05-02T21:27:02Z
+
+cd /Users/luke/Projects/personal/pi-mono-fork && ./pi-test.sh
+❯ cd /Users/luke/Projects/personal/pi-mono-fork && ./pi-test.sh
+/agents
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

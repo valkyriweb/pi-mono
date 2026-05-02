@@ -21,6 +21,12 @@ fi
 if [[ ! -s captures/subagents-startup.txt ]]; then
   ./scripts/capture-startup.sh subagents >/dev/null
 fi
+if [[ ! -s captures/native-s07-ui-manager.txt ]]; then
+  ./scripts/run-tmux-scenario.sh native-s07-ui-manager '/agents' >/dev/null
+fi
+if [[ ! -s captures/subagents-s07-ui-manager.txt ]]; then
+  ./scripts/run-tmux-scenario.sh subagents-s07-ui-manager '/subagents' >/dev/null
+fi
 
 startup_captures=0
 for f in captures/native-startup.txt captures/subagents-startup.txt; do
