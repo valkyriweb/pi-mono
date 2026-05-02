@@ -47,10 +47,16 @@ local_launcher_refs=$(grep -Eoh 'pi-test\.sh|launcher=' scripts/capture-startup.
 
 before_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c '^pi-agent-eval-' || true)
 dry_run_ok=0
-if PI_AGENT_EVAL_DRY_RUN=1 scripts/capture-startup.sh native 2>/dev/null | grep -q '^DRY_RUN cd '; then
-  if PI_AGENT_EVAL_DRY_RUN=1 scripts/run-tmux-scenario.sh dry-run-test '/agents' 2>/dev/null | grep -q '^DRY_RUN prompt=/agents'; then
+dry_run_uses_local_launcher=0
+startup_dry_run=$(PI_AGENT_EVAL_DRY_RUN=1 scripts/capture-startup.sh native 2>/dev/null || true)
+scenario_dry_run=$(PI_AGENT_EVAL_DRY_RUN=1 scripts/run-tmux-scenario.sh dry-run-test '/agents' 2>/dev/null || true)
+if printf '%s\n' "$startup_dry_run" | grep -q '^DRY_RUN cd '; then
+  if printf '%s\n' "$scenario_dry_run" | grep -q '^DRY_RUN prompt=/agents'; then
     dry_run_ok=1
   fi
+fi
+if [[ -x ../pi-test.sh ]] && printf '%s\n%s\n' "$startup_dry_run" "$scenario_dry_run" | grep -q './pi-test.sh'; then
+  dry_run_uses_local_launcher=1
 fi
 after_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c '^pi-agent-eval-' || true)
 dry_run_no_leak=0
@@ -85,13 +91,14 @@ PY
 )
 fi
 
-resume_limit_score=$base_score
-[[ "$dry_run_ok" -eq 1 ]] && resume_limit_score=$((resume_limit_score + 10))
-if [[ "$dry_run_doc_refs" -ge 4 ]]; then resume_limit_score=$((resume_limit_score + 10)); else resume_limit_score=$((resume_limit_score + dry_run_doc_refs * 2)); fi
-[[ "$dry_run_no_leak" -eq 1 ]] && resume_limit_score=$((resume_limit_score + 10))
-if [[ "$max_iterations" -ge 60 ]]; then resume_limit_score=$((resume_limit_score + 10)); fi
+local_launch_score=$base_score
+[[ "$dry_run_ok" -eq 1 ]] && local_launch_score=$((local_launch_score + 10))
+if [[ "$dry_run_doc_refs" -ge 4 ]]; then local_launch_score=$((local_launch_score + 10)); else local_launch_score=$((local_launch_score + dry_run_doc_refs * 2)); fi
+[[ "$dry_run_no_leak" -eq 1 ]] && local_launch_score=$((local_launch_score + 10))
+if [[ "$max_iterations" -ge 60 ]]; then local_launch_score=$((local_launch_score + 10)); fi
+[[ "$dry_run_uses_local_launcher" -eq 1 ]] && local_launch_score=$((local_launch_score + 10))
 
-printf 'METRIC resume_limit_score=%s\n' "$resume_limit_score"
+printf 'METRIC local_launch_score=%s\n' "$local_launch_score"
 printf 'METRIC required_files=%s\n' "$required_files"
 printf 'METRIC scenario_count=%s\n' "$scenario_count"
 printf 'METRIC citation_count=%s\n' "$citation_count"
@@ -106,3 +113,4 @@ printf 'METRIC dry_run_ok=%s\n' "$dry_run_ok"
 printf 'METRIC dry_run_doc_refs=%s\n' "$dry_run_doc_refs"
 printf 'METRIC dry_run_no_leak=%s\n' "$dry_run_no_leak"
 printf 'METRIC max_iterations=%s\n' "$max_iterations"
+printf 'METRIC dry_run_uses_local_launcher=%s\n' "$dry_run_uses_local_launcher"

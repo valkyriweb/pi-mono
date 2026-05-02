@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `resume_limit_score` (unitless, higher is better) — dry-run leak readiness plus configured autoresearch resume/iteration cap.
-- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`, `tmux_available`, `launcher_available`, `local_launcher_refs`, `dry_run_ok`, `dry_run_doc_refs`, `dry_run_no_leak`, `max_iterations`.
+- **Primary**: `local_launch_score` (unitless, higher is better) — resume-limit readiness plus proof that dry-run helpers choose the repo-local `./pi-test.sh` launcher when available.
+- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`, `tmux_available`, `launcher_available`, `local_launcher_refs`, `dry_run_ok`, `dry_run_doc_refs`, `dry_run_no_leak`, `max_iterations`, `dry_run_uses_local_launcher`.
 
 ## How to Run
 
@@ -49,4 +49,5 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 - Launcher readiness confirmed helpers prefer repo-local `pi-test.sh`.
 - Dry-run support confirmed helpers can be smoke-checked without opening interactive Pi.
 - Dry-run docs confirmed README/runbook make the cheap check discoverable.
-- Dry-run leak check confirmed cheap helper smoke tests do not leave tmux sessions behind. Luke asked to increase the auto-resume/iteration limit to 60, so next loop uses `resume_limit_score` to verify `autoresearch.config.json` has `maxIterations: 60`.
+- Dry-run leak check confirmed cheap helper smoke tests do not leave tmux sessions behind.
+- Resume-limit check confirmed `autoresearch.config.json` has `maxIterations: 60`. Next loop uses `local_launch_score` to prove dry-run output selects `./pi-test.sh` when that source-checkout launcher exists.
