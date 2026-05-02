@@ -14,7 +14,7 @@ Measure practical return on token spend for Pi's native delegation against the i
 - Built-ins live in `packages/coding-agent/src/core/agents/definitions.ts`: `general-purpose`, `worker`, `explore`, `plan`, `scout`, `reviewer`; read-only agents restrict tools and recursive `agent` is denied.
 - Native `/agents` is registered in `packages/coding-agent/src/core/slash-commands.ts` and handled in `packages/coding-agent/src/modes/interactive/interactive-mode.ts`; it opens a selector and inserts `Use the <agent-id> agent to: ` scaffolding rather than executing directly.
 - Tests cover validation, outputs, permissions, context inheritance, model selection, and selector behavior in `packages/coding-agent/test/agent-tool.test.ts`, `agent-context-inheritance.test.ts`, `agent-permissions.test.ts`, `agent-model-selection.test.ts`, and `interactive-mode-agents-command.test.ts`.
-- Docs: `packages/coding-agent/docs/usage.md`, `docs/tui.md`, and `README.md` document native modes, bounded tools, context modes, project-agent confirmation, and TUI rendering.
+- Docs: `packages/coding-agent/docs/usage.md`, `packages/coding-agent/docs/tui.md`, and `packages/coding-agent/README.md` document native modes, bounded tools, context modes, project-agent confirmation, and TUI rendering.
 
 ### `pi-subagents` extension
 
@@ -32,6 +32,7 @@ Measure practical return on token spend for Pi's native delegation against the i
 
 - `~/Projects/agent-scripts/REFERENCES.md` lists a likely Claude Code CLI source leak at `~/Projects/testing/claude-code-cli-src-code/`, but it was not inspected in this pass.
 - Local Codex evidence in `~/Projects/oss/codex/codex-rs/tools/src/agent_tool.rs`: tools include `spawn_agent`, `send_input`, `send_message`, `followup_task`, `resume_agent`, `wait_agent`, `list_agents`, and `close_agent`; prompt framing says spawned agents inherit tools, work on bounded tasks, can message/follow up, and final answers return to parent.
+- Local OpenCode comparison surface in `~/Projects/oss/opencode/README.md`: built-in `build`, read-only `plan`, and `@general` subagent UX are useful context but not a direct Pi/Claude lineage source.
 - `~/Projects/oss/codex/codex-rs/core/tests/suite/subagent_notifications.rs` shows forked prior conversation history and final-channel child output delivered back to parent.
 - Older Pi extension lineage appears in `~/Projects/oss/pi-mono/packages/coding-agent/examples/extensions/subagent/`: separate `pi` process per subagent, isolated context windows, single/parallel/chain schema, streaming output, abort propagation, usage stats, and project-agent confirmation.
 - Gap: exact Claude Code release/migration history is unavailable without inspecting the local source leak or external release data.
