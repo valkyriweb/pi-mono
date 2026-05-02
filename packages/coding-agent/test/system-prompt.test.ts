@@ -74,6 +74,30 @@ describe("buildSystemPrompt", () => {
 		});
 	});
 
+	describe("context files", () => {
+		test("renders imported context files as separate stable sections", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: [],
+				contextFiles: [
+					{ path: "/repo/AGENTS.md", content: "Root @docs/rules.md" },
+					{
+						path: "/repo/docs/rules.md",
+						content: "Imported rules",
+						parentPath: "/repo/AGENTS.md",
+						rootPath: "/repo/AGENTS.md",
+						importDepth: 1,
+					},
+				],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).toContain("## /repo/AGENTS.md\n\nRoot @docs/rules.md");
+			expect(prompt).toContain("## /repo/docs/rules.md\n\nImported rules");
+			expect(prompt.indexOf("## /repo/AGENTS.md")).toBeLessThan(prompt.indexOf("## /repo/docs/rules.md"));
+		});
+	});
+
 	describe("prompt guidelines", () => {
 		test("appends promptGuidelines to default guidelines", () => {
 			const prompt = buildSystemPrompt({

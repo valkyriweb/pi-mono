@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import chalk from "chalk";
@@ -9,6 +9,13 @@ import type { ResourceDiagnostic } from "./diagnostics.js";
 export type { ResourceCollision, ResourceDiagnostic } from "./diagnostics.js";
 
 import { canonicalizePath, isLocalPath } from "../utils/paths.js";
+import {
+	type ContextFile,
+	type ContextFileImportCache,
+	createContextFileImportCache,
+	expandContextFilesImports,
+	expandSystemPromptImports,
+} from "./context-file-imports.js";
 import { createEventBus, type EventBus } from "./event-bus.js";
 import { createExtensionRuntime, loadExtensionFromFactory, loadExtensions } from "./extensions/loader.js";
 import type { Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult } from "./extensions/types.js";
@@ -31,21 +38,33 @@ export interface ResourceLoader {
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
 	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] };
 	getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] };
-	getAgentsFiles(): { agentsFiles: Array<{ path: string; content: string }> };
+	getAgentsFiles(): { agentsFiles: ContextFile[]; diagnostics?: ResourceDiagnostic[] };
 	getSystemPrompt(): string | undefined;
 	getAppendSystemPrompt(): string[];
 	extendResources(paths: ResourceExtensionPaths): void;
 	reload(): Promise<void>;
 }
 
-function resolvePromptInput(input: string | undefined, description: string): string | undefined {
+function resolvePromptInput(
+	input: string | undefined,
+	description: string,
+	options?: { expandImports?: boolean; diagnosticsSink?: ResourceDiagnostic[] },
+): string | undefined {
 	if (!input) {
 		return undefined;
 	}
 
 	if (existsSync(input)) {
 		try {
-			return readFileSync(input, "utf-8");
+			const raw = readFileSync(input, "utf-8");
+			if (!options?.expandImports) {
+				return raw;
+			}
+			const { content, diagnostics } = expandSystemPromptImports(raw, input);
+			if (options.diagnosticsSink && diagnostics.length > 0) {
+				options.diagnosticsSink.push(...diagnostics);
+			}
+			return content;
 		} catch (error) {
 			console.error(chalk.yellow(`Warning: Could not read ${description} file ${input}: ${error}`));
 			return input;
@@ -55,7 +74,7 @@ function resolvePromptInput(input: string | undefined, description: string): str
 	return input;
 }
 
-function loadContextFileFromDir(dir: string): { path: string; content: string } | null {
+function loadContextFileFromDir(dir: string): ContextFile | null {
 	const candidates = ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 	for (const filename of candidates) {
 		const filePath = join(dir, filename);
@@ -73,32 +92,56 @@ function loadContextFileFromDir(dir: string): { path: string; content: string } 
 	return null;
 }
 
-export function loadProjectContextFiles(options: {
-	cwd: string;
-	agentDir: string;
-}): Array<{ path: string; content: string }> {
+/**
+ * Resolve a context-file path to its canonical realpath for dedup. Uses
+ * realpathSync.native so case-insensitive filesystems (macOS APFS default,
+ * Windows NTFS) collapse case-different paths to a single canonical string.
+ * The JS-implemented realpathSync preserves input casing on macOS, which is
+ * not enough to dedup AGENTS.md vs AGENTS.MD. Falls back to input on any
+ * fs error (broken link, EACCES, ENOENT) so callers always get a stable
+ * string.
+ *
+ * Catches three real-world dupes:
+ *   1. Symlink: ~/.pi/agent/AGENTS.md -> ~/Projects/foo/AGENTS.md
+ *   2. Case-insensitive FS: AGENTS.md vs AGENTS.MD on the same volume
+ *   3. Walk-up reaching the same physical file via different parent paths
+ */
+function realpathOrSelf(filePath: string): string {
+	try {
+		return realpathSync.native(filePath);
+	} catch {
+		return filePath;
+	}
+}
+
+export function loadProjectContextFiles(options: { cwd: string; agentDir: string }): ContextFile[] {
 	const resolvedCwd = options.cwd;
 	const resolvedAgentDir = options.agentDir;
 
-	const contextFiles: Array<{ path: string; content: string }> = [];
-	const seenPaths = new Set<string>();
+	const contextFiles: ContextFile[] = [];
+	// Dedup by realpath so the same physical file reached via symlink,
+	// case-different paths, or `.`/`..`-noisy paths is only loaded once.
+	const seenRealPaths = new Set<string>();
 
 	const globalContext = loadContextFileFromDir(resolvedAgentDir);
 	if (globalContext) {
 		contextFiles.push(globalContext);
-		seenPaths.add(globalContext.path);
+		seenRealPaths.add(realpathOrSelf(globalContext.path));
 	}
 
-	const ancestorContextFiles: Array<{ path: string; content: string }> = [];
+	const ancestorContextFiles: ContextFile[] = [];
 
 	let currentDir = resolvedCwd;
 	const root = resolve("/");
 
 	while (true) {
 		const contextFile = loadContextFileFromDir(currentDir);
-		if (contextFile && !seenPaths.has(contextFile.path)) {
-			ancestorContextFiles.unshift(contextFile);
-			seenPaths.add(contextFile.path);
+		if (contextFile) {
+			const realPath = realpathOrSelf(contextFile.path);
+			if (!seenRealPaths.has(realPath)) {
+				ancestorContextFiles.unshift(contextFile);
+				seenRealPaths.add(realPath);
+			}
 		}
 
 		if (currentDir === root) break;
@@ -143,8 +186,9 @@ export interface DefaultResourceLoaderOptions {
 		themes: Theme[];
 		diagnostics: ResourceDiagnostic[];
 	};
-	agentsFilesOverride?: (base: { agentsFiles: Array<{ path: string; content: string }> }) => {
-		agentsFiles: Array<{ path: string; content: string }>;
+	agentsFilesOverride?: (base: { agentsFiles: ContextFile[]; diagnostics: ResourceDiagnostic[] }) => {
+		agentsFiles: ContextFile[];
+		diagnostics?: ResourceDiagnostic[];
 	};
 	systemPromptOverride?: (base: string | undefined) => string | undefined;
 	appendSystemPromptOverride?: (base: string[]) => string[];
@@ -181,8 +225,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 		themes: Theme[];
 		diagnostics: ResourceDiagnostic[];
 	};
-	private agentsFilesOverride?: (base: { agentsFiles: Array<{ path: string; content: string }> }) => {
-		agentsFiles: Array<{ path: string; content: string }>;
+	private agentsFilesOverride?: (base: { agentsFiles: ContextFile[]; diagnostics: ResourceDiagnostic[] }) => {
+		agentsFiles: ContextFile[];
+		diagnostics?: ResourceDiagnostic[];
 	};
 	private systemPromptOverride?: (base: string | undefined) => string | undefined;
 	private appendSystemPromptOverride?: (base: string[]) => string[];
@@ -194,7 +239,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private promptDiagnostics: ResourceDiagnostic[];
 	private themes: Theme[];
 	private themeDiagnostics: ResourceDiagnostic[];
-	private agentsFiles: Array<{ path: string; content: string }>;
+	private agentsFiles: ContextFile[];
+	private agentsFileDiagnostics: ResourceDiagnostic[];
+	private contextFileImportCache: ContextFileImportCache;
 	private systemPrompt?: string;
 	private appendSystemPrompt: string[];
 	private lastSkillPaths: string[];
@@ -242,6 +289,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.themes = [];
 		this.themeDiagnostics = [];
 		this.agentsFiles = [];
+		this.agentsFileDiagnostics = [];
+		this.contextFileImportCache = createContextFileImportCache();
 		this.appendSystemPrompt = [];
 		this.lastSkillPaths = [];
 		this.extensionSkillSourceInfos = new Map();
@@ -267,8 +316,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 		return { themes: this.themes, diagnostics: this.themeDiagnostics };
 	}
 
-	getAgentsFiles(): { agentsFiles: Array<{ path: string; content: string }> } {
-		return { agentsFiles: this.agentsFiles };
+	getAgentsFiles(): { agentsFiles: ContextFile[]; diagnostics: ResourceDiagnostic[] } {
+		return { agentsFiles: this.agentsFiles, diagnostics: this.agentsFileDiagnostics };
 	}
 
 	getSystemPrompt(): string | undefined {
@@ -452,23 +501,44 @@ export class DefaultResourceLoader implements ResourceLoader {
 			}
 		}
 
+		const loadedAgentsFiles = this.noContextFiles
+			? { contextFiles: [], diagnostics: [] }
+			: expandContextFilesImports(loadProjectContextFiles({ cwd: this.cwd, agentDir: this.agentDir }), {
+					cwd: this.cwd,
+					agentDir: this.agentDir,
+					cache: this.contextFileImportCache,
+				});
 		const agentsFiles = {
-			agentsFiles: this.noContextFiles ? [] : loadProjectContextFiles({ cwd: this.cwd, agentDir: this.agentDir }),
+			agentsFiles: loadedAgentsFiles.contextFiles,
+			diagnostics: loadedAgentsFiles.diagnostics,
 		};
 		const resolvedAgentsFiles = this.agentsFilesOverride ? this.agentsFilesOverride(agentsFiles) : agentsFiles;
 		this.agentsFiles = resolvedAgentsFiles.agentsFiles;
+		this.agentsFileDiagnostics = resolvedAgentsFiles.diagnostics ?? agentsFiles.diagnostics;
 
-		const baseSystemPrompt = resolvePromptInput(
-			this.systemPromptSource ?? this.discoverSystemPromptFile(),
-			"system prompt",
-		);
+		// Discovered SYSTEM.md / APPEND_SYSTEM.md paths are real files on disk
+		// and support @-imports via inline substitution. SDK-provided literal
+		// strings (systemPromptSource / appendSystemPromptSource) are passed
+		// through verbatim — callers passing a literal prompt are not asking
+		// for filesystem expansion.
+		const systemPromptSource = this.systemPromptSource ?? this.discoverSystemPromptFile();
+		const systemPromptIsDiscoveredFile = !this.systemPromptSource && systemPromptSource !== undefined;
+		const baseSystemPrompt = resolvePromptInput(systemPromptSource, "system prompt", {
+			expandImports: systemPromptIsDiscoveredFile,
+			diagnosticsSink: this.agentsFileDiagnostics,
+		});
 		this.systemPrompt = this.systemPromptOverride ? this.systemPromptOverride(baseSystemPrompt) : baseSystemPrompt;
 
-		const appendSources =
-			this.appendSystemPromptSource ??
-			(this.discoverAppendSystemPromptFile() ? [this.discoverAppendSystemPromptFile()!] : []);
+		const discoveredAppend = this.discoverAppendSystemPromptFile();
+		const appendSources = this.appendSystemPromptSource ?? (discoveredAppend ? [discoveredAppend] : []);
+		const appendIsDiscoveredFile = !this.appendSystemPromptSource;
 		const baseAppend = appendSources
-			.map((s) => resolvePromptInput(s, "append system prompt"))
+			.map((s) =>
+				resolvePromptInput(s, "append system prompt", {
+					expandImports: appendIsDiscoveredFile,
+					diagnosticsSink: this.agentsFileDiagnostics,
+				}),
+			)
 			.filter((s): s is string => s !== undefined);
 		this.appendSystemPrompt = this.appendSystemPromptOverride
 			? this.appendSystemPromptOverride(baseAppend)

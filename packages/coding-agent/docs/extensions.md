@@ -28,6 +28,8 @@ Extensions are TypeScript modules that extend pi's behavior. They can subscribe 
 
 See [examples/extensions/](../examples/extensions/) for working implementations.
 
+> **Native agents:** Pi now includes a built-in `agent` tool for first-class single, parallel, and chain delegation. The `examples/extensions/subagent/` example remains supported as a legacy/reference extension that demonstrates process-spawned delegation and extension rendering patterns. Prefer the native `agent` tool for new workflows unless you need legacy-only behavior such as subprocess isolation.
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)

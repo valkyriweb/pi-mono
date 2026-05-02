@@ -78,6 +78,8 @@ Pi loads:
 - `~/.pi/agent/AGENTS.md` for global instructions
 - `AGENTS.md` or `CLAUDE.md` from parent directories and the current directory
 
+You can include other text files from a context file with Claude-Code-style `@` imports, for example `@docs/project-rules.md` or `@../shared/standards.md`. Imports are expanded before the system prompt is built and are ignored inside code blocks, inline code, and HTML comments.
+
 Restart pi, or run `/reload`, after changing context files.
 
 ## Common things to try

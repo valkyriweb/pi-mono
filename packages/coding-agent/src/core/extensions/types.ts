@@ -324,6 +324,14 @@ export interface ExtensionContext {
 	compact(options?: CompactOptions): void;
 	/** Get the current effective system prompt. */
 	getSystemPrompt(): string;
+	/**
+	 * Get the system prompt after running all `before_agent_start` handlers in
+	 * preview mode. Use for diagnostic UIs (e.g. /context) that need to show
+	 * what the LLM will actually see, including extension rewrites that would
+	 * normally only be applied at turn time. Handlers receive `event.preview = true`
+	 * and must not fire side effects in that branch.
+	 */
+	getEffectiveSystemPrompt(): Promise<string>;
 }
 
 /**
@@ -631,6 +639,14 @@ export interface BeforeAgentStartEvent {
 	systemPrompt: string;
 	/** Structured options used to build the system prompt. Extensions can inspect this to understand what Pi loaded without re-discovering resources. */
 	systemPromptOptions: BuildSystemPromptOptions;
+	/**
+	 * When true, this invocation is a dry-run preview (e.g. from
+	 * `ctx.getEffectiveSystemPrompt()` for diagnostic UI like /context).
+	 * Handlers MUST NOT mutate session state, consume single-shot flags,
+	 * or fire side effects when this is set. Pure systemPrompt rewriters
+	 * can ignore this field and run normally.
+	 */
+	preview?: boolean;
 }
 
 /** Fired when an agent loop starts */
@@ -1496,6 +1512,7 @@ export interface ExtensionContextActions {
 	getContextUsage: () => ContextUsage | undefined;
 	compact: (options?: CompactOptions) => void;
 	getSystemPrompt: () => string;
+	getEffectiveSystemPrompt: () => Promise<string>;
 }
 
 /**

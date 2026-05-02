@@ -2,6 +2,10 @@
 
 # TUI Components
 
+Pi's built-in `/agents` command opens an agent selector in the editor area. Selecting an agent inserts `Use the <agent-id> agent to: ` into the editor rather than injecting a tool call directly, so the model remains in control of tool use.
+
+When the native `agent` tool runs, tool rendering shows the execution mode (`single`, `parallel`, or `chain`), child agent names, progress summaries, final status rows, and output file references when `output`/`outputMode` are used.
+
 Extensions and custom tools can render custom TUI components for interactive user interfaces. This page covers the component system and available building blocks.
 
 **Source:** [`@mariozechner/pi-tui`](https://github.com/badlogic/pi-mono/tree/main/packages/tui)

@@ -47,6 +47,7 @@ export {
 	serializeConversation,
 	shouldCompact,
 } from "./core/compaction/index.js";
+export type { ContextFile } from "./core/context-file-imports.js";
 export { createEventBus, type EventBus, type EventBusController } from "./core/event-bus.js";
 // Extension system
 export type {

@@ -1,4 +1,12 @@
 export {
+	type AgentToolDetails,
+	type AgentToolInput,
+	type AgentToolOptions,
+	agentToolSchema,
+	createAgentTool,
+	createAgentToolDefinition,
+} from "./agent.js";
+export {
 	type BashOperations,
 	type BashSpawnContext,
 	type BashSpawnHook,
@@ -70,6 +78,7 @@ export {
 
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.js";
+import { type AgentToolOptions, createAgentTool, createAgentToolDefinition } from "./agent.js";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.js";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.js";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.js";
@@ -78,10 +87,12 @@ import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.j
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.js";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.js";
 
+// Tool registries erase concrete TypeBox/detail generics across heterogeneous built-ins.
+// `any` is unavoidable here because AgentTool/ToolDefinition are intentionally variant in their schema parameter.
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls";
-export const allToolNames: Set<ToolName> = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
+export type ToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls" | "agent";
+export const allToolNames: Set<ToolName> = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "agent"]);
 
 export interface ToolsOptions {
 	read?: ReadToolOptions;
@@ -91,6 +102,7 @@ export interface ToolsOptions {
 	grep?: GrepToolOptions;
 	find?: FindToolOptions;
 	ls?: LsToolOptions;
+	agent?: AgentToolOptions;
 }
 
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
@@ -109,6 +121,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createFindToolDefinition(cwd, options?.find);
 		case "ls":
 			return createLsToolDefinition(cwd, options?.ls);
+		case "agent":
+			return createAgentToolDefinition(cwd, options?.agent);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -130,6 +144,8 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createFindTool(cwd, options?.find);
 		case "ls":
 			return createLsTool(cwd, options?.ls);
+		case "agent":
+			return createAgentTool(cwd, options?.agent);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -162,6 +178,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		grep: createGrepToolDefinition(cwd, options?.grep),
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
+		agent: createAgentToolDefinition(cwd, options?.agent),
 	};
 }
 
@@ -192,5 +209,6 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		grep: createGrepTool(cwd, options?.grep),
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
+		agent: createAgentTool(cwd, options?.agent),
 	};
 }
