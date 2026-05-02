@@ -6,8 +6,8 @@ Copy one row per arm per scenario.
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|
 | S01 single recon | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s01-single-recon.txt |
 | S01 single recon | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s01-single-recon.txt |
-| S02 parallel review | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s02-parallel-review.txt |
-| S02 parallel review | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s02-parallel-review.txt |
+| S02 parallel review | native | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | Native `tasks[]` parallel mode with concurrency bounds and parent-bounded child tools. | n/a | source-backed, execution not replayed | high | captures/native-s02-parallel-review.txt |
+| S02 parallel review | pi-subagents | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | `/parallel` plus schema `tasks`; supports `--bg` and `--fork` flags for extra flexibility. | n/a | source-backed, execution not replayed | high | captures/subagents-s02-parallel-review.txt |
 | S03 chain handoff | native | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | First-class `chain[]` in native `agent`; in-process child sessions, bounded tools, context modes. | n/a | source-backed, execution not replayed | high | captures/native-s03-chain-handoff.txt |
 | S03 chain handoff | pi-subagents | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | `/chain` plus schema `chain` arrays and executor routing; interactive ergonomics strong. | n/a | source-backed, execution not replayed | high | captures/subagents-s03-chain-handoff.txt |
 | S04 saved workflow | native | 3 | 3 | 3 | 4 | 3 | 4 | n/a | n/a | n/a | n/a | n/a | Native chain JSON is reusable via snippets/runbook, but no saved-chain manager found. | n/a | source-backed closest equivalent | medium | captures/native-s04-saved-workflow.txt |

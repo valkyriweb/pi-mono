@@ -1,0 +1,12 @@
+# Scenario capture: subagents-s02-parallel-review
+# Prompt: /parallel reviewer "correctness" -> reviewer "validation" -> reviewer "simplicity"
+# 2026-05-02TmanualZ
+
+`pi-subagents` supports parallel review via slash command and tool schema.
+Evidence:
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/slash/slash-commands.ts` registers `/parallel` and parses `--bg`/`--fork` flags.
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/extension/schemas.ts` supports parallel `tasks`.
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/runs/foreground/subagent-executor.ts` routes `params.tasks` to the parallel execution path.
+- README documents `/parallel agent1 "task1" -> agent2 "task2"`.
+
+Result: strong parallel review support with interactive slash ergonomics and extra background/fork flags.

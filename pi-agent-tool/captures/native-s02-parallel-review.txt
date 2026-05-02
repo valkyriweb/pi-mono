@@ -1,0 +1,12 @@
+# Scenario capture: native-s02-parallel-review
+# Prompt: three parallel review angles: correctness, validation, simplicity
+# 2026-05-02TmanualZ
+
+Native Pi has first-class parallel delegation in the built-in `agent` tool.
+Evidence:
+- `packages/coding-agent/src/core/tools/agent.ts` supports `tasks[]` parallel mode and `concurrency`.
+- `packages/coding-agent/src/core/agents/executor.ts` implements parallel execution with `MAX_PARALLEL_TASKS = 8`, `MAX_CONCURRENCY = 8`, and default concurrency 4.
+- `packages/coding-agent/test/agent-tool.test.ts` verifies parallel prompt guidance and validation behavior.
+- Native child tools are bounded by parent active tools and recursive `agent` is denied.
+
+Result: strong parallel review support, especially for model-initiated fan-out with bounded tools.
