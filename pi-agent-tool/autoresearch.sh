@@ -64,10 +64,13 @@ base_score=$((base_score + executable_scripts * 5))
 [[ "$launcher_available" -eq 1 ]] && base_score=$((base_score + 5))
 if [[ "$local_launcher_refs" -ge 4 ]]; then base_score=$((base_score + 10)); else base_score=$((base_score + local_launcher_refs * 2)); fi
 
-dry_run_score=$base_score
-[[ "$dry_run_ok" -eq 1 ]] && dry_run_score=$((dry_run_score + 10))
+dry_run_doc_refs=$(grep -Eoh 'PI_AGENT_EVAL_DRY_RUN|smoke-check|dry-run' README.md runbook.md 2>/dev/null | wc -l | tr -d ' ')
 
-printf 'METRIC dry_run_score=%s\n' "$dry_run_score"
+dry_run_docs_score=$base_score
+[[ "$dry_run_ok" -eq 1 ]] && dry_run_docs_score=$((dry_run_docs_score + 10))
+if [[ "$dry_run_doc_refs" -ge 4 ]]; then dry_run_docs_score=$((dry_run_docs_score + 10)); else dry_run_docs_score=$((dry_run_docs_score + dry_run_doc_refs * 2)); fi
+
+printf 'METRIC dry_run_docs_score=%s\n' "$dry_run_docs_score"
 printf 'METRIC required_files=%s\n' "$required_files"
 printf 'METRIC scenario_count=%s\n' "$scenario_count"
 printf 'METRIC citation_count=%s\n' "$citation_count"
@@ -79,3 +82,4 @@ printf 'METRIC tmux_available=%s\n' "$tmux_available"
 printf 'METRIC launcher_available=%s\n' "$launcher_available"
 printf 'METRIC local_launcher_refs=%s\n' "$local_launcher_refs"
 printf 'METRIC dry_run_ok=%s\n' "$dry_run_ok"
+printf 'METRIC dry_run_doc_refs=%s\n' "$dry_run_doc_refs"

@@ -21,6 +21,13 @@ cd /Users/luke/Projects/personal/pi-mono-fork/pi-agent-tool
 ./scripts/capture-startup.sh subagents
 ```
 
+Optionally smoke-check helpers without launching Pi:
+
+```bash
+PI_AGENT_EVAL_DRY_RUN=1 ./scripts/capture-startup.sh native
+PI_AGENT_EVAL_DRY_RUN=1 ./scripts/run-tmux-scenario.sh native-ui '/agents'
+```
+
 Then follow `runbook.md` and fill `scorecard-template.md` for each arm.
 
 ## Scope

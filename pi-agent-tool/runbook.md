@@ -9,6 +9,13 @@ mkdir -p tmp captures
 
 Use the same model and thinking level for both arms. Start each arm in a clean terminal session. If using Anthropic models through `claude-bridge`, record cache statistics for every scenario: cache creation input tokens, cache read input tokens, uncached input tokens, output tokens, and any bridge-visible cache hit/miss summary.
 
+Before an interactive run, smoke-check helper launch commands without starting Pi:
+
+```bash
+PI_AGENT_EVAL_DRY_RUN=1 ./scripts/capture-startup.sh native
+PI_AGENT_EVAL_DRY_RUN=1 ./scripts/run-tmux-scenario.sh native-ui '/agents'
+```
+
 ## Native-only mode
 
 Goal: exercise only built-in `/agents` and native `agent`.
