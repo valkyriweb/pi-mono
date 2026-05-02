@@ -72,12 +72,26 @@ if [[ "$local_launcher_refs" -ge 4 ]]; then base_score=$((base_score + 10)); els
 
 dry_run_doc_refs=$(grep -Eoh 'PI_AGENT_EVAL_DRY_RUN|smoke-check|dry-run' README.md runbook.md 2>/dev/null | wc -l | tr -d ' ')
 
-dry_run_leak_score=$base_score
-[[ "$dry_run_ok" -eq 1 ]] && dry_run_leak_score=$((dry_run_leak_score + 10))
-if [[ "$dry_run_doc_refs" -ge 4 ]]; then dry_run_leak_score=$((dry_run_leak_score + 10)); else dry_run_leak_score=$((dry_run_leak_score + dry_run_doc_refs * 2)); fi
-[[ "$dry_run_no_leak" -eq 1 ]] && dry_run_leak_score=$((dry_run_leak_score + 10))
+max_iterations=0
+if [[ -s autoresearch.config.json ]]; then
+  max_iterations=$(python3 - <<'PY'
+import json
+try:
+    with open('autoresearch.config.json') as f:
+        print(int(json.load(f).get('maxIterations', 0)))
+except Exception:
+    print(0)
+PY
+)
+fi
 
-printf 'METRIC dry_run_leak_score=%s\n' "$dry_run_leak_score"
+resume_limit_score=$base_score
+[[ "$dry_run_ok" -eq 1 ]] && resume_limit_score=$((resume_limit_score + 10))
+if [[ "$dry_run_doc_refs" -ge 4 ]]; then resume_limit_score=$((resume_limit_score + 10)); else resume_limit_score=$((resume_limit_score + dry_run_doc_refs * 2)); fi
+[[ "$dry_run_no_leak" -eq 1 ]] && resume_limit_score=$((resume_limit_score + 10))
+if [[ "$max_iterations" -ge 60 ]]; then resume_limit_score=$((resume_limit_score + 10)); fi
+
+printf 'METRIC resume_limit_score=%s\n' "$resume_limit_score"
 printf 'METRIC required_files=%s\n' "$required_files"
 printf 'METRIC scenario_count=%s\n' "$scenario_count"
 printf 'METRIC citation_count=%s\n' "$citation_count"
@@ -91,3 +105,4 @@ printf 'METRIC local_launcher_refs=%s\n' "$local_launcher_refs"
 printf 'METRIC dry_run_ok=%s\n' "$dry_run_ok"
 printf 'METRIC dry_run_doc_refs=%s\n' "$dry_run_doc_refs"
 printf 'METRIC dry_run_no_leak=%s\n' "$dry_run_no_leak"
+printf 'METRIC max_iterations=%s\n' "$max_iterations"
