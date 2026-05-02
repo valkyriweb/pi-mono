@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `validation_score` (unitless, higher is better) — checks artifact completeness plus practical consistency: required files, scenario coverage, citations, safe scripts, cache-accounting references, executable scripts, and markdown table shape.
-- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `script_count`, `cache_field_count`, `runbook_cache_mentions`, `executable_scripts`, `table_header_count`.
+- **Primary**: `gate_score` (unitless, higher is better) — strict artifact gate covering required files, scenario/citation/cache coverage, executable scripts, bash syntax checks, and markdown table consistency.
+- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`.
 
 ## How to Run
 
@@ -43,4 +43,5 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 - Initial artifact set created from repo-local evidence: native source/tests/docs, installed `pi-subagents` source/changelog, local Codex/Pi lineage references.
 - Scoring script initially checked artifact completeness rather than running expensive interactive evals.
 - The first metric saturated at 100 after enough required files/scenarios/citations/scripts were present.
-- The second metric saturated at 120 after adding Claude Bridge cache-stat accounting. Next loop uses `validation_score` to reward runnable scripts and markdown table consistency rather than adding more citation/cache text.
+- The second metric saturated at 120 after adding Claude Bridge cache-stat accounting.
+- The third metric saturated at 140 after validating executability and table presence. Next loop uses `gate_score` to include bash syntax checks and markdown table column consistency, which are closer to whether Luke can run the eval cleanly.
