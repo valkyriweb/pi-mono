@@ -24,9 +24,11 @@ while IFS= read -r table_file; do
   awk '
     /^\|/ {
       cols=gsub(/\|/, "&")
-      if (expected == 0) expected = cols
+      if (!in_table) { expected = cols; in_table = 1 }
       if (cols != expected) bad = 1
+      next
     }
+    { in_table = 0; expected = 0 }
     END { exit bad ? 1 : 0 }
   ' "$table_file" || table_consistency_ok=0
 done <<'FILES'
