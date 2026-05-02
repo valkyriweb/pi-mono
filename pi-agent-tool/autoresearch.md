@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `smoke_score` (unitless, higher is better) — execution-smoke readiness: artifact gate plus local runtime prerequisites for tmux capture helpers.
-- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`, `tmux_available`, `launcher_available`.
+- **Primary**: `launcher_score` (unitless, higher is better) — smoke readiness plus helper-script launcher quality, especially preferring repo-local `pi-test.sh` when available.
+- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`, `tmux_available`, `launcher_available`, `local_launcher_refs`.
 
 ## How to Run
 
@@ -44,4 +44,5 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 - Scoring script initially checked artifact completeness rather than running expensive interactive evals.
 - The first metric saturated at 100 after enough required files/scenarios/citations/scripts were present.
 - The second metric saturated at 120 after adding Claude Bridge cache-stat accounting.
-- The third metric saturated after validating executability and table consistency. Next loop uses `smoke_score` to include local runtime prerequisites: `tmux` availability and a Pi launcher (`../pi-test.sh` or `pi` on PATH).
+- The third metric saturated after validating executability and table consistency.
+- Smoke readiness confirmed `tmux` and a Pi launcher exist. Next loop uses `launcher_score` to ensure helper scripts prefer the repo-local `pi-test.sh` source-checkout launcher before falling back to `pi` on PATH.

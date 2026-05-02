@@ -43,18 +43,21 @@ if [[ -x ../pi-test.sh ]] || command -v pi >/dev/null 2>&1; then
   launcher_available=1
 fi
 
-smoke_score=0
-smoke_score=$((smoke_score + required_files * 10))
-if [[ "$scenario_count" -ge 8 ]]; then smoke_score=$((smoke_score + 15)); else smoke_score=$((smoke_score + scenario_count)); fi
-if [[ "$citation_count" -ge 20 ]]; then smoke_score=$((smoke_score + 15)); else smoke_score=$((smoke_score + citation_count / 2)); fi
-if [[ "$cache_field_count" -ge 10 ]]; then smoke_score=$((smoke_score + 10)); else smoke_score=$((smoke_score + cache_field_count)); fi
-smoke_score=$((smoke_score + executable_scripts * 5))
-[[ "$bash_syntax_ok" -eq 1 ]] && smoke_score=$((smoke_score + 10))
-[[ "$table_consistency_ok" -eq 1 ]] && smoke_score=$((smoke_score + 10))
-[[ "$tmux_available" -eq 1 ]] && smoke_score=$((smoke_score + 5))
-[[ "$launcher_available" -eq 1 ]] && smoke_score=$((smoke_score + 5))
+local_launcher_refs=$(grep -Eoh 'pi-test\.sh|launcher=' scripts/capture-startup.sh scripts/run-tmux-scenario.sh 2>/dev/null | wc -l | tr -d ' ')
 
-printf 'METRIC smoke_score=%s\n' "$smoke_score"
+launcher_score=0
+launcher_score=$((launcher_score + required_files * 10))
+if [[ "$scenario_count" -ge 8 ]]; then launcher_score=$((launcher_score + 15)); else launcher_score=$((launcher_score + scenario_count)); fi
+if [[ "$citation_count" -ge 20 ]]; then launcher_score=$((launcher_score + 15)); else launcher_score=$((launcher_score + citation_count / 2)); fi
+if [[ "$cache_field_count" -ge 10 ]]; then launcher_score=$((launcher_score + 10)); else launcher_score=$((launcher_score + cache_field_count)); fi
+launcher_score=$((launcher_score + executable_scripts * 5))
+[[ "$bash_syntax_ok" -eq 1 ]] && launcher_score=$((launcher_score + 10))
+[[ "$table_consistency_ok" -eq 1 ]] && launcher_score=$((launcher_score + 10))
+[[ "$tmux_available" -eq 1 ]] && launcher_score=$((launcher_score + 5))
+[[ "$launcher_available" -eq 1 ]] && launcher_score=$((launcher_score + 5))
+if [[ "$local_launcher_refs" -ge 4 ]]; then launcher_score=$((launcher_score + 10)); else launcher_score=$((launcher_score + local_launcher_refs * 2)); fi
+
+printf 'METRIC launcher_score=%s\n' "$launcher_score"
 printf 'METRIC required_files=%s\n' "$required_files"
 printf 'METRIC scenario_count=%s\n' "$scenario_count"
 printf 'METRIC citation_count=%s\n' "$citation_count"
@@ -64,3 +67,4 @@ printf 'METRIC bash_syntax_ok=%s\n' "$bash_syntax_ok"
 printf 'METRIC table_consistency_ok=%s\n' "$table_consistency_ok"
 printf 'METRIC tmux_available=%s\n' "$tmux_available"
 printf 'METRIC launcher_available=%s\n' "$launcher_available"
+printf 'METRIC local_launcher_refs=%s\n' "$local_launcher_refs"

@@ -15,8 +15,12 @@ cleanup() {
 trap cleanup EXIT
 
 tmux new-session -d -s "$session" -x 100 -y 32
-# Use installed pi from current repo context if available; fall back to pi on PATH.
-tmux send-keys -t "$session" "cd /Users/luke/Projects/personal/pi-mono-fork && pi" Enter
+repo="/Users/luke/Projects/personal/pi-mono-fork"
+launcher="pi"
+if [[ -x "$repo/pi-test.sh" ]]; then
+  launcher="./pi-test.sh"
+fi
+tmux send-keys -t "$session" "cd $repo && $launcher" Enter
 sleep 5
 {
   echo "# Startup capture: $mode"
