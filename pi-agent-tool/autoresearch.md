@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `dry_run_clean_score` (unitless, higher is better) — local-launch readiness plus proof that dry-run smoke checks do not leave tmux sessions or capture files behind.
-- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `cache_field_count`, `executable_scripts`, `bash_syntax_ok`, `table_consistency_ok`, `tmux_available`, `launcher_available`, `local_launcher_refs`, `dry_run_ok`, `dry_run_doc_refs`, `dry_run_no_leak`, `max_iterations`, `dry_run_uses_local_launcher`, `dry_run_no_capture_files`.
+- **Primary**: `actual_eval_score` (unitless, higher is better) — actual A/B eval progress: real startup/scenario captures and filled scorecard/findings evidence.
+- **Secondary**: `startup_captures`, `scenario_captures`, `scorecard_rows_touched`, `findings_sections_touched`, `max_iterations`.
 
 ## How to Run
 
@@ -51,4 +51,6 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 - Dry-run docs confirmed README/runbook make the cheap check discoverable.
 - Dry-run leak check confirmed cheap helper smoke tests do not leave tmux sessions behind.
 - Resume-limit check confirmed `autoresearch.config.json` has `maxIterations: 60`.
-- Local-launch proof confirmed dry-run output selects `./pi-test.sh` when that source-checkout launcher exists. Next loop uses `dry_run_clean_score` to ensure dry-run smoke checks also avoid writing capture files.
+- Local-launch proof confirmed dry-run output selects `./pi-test.sh` when that source-checkout launcher exists.
+- Dry-run cleanliness confirmed smoke checks do not leak tmux sessions or write capture files.
+- Luke asked to move past dry-run and run the actual eval. Next loop uses `actual_eval_score` to track real startup captures, scenario captures, scorecard progress, and findings progress.

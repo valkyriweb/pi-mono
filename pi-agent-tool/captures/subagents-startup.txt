@@ -1,0 +1,35 @@
+# Startup capture: subagents
+# 
+
+cd /Users/luke/Projects/personal/pi-mono-fork && ./pi-test.sh
+❯ cd /Users/luke/Projects/personal/pi-mono-fork && ./pi-test.sh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

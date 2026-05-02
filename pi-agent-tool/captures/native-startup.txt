@@ -1,0 +1,35 @@
+# Startup capture: native
+# 
+
+cd /Users/luke/Projects/personal/pi-mono-fork && ./pi-test.sh
+❯ cd /Users/luke/Projects/personal/pi-mono-fork && ./pi-test.sh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
