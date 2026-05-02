@@ -1,0 +1,12 @@
+# Scenario capture: native-s03-chain-handoff
+# Prompt: scout -> plan -> reviewer for context discipline question
+# 2026-05-02TmanualZ
+
+Native Pi has first-class chain handoff in the built-in `agent` tool.
+Evidence:
+- `packages/coding-agent/src/core/tools/agent.ts` schema supports `chain[]` mode.
+- `packages/coding-agent/src/core/agents/executor.ts` implements chain execution and passes prior step output forward.
+- `packages/coding-agent/docs/usage.md` documents native chain JSON examples.
+- Native children are in-process `AgentSession`s with bounded tools and explicit context modes.
+
+Result: strong first-class chain support with structured tool-call ergonomics and parent-owned output options.
