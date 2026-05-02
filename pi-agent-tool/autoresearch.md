@@ -6,8 +6,8 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 
 ## Metrics
 
-- **Primary**: `eval_score` (unitless, higher is better) — simple rubric score from required files, scenario coverage, cited evidence, and safe scripts.
-- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `script_count`.
+- **Primary**: `quality_score` (unitless, higher is better) — richer rubric covering required files, scenario coverage, cited evidence, safe scripts, Claude Bridge cache-accounting fields, and runbook/finding template completeness.
+- **Secondary**: `required_files`, `scenario_count`, `citation_count`, `script_count`, `cache_field_count`, `runbook_cache_mentions`.
 
 ## How to Run
 
@@ -41,4 +41,5 @@ Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backe
 ## What's Been Tried
 
 - Initial artifact set created from repo-local evidence: native source/tests/docs, installed `pi-subagents` source/changelog, local Codex/Pi lineage references.
-- Scoring script checks artifact completeness rather than running expensive interactive evals.
+- Scoring script initially checked artifact completeness rather than running expensive interactive evals.
+- The first metric saturated at 100 after enough required files/scenarios/citations/scripts were present. Next loop uses `quality_score` to include Claude Bridge cache-stat accounting and template completeness, because Luke asked to keep an eye on Anthropic caching via `claude-bridge`.
