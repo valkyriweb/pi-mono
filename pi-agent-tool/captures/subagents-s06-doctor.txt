@@ -1,0 +1,11 @@
+# Scenario capture: subagents-s06-doctor
+# Prompt: /subagents-doctor
+# 2026-05-02TmanualZ
+
+`pi-subagents` provides an explicit diagnostics surface.
+Evidence:
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/slash/slash-commands.ts` registers `/subagents-doctor`.
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/extension/doctor.ts` implements doctor diagnostics.
+- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/CHANGELOG.md` says `0.19.1` added `subagent({ action: "doctor" })` and `/subagents-doctor`.
+
+Result: supported by extension source evidence; interactive command capture still pending if needed.

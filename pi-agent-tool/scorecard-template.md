@@ -14,8 +14,8 @@ Copy one row per arm per scenario.
 | S04 saved workflow | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s04-saved-workflow.txt |
 | S05 async status | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s05-async-status.txt |
 | S05 async status | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s05-async-status.txt |
-| S06 doctor diagnostics | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s06-doctor.txt |
-| S06 doctor diagnostics | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s06-doctor.txt |
+| S06 doctor diagnostics | native | 2 | 1 | 2 | 4 | 1 | 4 | n/a | n/a | n/a | n/a | n/a | No native doctor equivalent found; startup/tool visibility is the closest diagnostic path. | n/a | supported gap, not runtime failure | low | captures/native-s06-doctor.txt |
+| S06 doctor diagnostics | pi-subagents | 4 | 5 | 4 | 4 | 4 | 4 | n/a | n/a | n/a | n/a | n/a | Source confirms `/subagents-doctor` and `subagent({ action: "doctor" })`; interactive output pending. | n/a | source-backed, command capture pending | high | captures/subagents-s06-doctor.txt |
 | S07 UI manager | native | 1 | 2 | 1 | 2 | 1 | 1 | n/a | n/a | n/a | n/a | n/a | Capture shows `/agents` sent but no selector rendered; likely captured before UI response or command not submitted in ready state. | ~10s | inconclusive/failed capture | low | captures/native-s07-ui-manager.txt |
 | S07 UI manager | pi-subagents | 1 | 2 | 1 | 2 | 1 | 1 | n/a | n/a | n/a | n/a | n/a | Capture shows `/subagents` sent but no manager rendered; likely captured before UI response or command not submitted in ready state. | ~10s | inconclusive/failed capture | low | captures/subagents-s07-ui-manager.txt |
 | S08 context discipline | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s08-context-discipline.txt |
