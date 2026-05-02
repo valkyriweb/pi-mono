@@ -12,8 +12,8 @@ Copy one row per arm per scenario.
 | S03 chain handoff | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s03-chain-handoff.txt |
 | S04 saved workflow | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s04-saved-workflow.txt |
 | S04 saved workflow | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s04-saved-workflow.txt |
-| S05 async status | native |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/native-s05-async-status.txt |
-| S05 async status | pi-subagents |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | captures/subagents-s05-async-status.txt |
+| S05 async status | native | 2 | 1 | 2 | 4 | 1 | 4 | n/a | n/a | n/a | n/a | n/a | No explicit native background/status/control surface found; native agent runs are single/parallel/chain in-process. | n/a | supported gap, not runtime failure | low | captures/native-s05-async-status.txt |
+| S05 async status | pi-subagents | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | n/a | n/a | Source confirms `--bg` parsing and `/subagents-status` UI; interactive run capture pending. | n/a | source-backed, command capture pending | high | captures/subagents-s05-async-status.txt |
 | S06 doctor diagnostics | native | 2 | 1 | 2 | 4 | 1 | 4 | n/a | n/a | n/a | n/a | n/a | No native doctor equivalent found; startup/tool visibility is the closest diagnostic path. | n/a | supported gap, not runtime failure | low | captures/native-s06-doctor.txt |
 | S06 doctor diagnostics | pi-subagents | 4 | 5 | 4 | 4 | 4 | 4 | n/a | n/a | n/a | n/a | n/a | Source confirms `/subagents-doctor` and `subagent({ action: "doctor" })`; interactive output pending. | n/a | source-backed, command capture pending | high | captures/subagents-s06-doctor.txt |
 | S07 UI manager | native | 1 | 2 | 1 | 2 | 1 | 1 | n/a | n/a | n/a | n/a | n/a | Capture shows `/agents` sent but no selector rendered; likely captured before UI response or command not submitted in ready state. | ~10s | inconclusive/failed capture | low | captures/native-s07-ui-manager.txt |
