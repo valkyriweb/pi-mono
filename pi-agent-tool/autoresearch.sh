@@ -366,6 +366,7 @@ get_source_runtime_metric() {
 source_runtime_extension_source_rows=$(get_source_runtime_metric source_runtime_extension_source_rows)
 source_runtime_scorecard_rows_caveated=$(get_source_runtime_metric source_runtime_scorecard_rows_caveated)
 source_runtime_manifest_rows_caveated=$(get_source_runtime_metric source_runtime_manifest_rows_caveated)
+source_runtime_eval_plan_rows_caveated=$(get_source_runtime_metric source_runtime_eval_plan_rows_caveated)
 source_runtime_eval_plan_global_caveat=$(get_source_runtime_metric source_runtime_eval_plan_global_caveat)
 source_runtime_scenario_rule_caveat=$(get_source_runtime_metric source_runtime_scenario_rule_caveat)
 source_runtime_boundary_verified=$(get_source_runtime_metric source_runtime_boundary_verified)
@@ -527,6 +528,7 @@ score=$((score + scenario_verdict_verified * 12))
 score=$((score + source_runtime_extension_source_rows * 3))
 score=$((score + source_runtime_scorecard_rows_caveated * 3))
 score=$((score + source_runtime_manifest_rows_caveated * 3))
+score=$((score + source_runtime_eval_plan_rows_caveated * 3))
 score=$((score + source_runtime_eval_plan_global_caveat * 5))
 score=$((score + source_runtime_scenario_rule_caveat * 5))
 score=$((score + source_runtime_boundary_verified * 10))
@@ -680,6 +682,7 @@ missing=0
 (( source_runtime_extension_source_rows == 5 )) || missing=1
 (( source_runtime_scorecard_rows_caveated == 5 )) || missing=1
 (( source_runtime_manifest_rows_caveated == 5 )) || missing=1
+(( source_runtime_eval_plan_rows_caveated == 5 )) || missing=1
 (( source_runtime_eval_plan_global_caveat == 1 )) || missing=1
 (( source_runtime_scenario_rule_caveat == 1 )) || missing=1
 (( source_runtime_boundary_verified == 1 )) || missing=1
@@ -849,6 +852,7 @@ echo "METRIC scenario_verdict_verified=$scenario_verdict_verified"
 echo "METRIC source_runtime_extension_source_rows=$source_runtime_extension_source_rows"
 echo "METRIC source_runtime_scorecard_rows_caveated=$source_runtime_scorecard_rows_caveated"
 echo "METRIC source_runtime_manifest_rows_caveated=$source_runtime_manifest_rows_caveated"
+echo "METRIC source_runtime_eval_plan_rows_caveated=$source_runtime_eval_plan_rows_caveated"
 echo "METRIC source_runtime_eval_plan_global_caveat=$source_runtime_eval_plan_global_caveat"
 echo "METRIC source_runtime_scenario_rule_caveat=$source_runtime_scenario_rule_caveat"
 echo "METRIC source_runtime_boundary_verified=$source_runtime_boundary_verified"

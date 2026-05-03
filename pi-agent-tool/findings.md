@@ -84,7 +84,7 @@
 - `capture-timeline.md` makes the mixed capture state explicit: seven older extension-loaded captures predate the two current load-failure captures, so historical/source capability and current runtime availability are not conflated.
 - `stale-evidence-policy.md` gives reviewers the rule of use: cite load-failure captures for current runtime, cite older loaded-extension captures only as historical/source-supported behavior unless they are rerun.
 - `scenario-verdict-audit.md` classifies all 18 scored rows as current-live, current-load-failure, prior-live, or source-backed so the final verdict cannot quietly mix evidence classes.
-- `source-runtime-boundary.md` caveats source-backed `pi-subagents` rows at row level so installed-source capability is not mistaken for current runtime availability while the extension loader fails.
+- `source-runtime-boundary.md` caveats source-backed `pi-subagents` rows in scorecard, evidence manifest, and eval plan so installed-source capability is not mistaken for current runtime availability while the extension loader fails.
 - `token-accounting-audit.md` keeps the model-call/token accounting honest: one native S01 child probe, three zero-cost native registered commands, two prior extension fallthroughs, and no current extension child token accounting.
 - `repro-hygiene.md` keeps repeated scorer runs from generating Python bytecode-cache noise, so eval artifacts remain reproducible.
 - `recommendation-consistency.md` gates any `pi-subagents` async/control recommendation on fixing the current load failure and rerunning the relevant probes.

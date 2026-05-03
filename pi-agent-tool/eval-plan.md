@@ -66,14 +66,14 @@ Installed `pi-subagents` source currently exposes:
 | # | Scenario | Native arm | `pi-subagents` arm | Evidence mode |
 |---|---|---|---|---|
 | S01 | Single-agent reconnaissance | live `/agents run scout` child completed, read `README.md`, and returned exactly three artifact filenames; `agent({agent, task})` source/schema remains the underlying surface | current fresh launch failed before `/run scout`; source declares `/run` and `subagent({agent, task})`, but runtime unavailable until loader fix/rerun | live child + current runtime failure |
-| S02 | Parallel review | `agent({tasks})` source/schema | `/parallel` and `subagent({tasks})` source/schema | source-backed |
-| S03 | Sequential chain handoff | `agent({chain})`; `/agents run-chain` scaffold | `/chain`; `/run-chain` | source-backed |
-| S04 | Saved/reusable workflow | native saved chains JSON + `/agents run-chain` | saved `.chain.md` + `/run-chain`; save UI removed | source-backed |
+| S02 | Parallel review | `agent({tasks})` source/schema | `/parallel` and `subagent({tasks})` source/schema; source-only because current extension load is blocked until loader fix/rerun | source-backed only |
+| S03 | Sequential chain handoff | `agent({chain})`; `/agents run-chain` scaffold | `/chain`; `/run-chain` in source; source-only because current extension load is blocked until loader fix/rerun | source-backed only |
+| S04 | Saved/reusable workflow | native saved chains JSON + `/agents run-chain` | saved `.chain.md` + `/run-chain` in source; save UI removed; current extension load is blocked until loader fix/rerun | source-backed only |
 | S05 | Async/background/status/control | `/agents-status` foreground recent-run status; no native background control | `async`, status/interrupt/resume tool actions; `/subagents-status` removed | source + tmux |
 | S06 | Doctor/diagnostics | `/agents-doctor` | `/subagents-doctor` | source + tmux |
 | S07 | UI manager/selector pass | `/agents` selector/scaffold | requested `/subagents` manager unavailable in 0.24.0 | source + tmux |
-| S08 | Context discipline/forking | `context: default/fork/slim/none`; filters `agent`/`subagent` artifacts | `--fork`/`context: fork`; less granular | source-backed |
-| S09 | Updated native task-agent lifecycle | probe for non-spawn `action`/`taskId` create/list/get/update/delete | closest extension management/status actions; not equivalent | source-backed negative/closest-equivalent |
+| S08 | Context discipline/forking | `context: default/fork/slim/none`; filters `agent`/`subagent` artifacts | `--fork`/`context: fork` in source; less granular; current extension load is blocked until loader fix/rerun | source-backed only |
+| S09 | Updated native task-agent lifecycle | probe for non-spawn `action`/`taskId` create/list/get/update/delete | closest extension management/status actions in source; not equivalent; current extension load is blocked until loader fix/rerun | source-backed negative/closest-equivalent only |
 
 ## Scoring rubric
 

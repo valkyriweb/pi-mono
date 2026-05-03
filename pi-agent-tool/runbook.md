@@ -133,7 +133,7 @@ Before review/finalization, verify source-backed `pi-subagents` rows do not read
 python3 scripts/check-source-runtime-boundary.py
 ```
 
-Current verdict: five source-backed `pi-subagents` rows (S02, S03, S04, S08, S09) are caveated in both scorecard and evidence manifest as source-only/current-runtime blocked.
+Current verdict: five source-backed `pi-subagents` rows (S02, S03, S04, S08, S09) are caveated in scorecard, evidence manifest, and eval plan as source-only/current-runtime blocked.
 
 ## 2.11. Token accounting audit
 
@@ -240,7 +240,7 @@ Before any `keep`, verify:
 - `capture-timeline.md` exists and `scripts/check-capture-timeline.py` validates timestamp ordering between prior extension-loaded captures and current load-failure captures.
 - `stale-evidence-policy.md` exists and `scripts/check-stale-evidence-policy.py` validates current-vs-prior evidence wording.
 - `scenario-verdict-audit.md` exists and `scripts/check-scenario-verdicts.py` validates every scorecard row's evidence class.
-- `source-runtime-boundary.md` exists and `scripts/check-source-runtime-boundary.py` validates source-backed `pi-subagents` rows are caveated as source-only/current-runtime blocked.
+- `source-runtime-boundary.md` exists and `scripts/check-source-runtime-boundary.py` validates source-backed `pi-subagents` rows are caveated as source-only/current-runtime blocked in scorecard, evidence manifest, and eval plan.
 - `token-accounting-audit.md` exists and `scripts/check-token-accounting.py` validates model-call/token wording across scorecard, findings, token evidence, and live child output.
 - `repro-hygiene.md` exists and `scripts/check-repro-hygiene.py` validates the scorer's Python syntax checks do not dirty `scripts/__pycache__`.
 - `recommendation-consistency.md` exists and `scripts/check-recommendation-consistency.py` validates the final recommendation gates `pi-subagents` runtime use on fixing/rerunning the loader failure.

@@ -158,6 +158,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `source_runtime_extension_source_rows`
 - `source_runtime_scorecard_rows_caveated`
 - `source_runtime_manifest_rows_caveated`
+- `source_runtime_eval_plan_rows_caveated`
 - `source_runtime_eval_plan_global_caveat`
 - `source_runtime_scenario_rule_caveat`
 - `source_runtime_boundary_verified`
@@ -265,3 +266,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration fixed a generated `command-surface.md` bullet-join bug where the extension-load audit guardrail and `/subagents` reappearance warning rendered as one fused bullet, and added a command-surface markdown guardrail metric.
 - Next iteration found tracked `scorecard-template.md` still contained stale filled baseline scores and obsolete source-only/runtime claims; it converted the file to placeholder-only scaffolding and added `scripts/check-scorecard-template.py` plus `scorecard-template-audit.md`.
 - Next iteration found `pi-subagents` source-backed scorecard rows could still be read as current runtime proof despite the extension load failure; it added row-level blocked-runtime caveats plus `scripts/check-source-runtime-boundary.py` and `source-runtime-boundary.md`.
+- Next iteration extended the source/runtime boundary audit to `eval-plan.md` scenario rows after a review found the plan still had source-backed `pi-subagents` rows without row-level blocked-runtime caveats.

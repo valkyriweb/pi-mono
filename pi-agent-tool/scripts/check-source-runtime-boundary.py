@@ -29,6 +29,17 @@ def table_rows(text: str, arm: str = "pi-subagents") -> dict[str, str]:
     return rows
 
 
+def eval_plan_rows(text: str) -> dict[str, str]:
+    rows: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line.startswith("| S"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 4:
+            rows[f"{cells[0]} {cells[1]}".lower()] = line
+    return rows
+
+
 def count_caveated(rows: dict[str, str]) -> int:
     count = 0
     for scenario in SOURCE_BACKED_EXTENSION_SCENARIOS:
@@ -47,6 +58,16 @@ def count_manifest_caveated(rows: dict[str, str]) -> int:
     return count
 
 
+def count_eval_plan_caveated(rows: dict[str, str]) -> int:
+    count = 0
+    for scenario in SOURCE_BACKED_EXTENSION_SCENARIOS:
+        scenario_id = scenario.split()[0].lower()
+        row = next((value for key, value in rows.items() if key.startswith(f"{scenario_id} ")), "").lower()
+        if "source-backed" in row and "only" in row and "current extension load is blocked" in row and "loader fix/rerun" in row:
+            count += 1
+    return count
+
+
 def write_markdown(path: Path, metrics: dict[str, int]) -> None:
     lines = [
         "# Source/Runtime Boundary Audit",
@@ -60,6 +81,7 @@ def write_markdown(path: Path, metrics: dict[str, int]) -> None:
         f"| extension source-backed rows | {metrics['source_runtime_extension_source_rows']} | `pi-subagents` rows scored from source only: S02, S03, S04, S08, S09. |",
         f"| scorecard rows caveated | {metrics['source_runtime_scorecard_rows_caveated']}/{metrics['source_runtime_extension_source_rows']} | Each source-backed extension row says current runtime load is blocked until loader fix/rerun. |",
         f"| manifest rows caveated | {metrics['source_runtime_manifest_rows_caveated']}/{metrics['source_runtime_extension_source_rows']} | Evidence manifest marks the same rows as source-backed only and current-runtime blocked. |",
+        f"| eval-plan rows caveated | {metrics['source_runtime_eval_plan_rows_caveated']}/{metrics['source_runtime_extension_source_rows']} | Eval plan scenario rows carry the same source-only/current-runtime-blocked boundary. |",
         f"| eval-plan global caveat | {metrics['source_runtime_eval_plan_global_caveat']} | Eval plan says source-declared commands are not current runtime availability. |",
         f"| scenario rule caveat | {metrics['source_runtime_scenario_rule_caveat']} | Scenario verdict audit scopes source-backed rows to static/current-version claims, not output quality. |",
         f"| verified | {metrics['source_runtime_boundary_verified']} | All boundary checks passed. |",
@@ -77,13 +99,16 @@ def write_markdown(path: Path, metrics: dict[str, int]) -> None:
 def main() -> int:
     scorecard_rows = table_rows(read("scorecard.md"))
     manifest_rows = table_rows(read("evidence-manifest.md"))
-    eval_plan = read("eval-plan.md").lower()
+    eval_plan_text = read("eval-plan.md")
+    eval_plan_rows_by_scenario = eval_plan_rows(eval_plan_text)
+    eval_plan = eval_plan_text.lower()
     scenario_verdict = read("scenario-verdict-audit.md").lower()
     row_count = len(SOURCE_BACKED_EXTENSION_SCENARIOS)
     metrics = {
         "source_runtime_extension_source_rows": row_count,
         "source_runtime_scorecard_rows_caveated": count_caveated(scorecard_rows),
         "source_runtime_manifest_rows_caveated": count_manifest_caveated(manifest_rows),
+        "source_runtime_eval_plan_rows_caveated": count_eval_plan_caveated(eval_plan_rows_by_scenario),
         "source_runtime_eval_plan_global_caveat": int(
             "source-declared commands are not treated as current runtime availability" in eval_plan
             and "until the loader issue is fixed" in eval_plan
@@ -96,6 +121,7 @@ def main() -> int:
     metrics["source_runtime_boundary_verified"] = int(
         metrics["source_runtime_scorecard_rows_caveated"] == row_count
         and metrics["source_runtime_manifest_rows_caveated"] == row_count
+        and metrics["source_runtime_eval_plan_rows_caveated"] == row_count
         and metrics["source_runtime_eval_plan_global_caveat"] == 1
         and metrics["source_runtime_scenario_rule_caveat"] == 1
     )
