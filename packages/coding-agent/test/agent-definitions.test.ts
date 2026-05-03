@@ -8,7 +8,7 @@ describe("built-in agent definitions", () => {
 		const agents = getBuiltinAgentDefinitions();
 		expect(agents.map((agent) => agent.id).sort()).toEqual([
 			"explore",
-			"general-purpose",
+			"general",
 			"plan",
 			"reviewer",
 			"scout",
@@ -38,10 +38,8 @@ describe("built-in agent definitions", () => {
 		expect(agents.get("scout")).toContain("### Key Files");
 	});
 
-	test("general-purpose and worker deny recursive agent", () => {
-		const agents = getBuiltinAgentDefinitions().filter(
-			(agent) => agent.id === "general-purpose" || agent.id === "worker",
-		);
+	test("general and worker deny recursive agent", () => {
+		const agents = getBuiltinAgentDefinitions().filter((agent) => agent.id === "general" || agent.id === "worker");
 		expect(agents).toHaveLength(2);
 		for (const agent of agents) {
 			expect(agent.denyTools).toContain("agent");

@@ -46,8 +46,8 @@ describe("agent tool suite: parallel and chain", () => {
 			{
 				mode: "chain",
 				tasks: [
-					{ agent: "general-purpose", task: "step one", output: "reports/one.md", outputMode: "file" },
-					{ agent: "general-purpose", task: "step two uses {previous}" },
+					{ agent: "general", task: "step one", output: "reports/one.md", outputMode: "file" },
+					{ agent: "general", task: "step two uses {previous}" },
 				],
 			},
 			executorOptions(harness),

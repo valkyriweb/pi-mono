@@ -2,7 +2,7 @@ import type { AgentDefinition } from "./types.js";
 
 export const BUILTIN_AGENT_DEFINITIONS: AgentDefinition[] = [
 	{
-		id: "general-purpose",
+		id: "general",
 		description: "General delegated task execution with the parent's active tools.",
 		tools: "*",
 		denyTools: ["agent"],
