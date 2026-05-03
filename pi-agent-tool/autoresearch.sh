@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md token-accounting-audit.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md scenario-verdict-audit.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md token-accounting-audit.md repro-hygiene.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md scenario-verdict-audit.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -12,7 +12,20 @@ for script in scripts/capture-startup.sh scripts/run-tmux-scenario.sh scripts/ca
   bash -n "$script" || bash_syntax_ok=0
 done
 python_syntax_ok=1
-python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py scripts/check-command-surface.py scripts/check-live-child-output.py scripts/check-extension-load-audit.py scripts/check-capture-timeline.py scripts/check-stale-evidence-policy.py scripts/check-token-accounting.py scripts/check-scenario-verdicts.py scripts/check-task-lifecycle.py || python_syntax_ok=0
+python_scripts=(scripts/check-*.py)
+python3 - "${python_scripts[@]}" <<'PY' || python_syntax_ok=0
+from pathlib import Path
+import sys
+
+ok = True
+for filename in sys.argv[1:]:
+    try:
+        compile(Path(filename).read_text(), filename, "exec")
+    except SyntaxError as error:
+        print(f"{filename}: {error}", file=sys.stderr)
+        ok = False
+sys.exit(0 if ok else 1)
+PY
 
 startup_captures=0
 [[ -s captures/native-startup.txt ]] && ((startup_captures+=1))
@@ -246,6 +259,18 @@ token_accounting_token_conclusion_caveated=$(get_token_accounting_metric token_a
 token_accounting_observed_cost_cents=$(get_token_accounting_metric token_accounting_observed_cost_cents)
 token_accounting_verified=$(get_token_accounting_metric token_accounting_verified)
 
+repro_hygiene_output=$(python3 scripts/check-repro-hygiene.py)
+get_repro_hygiene_metric() {
+  local name="$1"
+  printf '%s\n' "$repro_hygiene_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+repro_hygiene_rows=$(get_repro_hygiene_metric repro_hygiene_rows)
+repro_hygiene_python_glob=$(get_repro_hygiene_metric repro_hygiene_python_glob)
+repro_hygiene_no_py_compile=$(get_repro_hygiene_metric repro_hygiene_no_py_compile)
+repro_hygiene_compile_in_memory=$(get_repro_hygiene_metric repro_hygiene_compile_in_memory)
+repro_hygiene_pycache_clean=$(get_repro_hygiene_metric repro_hygiene_pycache_clean)
+repro_hygiene_verified=$(get_repro_hygiene_metric repro_hygiene_verified)
+
 scenario_verdict_output=$(python3 scripts/check-scenario-verdicts.py)
 get_scenario_verdict_metric() {
   local name="$1"
@@ -366,6 +391,12 @@ score=$((score + token_accounting_scorecard_intro_aligned * 5))
 score=$((score + token_accounting_findings_metadata_aligned * 8))
 score=$((score + token_accounting_token_conclusion_caveated * 5))
 score=$((score + token_accounting_verified * 10))
+score=$((score + repro_hygiene_rows * 3))
+score=$((score + repro_hygiene_python_glob * 5))
+score=$((score + repro_hygiene_no_py_compile * 8))
+score=$((score + repro_hygiene_compile_in_memory * 8))
+score=$((score + repro_hygiene_pycache_clean * 8))
+score=$((score + repro_hygiene_verified * 10))
 score=$((score + $(cap "$scenario_verdict_rows" 18)))
 score=$((score + scenario_verdict_current_live_rows * 3))
 score=$((score + scenario_verdict_current_failure_rows * 5))
@@ -468,6 +499,12 @@ missing=0
 (( token_accounting_findings_metadata_aligned == 1 )) || missing=1
 (( token_accounting_token_conclusion_caveated == 1 )) || missing=1
 (( token_accounting_verified == 1 )) || missing=1
+(( repro_hygiene_rows == 5 )) || missing=1
+(( repro_hygiene_python_glob == 1 )) || missing=1
+(( repro_hygiene_no_py_compile == 1 )) || missing=1
+(( repro_hygiene_compile_in_memory == 1 )) || missing=1
+(( repro_hygiene_pycache_clean == 1 )) || missing=1
+(( repro_hygiene_verified == 1 )) || missing=1
 (( scenario_verdict_rows == 18 )) || missing=1
 (( scenario_verdict_current_live_rows == 4 )) || missing=1
 (( scenario_verdict_current_failure_rows == 1 )) || missing=1
@@ -494,7 +531,7 @@ missing=0
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified token_accounting_verified=$token_accounting_verified scenario_verdict_verified=$scenario_verdict_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified token_accounting_verified=$token_accounting_verified repro_hygiene_verified=$repro_hygiene_verified scenario_verdict_verified=$scenario_verdict_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -587,6 +624,12 @@ echo "METRIC token_accounting_findings_metadata_aligned=$token_accounting_findin
 echo "METRIC token_accounting_token_conclusion_caveated=$token_accounting_token_conclusion_caveated"
 echo "METRIC token_accounting_observed_cost_cents=$token_accounting_observed_cost_cents"
 echo "METRIC token_accounting_verified=$token_accounting_verified"
+echo "METRIC repro_hygiene_rows=$repro_hygiene_rows"
+echo "METRIC repro_hygiene_python_glob=$repro_hygiene_python_glob"
+echo "METRIC repro_hygiene_no_py_compile=$repro_hygiene_no_py_compile"
+echo "METRIC repro_hygiene_compile_in_memory=$repro_hygiene_compile_in_memory"
+echo "METRIC repro_hygiene_pycache_clean=$repro_hygiene_pycache_clean"
+echo "METRIC repro_hygiene_verified=$repro_hygiene_verified"
 echo "METRIC scenario_verdict_rows=$scenario_verdict_rows"
 echo "METRIC scenario_verdict_current_live_rows=$scenario_verdict_current_live_rows"
 echo "METRIC scenario_verdict_current_failure_rows=$scenario_verdict_current_failure_rows"

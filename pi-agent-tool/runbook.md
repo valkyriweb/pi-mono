@@ -135,6 +135,16 @@ python3 scripts/check-token-accounting.py
 
 Current verdict: one native S01 child probe has paid footer evidence, three native registered command probes are `$0.000`, two prior extension removed-command fallthroughs total $0.111, and current extension S01 has no child token accounting because loading fails.
 
+## 2.11. Repro hygiene audit
+
+After adding any `scripts/check-*.py` helper or changing the scorer, verify the runner does not dirty Python bytecode caches:
+
+```bash
+python3 scripts/check-repro-hygiene.py
+```
+
+Current verdict: `autoresearch.sh` syntax-checks `scripts/check-*.py` with in-memory `compile(...)` instead of `python -m py_compile`, and `scripts/__pycache__` stays clean.
+
 ## 3. Task-agent lifecycle probe
 
 Native expected request shape from the task brief:
@@ -171,6 +181,7 @@ Before any `keep`, verify:
 - `stale-evidence-policy.md` exists and `scripts/check-stale-evidence-policy.py` validates current-vs-prior evidence wording.
 - `scenario-verdict-audit.md` exists and `scripts/check-scenario-verdicts.py` validates every scorecard row's evidence class.
 - `token-accounting-audit.md` exists and `scripts/check-token-accounting.py` validates model-call/token wording across scorecard, findings, token evidence, and live child output.
+- `repro-hygiene.md` exists and `scripts/check-repro-hygiene.py` validates the scorer's Python syntax checks do not dirty `scripts/__pycache__`.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

@@ -98,6 +98,12 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `token_accounting_token_conclusion_caveated`
 - `token_accounting_observed_cost_cents`
 - `token_accounting_verified`
+- `repro_hygiene_rows`
+- `repro_hygiene_python_glob`
+- `repro_hygiene_no_py_compile`
+- `repro_hygiene_compile_in_memory`
+- `repro_hygiene_pycache_clean`
+- `repro_hygiene_verified`
 - `scenario_verdict_rows`
 - `scenario_verdict_current_live_rows`
 - `scenario_verdict_current_failure_rows`
@@ -152,6 +158,7 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - `command-surface.md` — native vs extension command-surface verification and drift guard.
 - `token-evidence.md` — live footer token/cost evidence for native registered commands, native S01 child output, and prior removed extension commands.
 - `token-accounting-audit.md` — consistency check for model-call/token wording across findings, scorecard, and token evidence.
+- `repro-hygiene.md` — runner hygiene check ensuring scorer syntax checks do not dirty Python bytecode caches.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
 - `live-child-output.md` — one tiny S01 live child-output probe: native success vs current extension load failure.
@@ -199,3 +206,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration added `scripts/check-stale-evidence-policy.py` plus `stale-evidence-policy.md` to enforce the reviewer rule that older loaded-extension captures are historical/source-supported only until rerun after the loader issue is fixed.
 - Next iteration added `scripts/check-scenario-verdicts.py` plus `scenario-verdict-audit.md` to classify all 18 scorecard rows by evidence type and catch stale claims like saying no live child output exists after the native S01 probe.
 - Next iteration added `scripts/check-token-accounting.py` plus `token-accounting-audit.md` to align model-call/token wording after the native S01 live child probe and prior extension fallthrough token evidence.
+- Next iteration replaced `python -m py_compile` in `autoresearch.sh` with in-memory `compile(...)` over `scripts/check-*.py` and added `scripts/check-repro-hygiene.py` plus `repro-hygiene.md` so repeated scorer runs do not dirty `scripts/__pycache__`.

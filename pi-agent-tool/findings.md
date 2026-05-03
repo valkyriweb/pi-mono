@@ -85,6 +85,7 @@
 - `stale-evidence-policy.md` gives reviewers the rule of use: cite load-failure captures for current runtime, cite older loaded-extension captures only as historical/source-supported behavior unless they are rerun.
 - `scenario-verdict-audit.md` classifies all 18 scored rows as current-live, current-load-failure, prior-live, or source-backed so the final verdict cannot quietly mix evidence classes.
 - `token-accounting-audit.md` keeps the model-call/token accounting honest: one native S01 child probe, three zero-cost native registered commands, two prior extension fallthroughs, and no current extension child token accounting.
+- `repro-hygiene.md` keeps repeated scorer runs from generating Python bytecode-cache noise, so eval artifacts remain reproducible.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
