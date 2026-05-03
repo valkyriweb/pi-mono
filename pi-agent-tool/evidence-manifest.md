@@ -19,6 +19,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Token accounting audit | `token-accounting-audit.md` | present | Checks model-call/token wording across findings, scorecard, token evidence, and live child output. |
 | Repro hygiene audit | `repro-hygiene.md` | present | Ensures `autoresearch.sh` syntax-checks Python helpers without dirtying `scripts/__pycache__`. |
 | Recommendation consistency | `recommendation-consistency.md` | present | Ensures final guidance does not imply current `pi-subagents` runtime is usable before the loader failure is fixed/rerun. |
+| Rerun command audit | `rerun-commands.md` | present | Ensures README/runbook reproduction commands cover scored captures and generated checks. |
 | Score analysis | `score-analysis.md` | present | Computed from `scorecard.md`; validates summary averages and numeric scenario winners. |
 | Findings alignment | `findings-alignment.md` | present | Compares prose winners to numeric winners and documents intentional exceptions. |
 | Task lifecycle audit | `task-lifecycle-audit.md` | present | S09 acceptance probe for native lifecycle absence/pending status and extension closest-equivalent non-equivalence. |
@@ -58,5 +59,6 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 - `token-accounting-audit.md` keeps model-call and token/cost claims aligned after adding the native S01 child probe.
 - `repro-hygiene.md` keeps the scorer itself reproducible by avoiding py-compile bytecode writes during syntax checks.
 - `recommendation-consistency.md` keeps final guidance aligned with the current load failure: use native by default; only use `pi-subagents` for async/control after fixing and rerunning the extension probes.
+- `rerun-commands.md` keeps README/runbook reproduction commands aligned with the preserved captures and generated audit files.
 - The two removed-command probes are preserved because they reveal a real UX/token tradeoff from the earlier loaded-extension state: unregistered slash strings fell through into parent model turns and invoked `subagent list` rather than opening slash UIs.
 - `token-evidence.md` aggregates those footer readings as roughly ↑22k prompt, ↓187 completion tokens, and $0.111 total cost, while comparable native registered command probes remained `$0.000`.

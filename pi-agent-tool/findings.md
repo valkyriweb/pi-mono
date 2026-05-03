@@ -87,6 +87,7 @@
 - `token-accounting-audit.md` keeps the model-call/token accounting honest: one native S01 child probe, three zero-cost native registered commands, two prior extension fallthroughs, and no current extension child token accounting.
 - `repro-hygiene.md` keeps repeated scorer runs from generating Python bytecode-cache noise, so eval artifacts remain reproducible.
 - `recommendation-consistency.md` gates any `pi-subagents` async/control recommendation on fixing the current load failure and rerunning the relevant probes.
+- `rerun-commands.md` verifies the README/runbook reproduction commands include the preserved `/subagents` removed-command probe, live-child checker, generated-artifact checks, and final scorer.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.

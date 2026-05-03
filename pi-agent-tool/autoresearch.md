@@ -112,6 +112,14 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `recommendation_rerun_trigger`
 - `recommendation_removed_slash_protection`
 - `recommendation_consistency_verified`
+- `rerun_readme_commands_expected`
+- `rerun_readme_commands_present`
+- `rerun_runbook_anchors_expected`
+- `rerun_runbook_anchors_present`
+- `rerun_readme_removed_manager_probe`
+- `rerun_readme_live_child_checker`
+- `rerun_readme_write_generators`
+- `rerun_commands_verified`
 - `scenario_verdict_rows`
 - `scenario_verdict_current_live_rows`
 - `scenario_verdict_current_failure_rows`
@@ -168,6 +176,7 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - `token-accounting-audit.md` — consistency check for model-call/token wording across findings, scorecard, and token evidence.
 - `repro-hygiene.md` — runner hygiene check ensuring scorer syntax checks do not dirty Python bytecode caches.
 - `recommendation-consistency.md` — final-recommendation check that current `pi-subagents` runtime failure is not glossed over.
+- `rerun-commands.md` — audit that README/runbook reproduction commands cover the scored captures and generated checks.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
 - `live-child-output.md` — one tiny S01 live child-output probe: native success vs current extension load failure.
@@ -217,3 +226,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration added `scripts/check-token-accounting.py` plus `token-accounting-audit.md` to align model-call/token wording after the native S01 live child probe and prior extension fallthrough token evidence.
 - Next iteration replaced `python -m py_compile` in `autoresearch.sh` with in-memory `compile(...)` over `scripts/check-*.py` and added `scripts/check-repro-hygiene.py` plus `repro-hygiene.md` so repeated scorer runs do not dirty `scripts/__pycache__`.
 - Next iteration added `scripts/check-recommendation-consistency.py` plus `recommendation-consistency.md` and revised findings so `pi-subagents` async/control is framed as source/tool-schema value only after the current module-format load failure is fixed and rerun.
+- Next iteration added `scripts/check-rerun-commands.py` plus `rerun-commands.md`, and updated README's quick-run block to include the preserved `/subagents` removed-command probe, live-child checker, write-mode generators, and final audit checks.
