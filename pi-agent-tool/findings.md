@@ -14,11 +14,11 @@
 |---|---|---|
 | Launch isolation | `--no-extensions --tools agent,read,grep,find,ls` | `--no-builtin-tools --no-extensions -e <pi-subagents>` |
 | Thinking | `off` | `off` |
-| Model calls in baseline | none | two removed-command fallthrough probes (`/subagents`, `/subagents-status`), no child-agent runs |
+| Model calls in baseline | one tiny S01 native child run; registered native command probes are local | two prior removed-command fallthrough parent turns (`/subagents`, `/subagents-status`); current S01 `/run` fails before child execution |
 | Startup capture | `captures/native-startup.txt` | `captures/subagents-startup.txt` (current fresh launch fails to load extension) |
 | Live cheap captures | `/agents-doctor`, `/agents-status`, `/agents`, S01 native child output | prior `/subagents-doctor`, removed `/subagents-status`, removed `/subagents`; current S01 `/run scout` fails before extension loads |
 | Source probes | `source-probes.md` | `source-probes.md` |
-| Token accounting | unavailable / no model calls | fallthrough captures show about ↑22k prompt and ↓187 completion tokens total |
+| Token accounting | native S01 footer shows ~13k prompt, ~159 completion, ~$0.076; registered command probes show `$0.000` | prior fallthrough captures show about ↑22k prompt, ↓187 completion, and $0.111 total; current S01 has no child token accounting |
 
 ## S01 Single-agent reconnaissance
 
@@ -84,6 +84,7 @@
 - `capture-timeline.md` makes the mixed capture state explicit: seven older extension-loaded captures predate the two current load-failure captures, so historical/source capability and current runtime availability are not conflated.
 - `stale-evidence-policy.md` gives reviewers the rule of use: cite load-failure captures for current runtime, cite older loaded-extension captures only as historical/source-supported behavior unless they are rerun.
 - `scenario-verdict-audit.md` classifies all 18 scored rows as current-live, current-load-failure, prior-live, or source-backed so the final verdict cannot quietly mix evidence classes.
+- `token-accounting-audit.md` keeps the model-call/token accounting honest: one native S01 child probe, three zero-cost native registered commands, two prior extension fallthroughs, and no current extension child token accounting.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.

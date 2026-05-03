@@ -33,4 +33,4 @@ captures/subagents-s07-manager-removed-live.txt: ↑11k ↓81 $0.055 (sub) ... g
 
 ## Conclusion
 
-For current `pi-subagents` 0.24.0, the removed `/subagents` and `/subagents-status` surfaces are not just unavailable; they are a token-spend footgun because unregistered slash strings enter the normal model path. Native registered `/agents*` commands avoid that cost in the comparable UI/status/doctor probes.
+For the earlier loaded-extension `pi-subagents` 0.24.0 captures, the removed `/subagents` and `/subagents-status` surfaces were not just unavailable; they were a token-spend footgun because unregistered slash strings entered the normal model path. The current fresh extension launch now fails before `/run`, so S01 has no `pi-subagents` child token accounting. Native registered `/agents*` commands avoid model cost in the comparable UI/status/doctor probes, while the one intentional native S01 child probe is recorded separately.

@@ -1,6 +1,6 @@
 # Scorecard
 
-Filled baseline for current local checkout and installed extension. Token fields are `n/a` because the baseline avoids paid child-agent runs; exact token/cache accounting requires live model logs.
+Filled baseline for current local checkout and installed extension. Most token fields stay `n/a` because broad paid child-agent runs are avoided; exceptions are the one tiny native S01 live child probe and two prior `pi-subagents` removed-command fallthrough probes. Exact cache accounting remains unavailable.
 
 | Scenario | Arm | Correctness 1-5 | Coverage 1-5 | UX 1-5 | Robustness 1-5 | Flexibility 1-5 | Evidence 1-5 | Prompt tokens | Completion tokens | Total tokens | Context notes | Latency | Reliability notes | `value_per_1k_tokens` | Evidence file |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|

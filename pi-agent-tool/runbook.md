@@ -125,6 +125,16 @@ python3 scripts/check-scenario-verdicts.py
 
 Current verdict: 4 current-live rows, 1 current-load-failure row, 3 prior-live rows, and 10 source-backed rows.
 
+## 2.10. Token accounting audit
+
+After any live probe or token-evidence wording change, verify model-call/token language:
+
+```bash
+python3 scripts/check-token-accounting.py
+```
+
+Current verdict: one native S01 child probe has paid footer evidence, three native registered command probes are `$0.000`, two prior extension removed-command fallthroughs total $0.111, and current extension S01 has no child token accounting because loading fails.
+
 ## 3. Task-agent lifecycle probe
 
 Native expected request shape from the task brief:
@@ -160,6 +170,7 @@ Before any `keep`, verify:
 - `capture-timeline.md` exists and `scripts/check-capture-timeline.py` validates timestamp ordering between prior extension-loaded captures and current load-failure captures.
 - `stale-evidence-policy.md` exists and `scripts/check-stale-evidence-policy.py` validates current-vs-prior evidence wording.
 - `scenario-verdict-audit.md` exists and `scripts/check-scenario-verdicts.py` validates every scorecard row's evidence class.
+- `token-accounting-audit.md` exists and `scripts/check-token-accounting.py` validates model-call/token wording across scorecard, findings, token evidence, and live child output.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

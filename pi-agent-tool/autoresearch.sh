@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md scenario-verdict-audit.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md token-accounting-audit.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md scenario-verdict-audit.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -12,7 +12,7 @@ for script in scripts/capture-startup.sh scripts/run-tmux-scenario.sh scripts/ca
   bash -n "$script" || bash_syntax_ok=0
 done
 python_syntax_ok=1
-python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py scripts/check-command-surface.py scripts/check-live-child-output.py scripts/check-extension-load-audit.py scripts/check-capture-timeline.py scripts/check-stale-evidence-policy.py scripts/check-scenario-verdicts.py scripts/check-task-lifecycle.py || python_syntax_ok=0
+python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py scripts/check-command-surface.py scripts/check-live-child-output.py scripts/check-extension-load-audit.py scripts/check-capture-timeline.py scripts/check-stale-evidence-policy.py scripts/check-token-accounting.py scripts/check-scenario-verdicts.py scripts/check-task-lifecycle.py || python_syntax_ok=0
 
 startup_captures=0
 [[ -s captures/native-startup.txt ]] && ((startup_captures+=1))
@@ -230,6 +230,22 @@ stale_policy_token_caveat=$(get_stale_policy_metric stale_policy_token_caveat)
 stale_policy_rerun_trigger=$(get_stale_policy_metric stale_policy_rerun_trigger)
 stale_policy_verified=$(get_stale_policy_metric stale_policy_verified)
 
+token_accounting_output=$(python3 scripts/check-token-accounting.py)
+get_token_accounting_metric() {
+  local name="$1"
+  printf '%s\n' "$token_accounting_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+token_accounting_rows=$(get_token_accounting_metric token_accounting_rows)
+token_accounting_native_zero_rows=$(get_token_accounting_metric token_accounting_native_zero_rows)
+token_accounting_native_child_cost_present=$(get_token_accounting_metric token_accounting_native_child_cost_present)
+token_accounting_extension_removed_cost_present=$(get_token_accounting_metric token_accounting_extension_removed_cost_present)
+token_accounting_current_extension_no_child_present=$(get_token_accounting_metric token_accounting_current_extension_no_child_present)
+token_accounting_scorecard_intro_aligned=$(get_token_accounting_metric token_accounting_scorecard_intro_aligned)
+token_accounting_findings_metadata_aligned=$(get_token_accounting_metric token_accounting_findings_metadata_aligned)
+token_accounting_token_conclusion_caveated=$(get_token_accounting_metric token_accounting_token_conclusion_caveated)
+token_accounting_observed_cost_cents=$(get_token_accounting_metric token_accounting_observed_cost_cents)
+token_accounting_verified=$(get_token_accounting_metric token_accounting_verified)
+
 scenario_verdict_output=$(python3 scripts/check-scenario-verdicts.py)
 get_scenario_verdict_metric() {
   local name="$1"
@@ -341,6 +357,15 @@ score=$((score + stale_policy_timeline_linked * 6))
 score=$((score + stale_policy_token_caveat * 5))
 score=$((score + stale_policy_rerun_trigger * 5))
 score=$((score + stale_policy_verified * 10))
+score=$((score + token_accounting_rows * 2))
+score=$((score + token_accounting_native_zero_rows * 3))
+score=$((score + token_accounting_native_child_cost_present * 6))
+score=$((score + token_accounting_extension_removed_cost_present * 6))
+score=$((score + token_accounting_current_extension_no_child_present * 5))
+score=$((score + token_accounting_scorecard_intro_aligned * 5))
+score=$((score + token_accounting_findings_metadata_aligned * 8))
+score=$((score + token_accounting_token_conclusion_caveated * 5))
+score=$((score + token_accounting_verified * 10))
 score=$((score + $(cap "$scenario_verdict_rows" 18)))
 score=$((score + scenario_verdict_current_live_rows * 3))
 score=$((score + scenario_verdict_current_failure_rows * 5))
@@ -434,6 +459,15 @@ missing=0
 (( stale_policy_token_caveat == 1 )) || missing=1
 (( stale_policy_rerun_trigger == 1 )) || missing=1
 (( stale_policy_verified == 1 )) || missing=1
+(( token_accounting_rows == 7 )) || missing=1
+(( token_accounting_native_zero_rows == 3 )) || missing=1
+(( token_accounting_native_child_cost_present == 1 )) || missing=1
+(( token_accounting_extension_removed_cost_present == 1 )) || missing=1
+(( token_accounting_current_extension_no_child_present == 1 )) || missing=1
+(( token_accounting_scorecard_intro_aligned == 1 )) || missing=1
+(( token_accounting_findings_metadata_aligned == 1 )) || missing=1
+(( token_accounting_token_conclusion_caveated == 1 )) || missing=1
+(( token_accounting_verified == 1 )) || missing=1
 (( scenario_verdict_rows == 18 )) || missing=1
 (( scenario_verdict_current_live_rows == 4 )) || missing=1
 (( scenario_verdict_current_failure_rows == 1 )) || missing=1
@@ -460,7 +494,7 @@ missing=0
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified scenario_verdict_verified=$scenario_verdict_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified token_accounting_verified=$token_accounting_verified scenario_verdict_verified=$scenario_verdict_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -543,6 +577,16 @@ echo "METRIC stale_policy_timeline_linked=$stale_policy_timeline_linked"
 echo "METRIC stale_policy_token_caveat=$stale_policy_token_caveat"
 echo "METRIC stale_policy_rerun_trigger=$stale_policy_rerun_trigger"
 echo "METRIC stale_policy_verified=$stale_policy_verified"
+echo "METRIC token_accounting_rows=$token_accounting_rows"
+echo "METRIC token_accounting_native_zero_rows=$token_accounting_native_zero_rows"
+echo "METRIC token_accounting_native_child_cost_present=$token_accounting_native_child_cost_present"
+echo "METRIC token_accounting_extension_removed_cost_present=$token_accounting_extension_removed_cost_present"
+echo "METRIC token_accounting_current_extension_no_child_present=$token_accounting_current_extension_no_child_present"
+echo "METRIC token_accounting_scorecard_intro_aligned=$token_accounting_scorecard_intro_aligned"
+echo "METRIC token_accounting_findings_metadata_aligned=$token_accounting_findings_metadata_aligned"
+echo "METRIC token_accounting_token_conclusion_caveated=$token_accounting_token_conclusion_caveated"
+echo "METRIC token_accounting_observed_cost_cents=$token_accounting_observed_cost_cents"
+echo "METRIC token_accounting_verified=$token_accounting_verified"
 echo "METRIC scenario_verdict_rows=$scenario_verdict_rows"
 echo "METRIC scenario_verdict_current_live_rows=$scenario_verdict_current_live_rows"
 echo "METRIC scenario_verdict_current_failure_rows=$scenario_verdict_current_failure_rows"
