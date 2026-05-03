@@ -175,6 +175,16 @@ python3 scripts/check-artifact-index.py
 
 Current verdict: README Fresh artifacts names every `autoresearch.sh` required file plus `captures/` and `scripts/`; evidence manifest indexes every audited evidence artifact.
 
+## 2.15. Eval plan currentness audit
+
+After live/failure evidence changes, keep the planning artifact from contradicting the current evidence class:
+
+```bash
+python3 scripts/check-eval-plan-currentness.py
+```
+
+Current verdict: `eval-plan.md` names the live native S01 child probe, current `pi-subagents` S01 load failure, token/cost exceptions, and delegates the expanded secondary metric list to `autoresearch.md`.
+
 ## 3. Task-agent lifecycle probe
 
 Native expected request shape from the task brief:
@@ -215,6 +225,7 @@ Before any `keep`, verify:
 - `recommendation-consistency.md` exists and `scripts/check-recommendation-consistency.py` validates the final recommendation gates `pi-subagents` runtime use on fixing/rerunning the loader failure.
 - `rerun-commands.md` exists and `scripts/check-rerun-commands.py` validates README/runbook command coverage for scored captures and generated checks.
 - `artifact-index.md` exists and `scripts/check-artifact-index.py` validates README, evidence manifest, and scorer-required artifact indexes stay synchronized.
+- `eval-plan-currentness.md` exists and `scripts/check-eval-plan-currentness.py` validates the eval plan no longer contains stale source-only S01 or token-metric wording.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

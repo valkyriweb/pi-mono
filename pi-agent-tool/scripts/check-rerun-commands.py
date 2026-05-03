@@ -26,6 +26,9 @@ README_COMMANDS = [
     "python3 scripts/check-token-accounting.py",
     "python3 scripts/check-repro-hygiene.py",
     "python3 scripts/check-recommendation-consistency.py",
+    "python3 scripts/check-rerun-commands.py",
+    "python3 scripts/check-artifact-index.py",
+    "python3 scripts/check-eval-plan-currentness.py",
     "python3 scripts/check-scorecard-consistency.py --write score-analysis.md",
     "python3 scripts/check-findings-alignment.py",
     "python3 scripts/check-task-lifecycle.py",
@@ -45,6 +48,9 @@ RUNBOOK_ANCHORS = [
     "python3 scripts/check-token-accounting.py",
     "python3 scripts/check-repro-hygiene.py",
     "python3 scripts/check-recommendation-consistency.py",
+    "python3 scripts/check-rerun-commands.py",
+    "python3 scripts/check-artifact-index.py",
+    "python3 scripts/check-eval-plan-currentness.py",
     "./autoresearch.sh",
 ]
 
@@ -78,7 +84,7 @@ def write_markdown(path: Path, metrics: dict[str, int]) -> None:
         "## Interpretation",
         "",
         "- The README quick-run block now includes the removed `/subagents` probe preserved for token/fallthrough evidence.",
-        "- It also calls the generated-artifact checkers before `./autoresearch.sh`, reducing the risk of stale audit files during reproduction.",
+        "- It also calls the generated-artifact checkers before `./autoresearch.sh`, including the rerun-command, artifact-index, and eval-plan currentness audits, reducing the risk of stale audit files during reproduction.",
         "",
     ]
     path.write_text("\n".join(lines))

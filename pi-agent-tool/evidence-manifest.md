@@ -10,6 +10,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | `pi-subagents` startup capture | `captures/subagents-startup.txt` | present | Launch includes `--no-builtin-tools --no-extensions -e <pi-subagents> --thinking off`. |
 | Source probes | `source-probes.md` | present | Includes native command/tool probes, extension command/tool probes, removed-surface proof, and S09 negative task lifecycle probe. |
 | Command surface | `command-surface.md` | present | Verifies native command presence, extension command presence, removed extension surfaces, launch flags, current extension load failure, and 0.24.0 changelog guard. |
+| Eval plan currentness | `eval-plan-currentness.md` | present | Ensures `eval-plan.md` no longer claims S01 is source-only after the live native child probe and current extension load failure were added. |
 | Live child output | `live-child-output.md` | present | One tiny S01 live run: native child success vs current `pi-subagents` extension load failure. |
 | Extension load audit | `extension-load-audit.md` | present | Source/capture diagnosis for the current `pi-subagents` module-format load failure before slash-command registration. |
 | Capture timeline | `capture-timeline.md` | present | Timestamp audit showing older extension-loaded captures predate newer current load-failure captures. |
@@ -62,5 +63,6 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 - `recommendation-consistency.md` keeps final guidance aligned with the current load failure: use native by default; only use `pi-subagents` for async/control after fixing and rerunning the extension probes.
 - `rerun-commands.md` keeps README/runbook reproduction commands aligned with the preserved captures and generated audit files.
 - `artifact-index.md` keeps README Fresh artifacts, evidence manifest global evidence, and `autoresearch.sh` required files in sync.
+- `eval-plan-currentness.md` keeps the planning artifact aligned with the current evidence mix: native S01 live child, extension S01 load failure, source-backed rows, and prior extension captures.
 - The two removed-command probes are preserved because they reveal a real UX/token tradeoff from the earlier loaded-extension state: unregistered slash strings fell through into parent model turns and invoked `subagent list` rather than opening slash UIs.
 - `token-evidence.md` aggregates those footer readings as roughly ↑22k prompt, ↓187 completion tokens, and $0.111 total cost, while comparable native registered command probes remained `$0.000`.

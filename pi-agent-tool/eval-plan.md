@@ -4,9 +4,9 @@
 
 Evaluate actual behavior, UX, reliability, and token/value tradeoffs between native Pi delegation and the installed `pi-subagents` extension, without cross-contaminating command/tool surfaces.
 
-Primary metric: `actual_eval_score` — higher is better, based on captures, filled scorecard, findings, isolation proof, task-agent coverage, source probes, and honest limitations.
+Primary metric: `actual_eval_score` — higher is better, based on captures, filled scorecard, findings, isolation proof, live child-output evidence, task-agent coverage, source probes, audit checks, and honest limitations.
 
-Secondary metrics: `startup_captures`, `scenario_captures`, `isolation_verified`, `scorecard_rows_touched`, `findings_sections_touched`, `task_agent_coverage`, `source_probe_coverage`, `honest_limitations`.
+Secondary metrics: see `autoresearch.md` for the live metric list. The scorer has expanded beyond the initial baseline to include evidence integrity, token accounting, current-vs-prior runtime classification, artifact indexes, and recommendation consistency.
 
 ## Isolation rules
 
@@ -59,12 +59,13 @@ Installed `pi-subagents` source currently exposes:
 - `/run`, `/parallel`, `/chain`, `/run-chain`, and `/subagents-doctor` in `src/slash/slash-commands.ts`.
 - `subagent` tool actions for management, status, interrupt, resume, and doctor in `src/extension/index.ts` and `src/extension/schemas.ts`.
 - `/subagents` manager UI and `/subagents-status` slash overlay are removed in `CHANGELOG.md` `0.24.0`.
+- Current fresh eval launch fails to load the installed extension with a module-format error before slash commands register; source-declared commands are not treated as current runtime availability until the loader issue is fixed and the extension probes are rerun.
 
 ## Scenarios
 
 | # | Scenario | Native arm | `pi-subagents` arm | Evidence mode |
 |---|---|---|---|---|
-| S01 | Single-agent reconnaissance | `agent({agent, task})` source/schema; no live child | `/run scout ...` and `subagent({agent, task})` source/schema; no live child | source-backed |
+| S01 | Single-agent reconnaissance | live `/agents run scout` child completed, read `README.md`, and returned exactly three artifact filenames; `agent({agent, task})` source/schema remains the underlying surface | current fresh launch failed before `/run scout`; source declares `/run` and `subagent({agent, task})`, but runtime unavailable until loader fix/rerun | live child + current runtime failure |
 | S02 | Parallel review | `agent({tasks})` source/schema | `/parallel` and `subagent({tasks})` source/schema | source-backed |
 | S03 | Sequential chain handoff | `agent({chain})`; `/agents run-chain` scaffold | `/chain`; `/run-chain` | source-backed |
 | S04 | Saved/reusable workflow | native saved chains JSON + `/agents run-chain` | saved `.chain.md` + `/run-chain`; save UI removed | source-backed |
@@ -84,4 +85,4 @@ Each arm/scenario gets 1-5 for correctness, coverage, UX, robustness, flexibilit
 - 2: workaround/closest equivalent only.
 - 1: unavailable, failed, or unsupported.
 
-Token/value is qualitative because baseline avoids paid child-agent runs. Exact prompt/completion/cache tokens are `n/a` unless visible in live model logs.
+Token/value is qualitative because broad paid child-agent runs are avoided. Exceptions: one tiny native S01 live child and two prior `pi-subagents` removed-command fallthrough probes have visible token/cost evidence; current extension S01 has no child token accounting because loading fails before `/run scout`. Exact prompt/completion/cache tokens are `n/a` unless visible in live model logs.

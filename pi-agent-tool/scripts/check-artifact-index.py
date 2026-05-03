@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 AUDITED_GLOBAL_ARTIFACTS = {
     "source-probes.md",
     "command-surface.md",
+    "eval-plan-currentness.md",
     "live-child-output.md",
     "extension-load-audit.md",
     "capture-timeline.md",

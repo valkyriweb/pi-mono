@@ -127,6 +127,14 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `artifact_index_manifest_audited_present`
 - `artifact_index_required_files_exist`
 - `artifact_index_verified`
+- `eval_plan_currentness_rows`
+- `eval_plan_s01_native_live_child`
+- `eval_plan_s01_subagents_load_failure`
+- `eval_plan_no_stale_no_live_child`
+- `eval_plan_runtime_caveat`
+- `eval_plan_token_caveat`
+- `eval_plan_secondary_metrics_delegated`
+- `eval_plan_currentness_verified`
 - `scenario_verdict_rows`
 - `scenario_verdict_current_live_rows`
 - `scenario_verdict_current_failure_rows`
@@ -174,6 +182,7 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 
 - `README.md` — overview and quick run commands.
 - `eval-plan.md` — scenario matrix and scoring rubric.
+- `eval-plan-currentness.md` — audit that the plan reflects current live/failure evidence instead of stale source-only baseline wording.
 - `runbook.md` — exact isolation launches and capture commands.
 - `scorecard.md` — filled 9×2 scenario scorecard.
 - `findings.md` — final comparison summary.
@@ -236,3 +245,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration added `scripts/check-recommendation-consistency.py` plus `recommendation-consistency.md` and revised findings so `pi-subagents` async/control is framed as source/tool-schema value only after the current module-format load failure is fixed and rerun.
 - Next iteration added `scripts/check-rerun-commands.py` plus `rerun-commands.md`, and updated README's quick-run block to include the preserved `/subagents` removed-command probe, live-child checker, write-mode generators, and final audit checks.
 - Next iteration added `scripts/check-artifact-index.py` plus `artifact-index.md` and updated README/evidence-manifest/runbook so artifact indexes stay synchronized with `autoresearch.sh` required files.
+- Next iteration found stale `eval-plan.md` wording that still said S01 had no live child after the native live probe; it added `scripts/check-eval-plan-currentness.py` plus `eval-plan-currentness.md` and updated the plan's S01, runtime, token, and metric caveats.

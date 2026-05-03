@@ -6,8 +6,8 @@ Purpose: keep the documented reproduction commands aligned with the artifacts sc
 
 | Check | Value | Meaning |
 |---|---:|---|
-| README required commands | 24/24 | Quick run includes source probes, startup captures, preserved live/fallthrough captures, audit checks, and scorer. |
-| Runbook anchors | 13/13 | Detailed runbook covers the same critical steps. |
+| README required commands | 27/27 | Quick run includes source probes, startup captures, preserved live/fallthrough captures, audit checks, and scorer. |
+| Runbook anchors | 16/16 | Detailed runbook covers the same critical steps. |
 | README removed manager probe | 1 | README includes `/subagents` removed-command fallthrough probe. |
 | README live child checker | 1 | README regenerates/validates `live-child-output.md`. |
 | README write-generators | 1 | README includes write-mode generators for command surface and score analysis. |
@@ -16,4 +16,4 @@ Purpose: keep the documented reproduction commands aligned with the artifacts sc
 ## Interpretation
 
 - The README quick-run block now includes the removed `/subagents` probe preserved for token/fallthrough evidence.
-- It also calls the generated-artifact checkers before `./autoresearch.sh`, reducing the risk of stale audit files during reproduction.
+- It also calls the generated-artifact checkers before `./autoresearch.sh`, including the rerun-command, artifact-index, and eval-plan currentness audits, reducing the risk of stale audit files during reproduction.

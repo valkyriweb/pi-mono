@@ -89,6 +89,7 @@
 - `recommendation-consistency.md` gates any `pi-subagents` async/control recommendation on fixing the current load failure and rerunning the relevant probes.
 - `rerun-commands.md` verifies the README/runbook reproduction commands include the preserved `/subagents` removed-command probe, live-child checker, generated-artifact checks, and final scorer.
 - `artifact-index.md` keeps README, evidence manifest, and scorer-required artifact lists synchronized as the eval grows.
+- `eval-plan-currentness.md` keeps the original plan from drifting behind the current evidence mix: native S01 live child, extension S01 load failure, token/cost exceptions, and expanded metrics.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
