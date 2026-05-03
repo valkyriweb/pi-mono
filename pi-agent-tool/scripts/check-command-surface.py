@@ -111,6 +111,7 @@ def write_markdown(path: Path, data: dict[str, object]) -> None:
             f"- `captures/subagents-startup.txt` shows extension runtime loaded: {str(bool(data['subagents_runtime_loaded'])).lower()}.",
             f"- `captures/subagents-startup.txt` shows current module-format load failure: {str(bool(data['subagents_runtime_load_failed'])).lower()}.",
             "- Source command presence remains useful, but runtime command availability is currently blocked by the extension load failure.",
+            "- See `extension-load-audit.md` for the source/capture diagnosis of the module-format load error.",
             "",
             "## Drift guard summary",
             "",
@@ -120,6 +121,7 @@ def write_markdown(path: Path, data: dict[str, object]) -> None:
             f"- Removed-surface changelog guard: {data['removed_changelog_verified']}.",
             f"- Launch isolation guards passed: {data['launch_isolation_count']}/2.",
             f"- Current extension runtime load failure detected: {data['subagents_runtime_load_failed']}.",
+            "- Extension load audit: `extension-load-audit.md`."
             "- If `/subagents` or `/subagents-status` reappears, this file and the scorecard must be updated rather than silently carrying stale removal findings.",
             "",
         ]

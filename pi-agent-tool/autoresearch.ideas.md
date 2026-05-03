@@ -1,2 +1,3 @@
 - If the current `pi-subagents` module-format extension load failure is fixed, rerun the S01 live child-output probe plus cheap `/run`/`/chain`/`/parallel` usage captures and rescore the extension rows instead of preserving the failure verdict.
+- If production-source changes become allowed, add a focused Pi extension-loader regression for ESM TypeScript packages that default-export an extension factory and declare `type: module`.
 - If a branch lands native non-spawn task lifecycle actions, rerun S09 source probes and add a focused task lifecycle live/tool-schema capture.

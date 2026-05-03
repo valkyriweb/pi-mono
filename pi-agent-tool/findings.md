@@ -80,10 +80,12 @@
 - `findings-alignment.md` checks that prose winners align with numeric winners, with documented exceptions for capability ties and non-equivalent closest matches.
 - `command-surface.md` verifies the current native and extension slash-command surfaces, launch isolation flags, and removed `pi-subagents` 0.24.0 surfaces so command drift cannot silently invalidate the eval.
 - `live-child-output.md` records one tiny symmetric S01 run: native child output verified; current `pi-subagents` fresh runtime fails before child output.
+- `extension-load-audit.md` explains that failure from captures plus source: `pi-subagents` 0.24.0 declares an ESM TypeScript entry, Pi loads it through jiti, and the module-format error happens before slash commands register.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
-- Scenario captures for S01-S04, S08, and S09 are source-backed to avoid paid child-agent runs.
+- Scenario captures for S02-S04, S08, and S09 are source-backed to avoid paid child-agent runs.
+- S01 now includes one tiny live child-output probe plus an extension load audit.
 - S05-S07 include cheap command/UI captures plus source evidence.
 - Two extension removed-command probes (`/subagents`, `/subagents-status`) were not recognized as commands and fell through to model turns; this is real UX/token evidence and is recorded instead of hidden.
 - `token-evidence.md` records footer token/cost readings: native registered command probes show `$0.000`, while removed `/subagents-status` + `/subagents` fallthrough probes show about ↑22k prompt, ↓187 completion tokens, and $0.111 total cost.

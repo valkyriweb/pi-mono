@@ -85,6 +85,16 @@ python3 scripts/check-live-child-output.py
 
 Current verdict: native completed a real child scout run; `pi-subagents` failed before child execution because the extension did not load.
 
+## 2.6. Extension load audit
+
+When the extension fails to load, diagnose that from source and captures rather than rerunning paid prompts:
+
+```bash
+python3 scripts/check-extension-load-audit.py
+```
+
+Current verdict: `pi-subagents` 0.24.0 declares an ESM TypeScript entry, Pi loads it through `jiti.import(..., { default: true })`, and the fresh runtime fails with `Cannot determine intended module format because both 'exports' and top-level await are present` before commands register.
+
 ## 3. Task-agent lifecycle probe
 
 Native expected request shape from the task brief:
@@ -116,6 +126,7 @@ Before any `keep`, verify:
 - `source-probes.md` includes removed `/subagents-status` and `/subagents` manager evidence for extension `0.24.0`.
 - `command-surface.md` exists and `scripts/check-command-surface.py` validates current native/extension command surfaces, launch flags, and the current extension runtime load failure.
 - `live-child-output.md` exists and `scripts/check-live-child-output.py` validates the tiny S01 live probe.
+- `extension-load-audit.md` exists and `scripts/check-extension-load-audit.py` validates the current module-format load-failure diagnosis without patching production source.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

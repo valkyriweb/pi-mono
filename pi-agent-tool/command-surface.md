@@ -40,6 +40,7 @@ Extension isolation launch check:
 - `captures/subagents-startup.txt` shows extension runtime loaded: false.
 - `captures/subagents-startup.txt` shows current module-format load failure: true.
 - Source command presence remains useful, but runtime command availability is currently blocked by the extension load failure.
+- See `extension-load-audit.md` for the source/capture diagnosis of the module-format load error.
 
 ## Drift guard summary
 
@@ -49,4 +50,4 @@ Extension isolation launch check:
 - Removed-surface changelog guard: 1.
 - Launch isolation guards passed: 2/2.
 - Current extension runtime load failure detected: 1.
-- If `/subagents` or `/subagents-status` reappears, this file and the scorecard must be updated rather than silently carrying stale removal findings.
+- Extension load audit: `extension-load-audit.md`.- If `/subagents` or `/subagents-status` reappears, this file and the scorecard must be updated rather than silently carrying stale removal findings.
