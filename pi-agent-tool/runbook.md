@@ -101,6 +101,7 @@ Before any `keep`, verify:
 - `isolation-proof.md` says `native_no_subagent_tool: true`.
 - `isolation-proof.md` says `subagents_no_native_agent_tool: true`.
 - `source-probes.md` includes removed `/subagents-status` and `/subagents` manager evidence for extension `0.24.0`.
+- `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `./autoresearch.sh` exits 0 and emits `METRIC actual_eval_score=...`.
 
 Then use `run_experiment` and `log_experiment` with ASI including hypothesis, evidence, isolation proof, and next action hint.

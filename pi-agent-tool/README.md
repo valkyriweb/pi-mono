@@ -15,6 +15,7 @@ Current source reality matters: installed `pi-subagents` is `0.24.0`, where `/su
 - `runbook.md` — exact native-only and extension-only launch/capture steps.
 - `scorecard.md` — filled scorecard for all 9 scenarios × 2 arms.
 - `findings.md` — concise result report.
+- `evidence-manifest.md` — scorecard-to-evidence map and file integrity guard.
 - `isolation-proof.md` — proof of active surface isolation.
 - `source-probes.md` — source-backed evidence snippets.
 - `captures/` — tmux and source-backed scenario captures.
@@ -36,4 +37,4 @@ cd /Users/luke/Projects/personal/pi-mono-fork/pi-agent-tool
 ./autoresearch.sh
 ```
 
-Live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. Two removed-command probes in the extension arm did fall through to parent model turns; those token costs are recorded as UX evidence.
+Live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. Two removed-command probes in the extension arm did fall through to parent model turns; those token costs are recorded as UX evidence. `evidence-manifest.md` ties each scorecard row to an existing evidence file so stale paths fail the scorer.

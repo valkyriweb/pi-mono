@@ -20,6 +20,11 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `task_agent_coverage`
 - `source_probe_coverage`
 - `honest_limitations`
+- `scorecard_evidence_rows`
+- `evidence_file_coverage`
+- `evidence_manifest_rows`
+- `live_capture_links`
+- `version_guard_verified`
 
 ## How to run
 
@@ -45,6 +50,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `runbook.md` — exact isolation launches and capture commands.
 - `scorecard.md` — filled 9×2 scenario scorecard.
 - `findings.md` — final comparison summary.
+- `evidence-manifest.md` — scorecard-to-evidence map and integrity guard.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
 - `captures/` — tmux and source-backed capture files.
@@ -72,3 +78,4 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - Source probes show installed `pi-subagents` is `0.24.0` and removed `/subagents-status` plus the old manager overlay.
 - Current native `agent` schema lacks the requested non-spawn task lifecycle actions; S09 is scored absent/pending.
 - Removed `/subagents` and `/subagents-status` probes fell through to parent model turns; this is useful UX/token evidence but should not be repeated unless intentionally measuring fallback behavior.
+- Next iteration added `evidence-manifest.md` plus scorer checks that every scorecard evidence path exists, every scenario has a manifest row, live captures are linked, and the `pi-subagents 0.24.0` removed-surface guard is preserved.

@@ -316,7 +316,8 @@ export function createAgentToolDefinition(
 				.map((part) => part.text)
 				.join("\n");
 			component.addChild(new Spacer(1));
-			if (options.expanded && result.details) {
+			const hasRunDetails = Boolean(result.details?.runs?.length);
+			if (options.expanded && hasRunDetails && result.details) {
 				const details = result.details;
 				const expandedText = [
 					`agent ${details.mode}: ${details.status}`,
@@ -324,7 +325,7 @@ export function createAgentToolDefinition(
 				].join("\n");
 				component.addChild(new Text(expandedText, 0, 0));
 			} else {
-				const collapsedText = result.details ? formatFinalResult(result.details) : text;
+				const collapsedText = hasRunDetails && result.details ? formatFinalResult(result.details) : text;
 				component.addChild(new Text(collapsedText.split("\n").slice(0, 8).join("\n"), 0, 0));
 			}
 			return component;

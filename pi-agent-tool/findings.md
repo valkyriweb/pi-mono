@@ -76,6 +76,7 @@
 
 ## Evidence quality notes
 
+- `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
 - Scenario captures for S01-S04, S08, and S09 are source-backed to avoid paid child-agent runs.
 - S05-S07 include cheap command/UI captures plus source evidence.

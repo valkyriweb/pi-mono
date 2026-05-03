@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -51,6 +51,33 @@ done
 
 honest_limitations=$(grep -Eio 'unavailable|pending|absent|removed|not run|n/a|no live|not equivalent|closest equivalent' findings.md scorecard.md isolation-proof.md | wc -l | tr -d ' ')
 
+scorecard_evidence_rows=0
+evidence_file_coverage=0
+missing_evidence_paths=()
+while IFS= read -r evidence_path; do
+  [[ -n "$evidence_path" ]] || continue
+  ((scorecard_evidence_rows+=1))
+  if [[ -s "$evidence_path" ]]; then
+    ((evidence_file_coverage+=1))
+  else
+    missing_evidence_paths+=("$evidence_path")
+  fi
+done < <(awk -F'|' '/^\| S[0-9][0-9] / { value=$17; gsub(/^[ \t`]+|[ \t`]+$/, "", value); print value }' scorecard.md)
+
+evidence_manifest_rows=$(grep -Ec '^\| S[0-9][0-9] ' evidence-manifest.md || true)
+live_capture_links=$(
+  grep -Eho 'captures/[^` |)]*(live|startup)[^` |)]*\.txt' evidence-manifest.md findings.md runbook.md \
+    | sort -u \
+    | wc -l \
+    | tr -d ' '
+)
+version_guard_verified=0
+if grep -Eq 'pi-subagents 0\.24\.0' evidence-manifest.md source-probes.md findings.md \
+  && grep -Eiq 'removed.*/subagents-status|/subagents-status.*removed' evidence-manifest.md source-probes.md findings.md \
+  && grep -Eiq 'removed.*manager overlay|manager overlay.*removed' evidence-manifest.md source-probes.md findings.md; then
+  version_guard_verified=1
+fi
+
 # Composite score rewards evidence completeness and isolation, capped to avoid padding.
 cap() {
   local value="$1"
@@ -69,6 +96,10 @@ score=$((score + $(cap "$findings_sections_touched" 9) * 3))
 score=$((score + $(cap "$task_agent_coverage" 10) * 2))
 score=$((score + $(cap "$source_probe_coverage" 12) * 2))
 score=$((score + $(cap "$honest_limitations" 12)))
+score=$((score + $(cap "$evidence_file_coverage" 18)))
+score=$((score + $(cap "$evidence_manifest_rows" 18)))
+score=$((score + $(cap "$live_capture_links" 10)))
+score=$((score + version_guard_verified * 8))
 
 missing=0
 (( required_file_count == ${#required_files[@]} )) || missing=1
@@ -79,10 +110,15 @@ missing=0
 (( scorecard_rows_touched >= 18 )) || missing=1
 (( findings_sections_touched >= 9 )) || missing=1
 (( source_probe_coverage >= 10 )) || missing=1
+(( scorecard_evidence_rows >= 18 )) || missing=1
+(( evidence_file_coverage == scorecard_evidence_rows )) || missing=1
+(( evidence_manifest_rows >= 18 )) || missing=1
+(( live_capture_links >= 8 )) || missing=1
+(( version_guard_verified == 1 )) || missing=1
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -97,3 +133,8 @@ echo "METRIC source_probe_coverage=$source_probe_coverage"
 echo "METRIC honest_limitations=$honest_limitations"
 echo "METRIC required_file_count=$required_file_count"
 echo "METRIC bash_syntax_ok=$bash_syntax_ok"
+echo "METRIC scorecard_evidence_rows=$scorecard_evidence_rows"
+echo "METRIC evidence_file_coverage=$evidence_file_coverage"
+echo "METRIC evidence_manifest_rows=$evidence_manifest_rows"
+echo "METRIC live_capture_links=$live_capture_links"
+echo "METRIC version_guard_verified=$version_guard_verified"

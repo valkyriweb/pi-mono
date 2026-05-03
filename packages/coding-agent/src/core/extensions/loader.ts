@@ -58,6 +58,89 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 
 const require = createRequire(import.meta.url);
 
+const PACKAGE_EXPORT_CONDITIONS = ["import", "node", "default"] as const;
+
+type JsonRecord = Record<string, unknown>;
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parsePackageSpecifier(specifier: string): { packageName: string; exportKey: string } {
+	const parts = specifier.split("/");
+	const isScoped = specifier.startsWith("@");
+	const packageName = isScoped ? (parts[0] && parts[1] ? `${parts[0]}/${parts[1]}` : "") : (parts[0] ?? "");
+	const subpath = parts.slice(isScoped ? 2 : 1).join("/");
+	if (!packageName) {
+		throw new Error(`Invalid package specifier: ${specifier}`);
+	}
+	return { packageName, exportKey: subpath ? `./${subpath}` : "." };
+}
+
+function resolveConditionalPackageExport(target: unknown): string | undefined {
+	if (typeof target === "string") return target;
+	if (!isJsonRecord(target)) return undefined;
+	for (const condition of PACKAGE_EXPORT_CONDITIONS) {
+		const resolved = resolveConditionalPackageExport(target[condition]);
+		if (resolved) return resolved;
+	}
+	return undefined;
+}
+
+function resolvePackageExportTarget(exportsField: unknown, exportKey: string): string | undefined {
+	if (typeof exportsField === "string") return exportKey === "." ? exportsField : undefined;
+	if (!isJsonRecord(exportsField)) return undefined;
+	if (Object.hasOwn(exportsField, exportKey)) {
+		return resolveConditionalPackageExport(exportsField[exportKey]);
+	}
+	return exportKey === "." ? resolveConditionalPackageExport(exportsField) : undefined;
+}
+
+function readPackageJson(packageJsonPath: string): JsonRecord {
+	const parsed = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as unknown;
+	if (!isJsonRecord(parsed)) {
+		throw new Error(`Invalid package.json: ${packageJsonPath}`);
+	}
+	return parsed;
+}
+
+function findPackageJsonPath(packageName: string, startDir: string): string {
+	let currentDir = path.resolve(startDir);
+	while (true) {
+		const candidate = path.join(currentDir, "node_modules", packageName, "package.json");
+		if (fs.existsSync(candidate)) return candidate;
+		const parentDir = path.dirname(currentDir);
+		if (parentDir === currentDir) break;
+		currentDir = parentDir;
+	}
+	throw new Error(`Could not resolve package ${packageName} from ${startDir}`);
+}
+
+function resolvePackageExportFallback(specifier: string, startDir: string): string {
+	const { packageName, exportKey } = parsePackageSpecifier(specifier);
+	const packageJsonPath = findPackageJsonPath(packageName, startDir);
+	const packageRoot = path.dirname(packageJsonPath);
+	const packageJson = readPackageJson(packageJsonPath);
+	const exportTarget = resolvePackageExportTarget(packageJson.exports, exportKey);
+	if (!exportTarget) {
+		throw new Error(`Package ${packageName} does not export ${exportKey}`);
+	}
+	const resolvedPath = path.resolve(packageRoot, exportTarget);
+	const relativePath = path.relative(packageRoot, resolvedPath);
+	if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+		throw new Error(`Package ${packageName} export ${exportKey} resolves outside the package root`);
+	}
+	return resolvedPath;
+}
+
+function resolveImportSpecifier(specifier: string, startDir: string): string {
+	const resolve = (import.meta as ImportMeta & { resolve?: (s: string) => string }).resolve;
+	if (typeof resolve === "function") {
+		return fileURLToPath(resolve(specifier));
+	}
+	return resolvePackageExportFallback(specifier, startDir);
+}
+
 /**
  * Get aliases for jiti (used in Node.js/development mode).
  * In Bun binary mode, virtualModules is used instead.
@@ -80,7 +163,7 @@ function getAliases(): Record<string, string> {
 		if (fs.existsSync(workspacePath)) {
 			return workspacePath;
 		}
-		return fileURLToPath(import.meta.resolve(specifier));
+		return resolveImportSpecifier(specifier, __dirname);
 	};
 
 	_aliases = {

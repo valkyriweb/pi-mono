@@ -7,18 +7,19 @@ import { createFindToolDefinition } from "../../../src/core/tools/find.js";
 /**
  * Regression test for https://github.com/badlogic/pi-mono/issues/3303
  *
- * The `find` tool previously collected every `.gitignore` under the search
- * path and passed them to `fd` via `--ignore-file`. fd treats `--ignore-file`
- * entries as a single global ignore source, so rules from `a/.gitignore`
- * also filtered files under sibling `b/`. The fix switches to fd's
- * hierarchical `.gitignore` handling via `--no-require-git` and drops the
- * manual collection.
+ * This regression specifically covers fd `.gitignore` behavior because bfs
+ * intentionally ignores `.gitignore`. The `find` tool previously collected
+ * every `.gitignore` under the search path and passed them to `fd` via
+ * `--ignore-file`. fd treats `--ignore-file` entries as a single global ignore
+ * source, so rules from `a/.gitignore` also filtered files under sibling `b/`.
+ * The fix switches to fd's hierarchical `.gitignore` handling via
+ * `--no-require-git` and drops the manual collection.
  */
 describe("issue #3303 nested .gitignore rules leak into sibling directories", () => {
 	let tempRoot: string;
 
 	async function runFind(pattern: string): Promise<string[]> {
-		const def = createFindToolDefinition(tempRoot);
+		const def = createFindToolDefinition(tempRoot, { backend: "fd" });
 		const ctx = {} as Parameters<typeof def.execute>[4];
 		const result = (await def.execute("call-1", { pattern }, undefined, undefined, ctx)) as {
 			content: Array<{ type: string; text?: string }>;
