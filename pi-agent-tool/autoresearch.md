@@ -136,6 +136,12 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `eval_plan_token_caveat`
 - `eval_plan_secondary_metrics_delegated`
 - `eval_plan_currentness_verified`
+- `scorecard_template_rows`
+- `scorecard_template_warning`
+- `scorecard_template_current_columns`
+- `scorecard_template_placeholder_rows`
+- `scorecard_template_no_stale_claims`
+- `scorecard_template_verified`
 - `scenario_verdict_rows`
 - `scenario_verdict_current_live_rows`
 - `scenario_verdict_current_failure_rows`
@@ -186,6 +192,8 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - `eval-plan-currentness.md` — audit that the plan reflects current live/failure evidence instead of stale source-only baseline wording.
 - `runbook.md` — exact isolation launches and capture commands.
 - `scorecard.md` — filled 9×2 scenario scorecard.
+- `scorecard-template.md` — blank reusable scorecard scaffolding; not current evidence.
+- `scorecard-template-audit.md` — audit that the template contains no stale filled-score/source-only claims.
 - `findings.md` — final comparison summary.
 - `evidence-manifest.md` — scorecard-to-evidence map and integrity guard.
 - `command-surface.md` — native vs extension command-surface verification and drift guard.
@@ -248,3 +256,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration added `scripts/check-artifact-index.py` plus `artifact-index.md` and updated README/evidence-manifest/runbook so artifact indexes stay synchronized with `autoresearch.sh` required files.
 - Next iteration found stale `eval-plan.md` wording that still said S01 had no live child after the native live probe; it added `scripts/check-eval-plan-currentness.py` plus `eval-plan-currentness.md` and updated the plan's S01, runtime, token, and metric caveats.
 - Next iteration fixed a generated `command-surface.md` bullet-join bug where the extension-load audit guardrail and `/subagents` reappearance warning rendered as one fused bullet, and added a command-surface markdown guardrail metric.
+- Next iteration found tracked `scorecard-template.md` still contained stale filled baseline scores and obsolete source-only/runtime claims; it converted the file to placeholder-only scaffolding and added `scripts/check-scorecard-template.py` plus `scorecard-template-audit.md`.

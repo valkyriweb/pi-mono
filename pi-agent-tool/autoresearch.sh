@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md eval-plan-currentness.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md token-accounting-audit.md repro-hygiene.md recommendation-consistency.md rerun-commands.md artifact-index.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md scenario-verdict-audit.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md eval-plan-currentness.md runbook.md scorecard.md scorecard-template.md scorecard-template-audit.md findings.md evidence-manifest.md command-surface.md token-evidence.md token-accounting-audit.md repro-hygiene.md recommendation-consistency.md rerun-commands.md artifact-index.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md scenario-verdict-audit.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -314,6 +314,18 @@ eval_plan_token_caveat=$(get_eval_plan_currentness_metric eval_plan_token_caveat
 eval_plan_secondary_metrics_delegated=$(get_eval_plan_currentness_metric eval_plan_secondary_metrics_delegated)
 eval_plan_currentness_verified=$(get_eval_plan_currentness_metric eval_plan_currentness_verified)
 
+scorecard_template_output=$(python3 scripts/check-scorecard-template.py)
+get_scorecard_template_metric() {
+  local name="$1"
+  printf '%s\n' "$scorecard_template_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+scorecard_template_rows=$(get_scorecard_template_metric scorecard_template_rows)
+scorecard_template_warning=$(get_scorecard_template_metric scorecard_template_warning)
+scorecard_template_current_columns=$(get_scorecard_template_metric scorecard_template_current_columns)
+scorecard_template_placeholder_rows=$(get_scorecard_template_metric scorecard_template_placeholder_rows)
+scorecard_template_no_stale_claims=$(get_scorecard_template_metric scorecard_template_no_stale_claims)
+scorecard_template_verified=$(get_scorecard_template_metric scorecard_template_verified)
+
 artifact_index_output=$(python3 scripts/check-artifact-index.py)
 get_artifact_index_metric() {
   local name="$1"
@@ -462,8 +474,8 @@ score=$((score + recommendation_native_default * 5))
 score=$((score + recommendation_rerun_trigger * 5))
 score=$((score + recommendation_removed_slash_protection * 5))
 score=$((score + recommendation_consistency_verified * 10))
-score=$((score + $(cap "$rerun_readme_commands_present" 27)))
-score=$((score + $(cap "$rerun_runbook_anchors_present" 16)))
+score=$((score + $(cap "$rerun_readme_commands_present" 28)))
+score=$((score + $(cap "$rerun_runbook_anchors_present" 17)))
 score=$((score + rerun_readme_removed_manager_probe * 8))
 score=$((score + rerun_readme_live_child_checker * 5))
 score=$((score + rerun_readme_write_generators * 5))
@@ -476,11 +488,17 @@ score=$((score + eval_plan_runtime_caveat * 6))
 score=$((score + eval_plan_token_caveat * 6))
 score=$((score + eval_plan_secondary_metrics_delegated * 4))
 score=$((score + eval_plan_currentness_verified * 10))
-score=$((score + $(cap "$artifact_index_required_files" 24)))
-score=$((score + $(cap "$artifact_index_readme_required_present" 24)))
+score=$((score + $(cap "$scorecard_template_rows" 18)))
+score=$((score + scorecard_template_warning * 5))
+score=$((score + scorecard_template_current_columns * 5))
+score=$((score + $(cap "$scorecard_template_placeholder_rows" 18)))
+score=$((score + scorecard_template_no_stale_claims * 8))
+score=$((score + scorecard_template_verified * 10))
+score=$((score + $(cap "$artifact_index_required_files" 26)))
+score=$((score + $(cap "$artifact_index_readme_required_present" 26)))
 score=$((score + artifact_index_readme_directory_entries * 4))
-score=$((score + $(cap "$artifact_index_manifest_audited_present" 18)))
-score=$((score + $(cap "$artifact_index_required_files_exist" 24)))
+score=$((score + $(cap "$artifact_index_manifest_audited_present" 19)))
+score=$((score + $(cap "$artifact_index_required_files_exist" 26)))
 score=$((score + artifact_index_verified * 10))
 score=$((score + $(cap "$scenario_verdict_rows" 18)))
 score=$((score + scenario_verdict_current_live_rows * 3))
@@ -599,9 +617,9 @@ missing=0
 (( recommendation_rerun_trigger == 1 )) || missing=1
 (( recommendation_removed_slash_protection == 1 )) || missing=1
 (( recommendation_consistency_verified == 1 )) || missing=1
-(( rerun_readme_commands_expected == 27 )) || missing=1
+(( rerun_readme_commands_expected == 28 )) || missing=1
 (( rerun_readme_commands_present == rerun_readme_commands_expected )) || missing=1
-(( rerun_runbook_anchors_expected == 16 )) || missing=1
+(( rerun_runbook_anchors_expected == 17 )) || missing=1
 (( rerun_runbook_anchors_present == rerun_runbook_anchors_expected )) || missing=1
 (( rerun_readme_removed_manager_probe == 1 )) || missing=1
 (( rerun_readme_live_child_checker == 1 )) || missing=1
@@ -615,10 +633,16 @@ missing=0
 (( eval_plan_token_caveat == 1 )) || missing=1
 (( eval_plan_secondary_metrics_delegated == 1 )) || missing=1
 (( eval_plan_currentness_verified == 1 )) || missing=1
+(( scorecard_template_rows == 18 )) || missing=1
+(( scorecard_template_warning == 1 )) || missing=1
+(( scorecard_template_current_columns == 1 )) || missing=1
+(( scorecard_template_placeholder_rows == 18 )) || missing=1
+(( scorecard_template_no_stale_claims == 1 )) || missing=1
+(( scorecard_template_verified == 1 )) || missing=1
 (( artifact_index_required_files == ${#required_files[@]} )) || missing=1
 (( artifact_index_readme_required_present == artifact_index_required_files )) || missing=1
 (( artifact_index_readme_directory_entries == 2 )) || missing=1
-(( artifact_index_manifest_audited_expected == 18 )) || missing=1
+(( artifact_index_manifest_audited_expected == 19 )) || missing=1
 (( artifact_index_manifest_audited_present == artifact_index_manifest_audited_expected )) || missing=1
 (( artifact_index_required_files_exist == artifact_index_required_files )) || missing=1
 (( artifact_index_verified == 1 )) || missing=1
@@ -648,7 +672,7 @@ missing=0
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified token_accounting_verified=$token_accounting_verified repro_hygiene_verified=$repro_hygiene_verified recommendation_consistency_verified=$recommendation_consistency_verified rerun_commands_verified=$rerun_commands_verified eval_plan_currentness_verified=$eval_plan_currentness_verified artifact_index_verified=$artifact_index_verified scenario_verdict_verified=$scenario_verdict_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified token_accounting_verified=$token_accounting_verified repro_hygiene_verified=$repro_hygiene_verified recommendation_consistency_verified=$recommendation_consistency_verified rerun_commands_verified=$rerun_commands_verified eval_plan_currentness_verified=$eval_plan_currentness_verified scorecard_template_verified=$scorecard_template_verified artifact_index_verified=$artifact_index_verified scenario_verdict_verified=$scenario_verdict_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -772,6 +796,12 @@ echo "METRIC eval_plan_runtime_caveat=$eval_plan_runtime_caveat"
 echo "METRIC eval_plan_token_caveat=$eval_plan_token_caveat"
 echo "METRIC eval_plan_secondary_metrics_delegated=$eval_plan_secondary_metrics_delegated"
 echo "METRIC eval_plan_currentness_verified=$eval_plan_currentness_verified"
+echo "METRIC scorecard_template_rows=$scorecard_template_rows"
+echo "METRIC scorecard_template_warning=$scorecard_template_warning"
+echo "METRIC scorecard_template_current_columns=$scorecard_template_current_columns"
+echo "METRIC scorecard_template_placeholder_rows=$scorecard_template_placeholder_rows"
+echo "METRIC scorecard_template_no_stale_claims=$scorecard_template_no_stale_claims"
+echo "METRIC scorecard_template_verified=$scorecard_template_verified"
 echo "METRIC artifact_index_required_files=$artifact_index_required_files"
 echo "METRIC artifact_index_readme_required_present=$artifact_index_readme_required_present"
 echo "METRIC artifact_index_readme_directory_entries=$artifact_index_readme_directory_entries"

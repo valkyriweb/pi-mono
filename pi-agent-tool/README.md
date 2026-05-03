@@ -16,6 +16,8 @@ Current source/runtime reality matters: installed `pi-subagents` is `0.24.0`, wh
 - `eval-plan-currentness.md` — audit that the eval plan reflects the current live/failure evidence mix.
 - `runbook.md` — exact native-only and extension-only launch/capture steps.
 - `scorecard.md` — filled scorecard for all 9 scenarios × 2 arms.
+- `scorecard-template.md` — blank reusable scorecard scaffolding; not current evidence.
+- `scorecard-template-audit.md` — audit that the template contains no stale filled-score claims.
 - `findings.md` — concise result report.
 - `evidence-manifest.md` — scorecard-to-evidence map and file integrity guard.
 - `command-surface.md` — native vs extension command-surface verification and drift guard.
@@ -65,10 +67,11 @@ python3 scripts/check-recommendation-consistency.py
 python3 scripts/check-rerun-commands.py
 python3 scripts/check-artifact-index.py
 python3 scripts/check-eval-plan-currentness.py
+python3 scripts/check-scorecard-template.py
 python3 scripts/check-scorecard-consistency.py --write score-analysis.md
 python3 scripts/check-findings-alignment.py
 python3 scripts/check-task-lifecycle.py
 ./autoresearch.sh
 ```
 
-Broad live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. One tiny S01 live probe was added because source-only evidence was exhausted: native completed, while the extension failed to load before `/run scout`. `extension-load-audit.md` ties that failure to the current package manifest, ESM entry shape, Pi jiti loader, and captured module-format error. `capture-timeline.md` makes clear that older extension-loaded captures predate the newer load-failure captures. Two earlier removed-command probes in the extension arm did fall through to parent model turns; `token-evidence.md` records the observed ↑22k/↓187 token, $0.111 cost. If the extension loader issue is fixed, rerun S01 plus the cheap extension command probes before treating older captures as current proof. `scenario-verdict-audit.md` classifies every scored row by evidence type, `token-accounting-audit.md` keeps model-call/cost wording aligned, `repro-hygiene.md` keeps the scorer from dirtying Python bytecode caches, `recommendation-consistency.md` prevents the final recommendation from implying the extension is currently usable, `rerun-commands.md` keeps reproduction commands aligned, `artifact-index.md` keeps artifact indexes synchronized, `eval-plan-currentness.md` prevents stale planning prose from contradicting live/failure evidence, and `evidence-manifest.md` ties each row to an existing evidence file so stale paths fail the scorer.
+Broad live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. One tiny S01 live probe was added because source-only evidence was exhausted: native completed, while the extension failed to load before `/run scout`. `extension-load-audit.md` ties that failure to the current package manifest, ESM entry shape, Pi jiti loader, and captured module-format error. `capture-timeline.md` makes clear that older extension-loaded captures predate the newer load-failure captures. Two earlier removed-command probes in the extension arm did fall through to parent model turns; `token-evidence.md` records the observed ↑22k/↓187 token, $0.111 cost. If the extension loader issue is fixed, rerun S01 plus the cheap extension command probes before treating older captures as current proof. `scenario-verdict-audit.md` classifies every scored row by evidence type, `token-accounting-audit.md` keeps model-call/cost wording aligned, `repro-hygiene.md` keeps the scorer from dirtying Python bytecode caches, `recommendation-consistency.md` prevents the final recommendation from implying the extension is currently usable, `rerun-commands.md` keeps reproduction commands aligned, `artifact-index.md` keeps artifact indexes synchronized, `eval-plan-currentness.md` prevents stale planning prose from contradicting live/failure evidence, `scorecard-template-audit.md` prevents the reusable template from being mistaken for current evidence, and `evidence-manifest.md` ties each row to an existing evidence file so stale paths fail the scorer.

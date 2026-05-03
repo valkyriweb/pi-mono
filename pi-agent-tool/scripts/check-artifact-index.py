@@ -10,6 +10,7 @@ AUDITED_GLOBAL_ARTIFACTS = {
     "source-probes.md",
     "command-surface.md",
     "eval-plan-currentness.md",
+    "scorecard-template-audit.md",
     "live-child-output.md",
     "extension-load-audit.md",
     "capture-timeline.md",
