@@ -1,5 +1,7 @@
-# Startup capture: subagents
-# 2026-05-03T16:08:31Z
+# Scenario capture: subagents-s05-status-removed-live
+# mode: subagents
+# prompt: /subagents-status
+# 2026-05-03T16:09:31Z
 # launch: cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Projects/personal/pi-mono-fork/pi-test.sh --no-session --no-builtin-tools --no-extensions -e /Users/luke/.pi/agent/git/github.com/nicobailon/pi-subagents/src/extension/index.ts --thinking off 
 
 cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Project
@@ -38,8 +40,22 @@ pi-subagents, planning, simplify, skill-authoring, utilities
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
  and restart tmux.
 
+
+ /subagents-status
+
+
+ Checking configured subagents and current run state.
+
+
+ subagent list
+ Executable agents:
+ - code-craft (user): Audit and review code for clean design, naming, composability, and extensibi…
+
+
+ ⠙ Working...
+
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ~/Projects/personal/pi-mono-fork (autoresearch/pi-agent-tool-eval-2026-05-02)
-$0.000 (sub) 3.1% 8.4k/272k (auto)                                                 (openai-codex) gpt-5.5 • thinking off
+↑11k ↓106 $0.056 (sub) 4.1% 11k/272k (auto)                                        (openai-codex) gpt-5.5 • thinking off

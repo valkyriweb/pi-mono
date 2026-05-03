@@ -1,5 +1,7 @@
-# Startup capture: native
-# 2026-05-03T16:08:24Z
+# Scenario capture: native-s07-ui-selector-live
+# mode: native
+# prompt: /agents
+# 2026-05-03T16:09:07Z
 # launch: cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Projects/personal/pi-mono-fork/pi-test.sh --no-session --no-extensions --tools agent\,read\,grep\,find\,ls --thinking off 
 
 cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Project
@@ -35,10 +37,20 @@ pi-subagents, planning, simplify, skill-authoring, utilities
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+ Agents
+
+ → explore [builtin]
+   general [builtin]
+   plan [builtin]
+   reviewer [builtin]
+   scout [builtin]
+   worker [builtin]
+
+ explore: Read-only exploration of relevant files, symbols, and constraints.
+ context: slim  tools: read, grep, find, ls
+
+ ↑↓ navigate  enter insert scaffold  escape/ctrl+c cancel
+
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ~/Projects/personal/pi-mono-fork (autoresearch/pi-agent-tool-eval-2026-05-02)
 $0.000 (sub) 4.3% 12k/272k (auto)                                                  (openai-codex) gpt-5.5 • thinking off
-
-
-
-

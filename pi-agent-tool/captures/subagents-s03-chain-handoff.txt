@@ -1,12 +1,3 @@
-# Scenario capture: subagents-s03-chain-handoff
-# Prompt: /chain scout -> plan -> reviewer for context discipline question
-# 2026-05-02TmanualZ
-
-`pi-subagents` also supports chain handoff through slash commands and tool schema.
-Evidence:
-- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/slash/slash-commands.ts` registers `/chain` and parses per-step tasks.
-- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/extension/schemas.ts` supports `chain` arrays.
-- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/runs/foreground/subagent-executor.ts` routes `params.chain` to `executeChain(...)`.
-- README documents `/chain agent1 "task1" -> agent2 "task2"`.
-
-Result: strong chain support with slash-command ergonomics; likely better discoverability for interactive users, native likely cleaner for model tool calls.
+# S03 pi-subagents chain handoff
+Evidence mode: source-backed; live child not run to avoid paid tokens.
+`/chain` is registered and forwards sequential chain params; `/run-chain` supports saved `.chain.md` workflows. Native `/agents` and native `agent` were not used.

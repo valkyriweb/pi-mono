@@ -1,5 +1,7 @@
-# Startup capture: native
-# 2026-05-03T16:08:24Z
+# Scenario capture: native-s06-doctor-live
+# mode: native
+# prompt: /agents-doctor
+# 2026-05-03T16:08:43Z
 # launch: cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Projects/personal/pi-mono-fork/pi-test.sh --no-session --no-extensions --tools agent\,read\,grep\,find\,ls --thinking off 
 
 cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Project
@@ -33,12 +35,32 @@ pi-subagents, planning, simplify, skill-authoring, utilities
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
  and restart tmux.
 
+ Native agents doctor report
+
+ Runtime
+ - cwd: /Users/luke/Projects/personal/pi-mono-fork
+ - agent runtime services: available
+ - active parent tools: agent, read, grep, find, ls
+ - parent model: openai-codex/gpt-5.5
+ - parent thinking: off
+
+ Discovery
+ - user agents dir: /Users/luke/.pi/agent/agents
+ - project agents dir: not found
+ - project agents: require interactive confirmation when run with agentScope project/both
+ - agents: 6
+ - chains: 0
+ - user chains dir: /Users/luke/.pi/agent/chains
+ - project chains dir: not found
+
+ Definition diagnostics
+ - none
+
+ Agent config checks
+ - none
+
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ~/Projects/personal/pi-mono-fork (autoresearch/pi-agent-tool-eval-2026-05-02)
 $0.000 (sub) 4.3% 12k/272k (auto)                                                  (openai-codex) gpt-5.5 • thinking off
-
-
-
-

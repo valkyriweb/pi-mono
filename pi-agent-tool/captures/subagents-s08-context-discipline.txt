@@ -1,11 +1,3 @@
-# Scenario capture: subagents-s08-context-discipline
-# Prompt: child answers using only eval-design-prompt.md and eval-plan.md; compare context controls
-# 2026-05-02TmanualZ
-
-`pi-subagents` exposes context behavior mainly through command flags and extension execution behavior.
-Evidence:
-- `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/slash/slash-commands.ts` parses `--fork` for `/run`, `/chain`, `/parallel`, and `/run-chain` via `extractExecutionFlags`.
-- README notes spawned child sessions do not register the `subagent` tool, avoiding recursive delegation.
-- `src/extension/schemas.ts` does not show the same explicit native `context: none/slim/fork/default` enum surface.
-
-Result: good fork/no-recursion affordances, but native has clearer and more granular context discipline controls.
+# S08 pi-subagents context discipline/forking
+Evidence mode: source-backed.
+pi-subagents exposes `--fork` and `context: "fork"` but does not match native's `default/slim/none/fork` enum. Child prompt runtime tells subagents not to delegate further.

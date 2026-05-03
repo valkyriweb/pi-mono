@@ -1,11 +1,15 @@
-# Startup capture: native
-# 2026-05-03T16:08:24Z
-# launch: cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Projects/personal/pi-mono-fork/pi-test.sh --no-session --no-extensions --tools agent\,read\,grep\,find\,ls --thinking off 
+# Scenario capture: subagents-run-usage-live
+# mode: subagents
+# prompt: /run
+# 2026-05-03T16:09:56Z
+# launch: cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Projects/personal/pi-mono-fork/pi-test.sh --no-session --no-builtin-tools --no-extensions -e /Users/luke/.pi/agent/git/github.com/nicobailon/pi-subagents/src/extension/index.ts --thinking off 
 
 cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Project
-s/personal/pi-mono-fork/pi-test.sh --no-session --no-extensions --tools agent\,read\,grep\,find\,ls --thinking off
+s/personal/pi-mono-fork/pi-test.sh --no-session --no-builtin-tools --no-extensions -e /Users/luke/.pi/agent/git/github.c
+om/nicobailon/pi-subagents/src/extension/index.ts --thinking off
 ❯ cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Proje
-cts/personal/pi-mono-fork/pi-test.sh --no-session --no-extensions --tools agent\,read\,grep\,find\,ls --thinking off
+cts/personal/pi-mono-fork/pi-test.sh --no-session --no-builtin-tools --no-extensions -e /Users/luke/.pi/agent/git/github
+.com/nicobailon/pi-subagents/src/extension/index.ts --thinking off
 
  pi v0.72.1
  escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
@@ -29,16 +33,17 @@ pi-subagents, planning, simplify, skill-authoring, utilities
 /generate-web-diagram, /is, /parallel-cleanup, /parallel-context-build, /parallel-handoff-plan, /parallel-research,
 /parallel-review, /plan-review, /pr, /project-recap, /share, /wr
 
+[Extensions]
+  extension
+
 
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
  and restart tmux.
+
+ Error: Usage: /run <agent> [task] [--bg] [--fork]
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ~/Projects/personal/pi-mono-fork (autoresearch/pi-agent-tool-eval-2026-05-02)
-$0.000 (sub) 4.3% 12k/272k (auto)                                                  (openai-codex) gpt-5.5 • thinking off
-
-
-
-
+$0.000 (sub) 3.1% 8.4k/272k (auto)                                                 (openai-codex) gpt-5.5 • thinking off

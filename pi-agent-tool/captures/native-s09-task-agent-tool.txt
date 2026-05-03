@@ -1,17 +1,3 @@
-# Scenario capture: native-s09-task-agent-tool
-# Prompt: Verify updated native agent task-management actions
-# Evidence mode: source-backed inspection
-
-Expected updated native agent task surface:
-- action/create/list/get/update path on the native `agent` tool
-- task fields: id, subject, description, activeForm?, status, owner?, blocks, blockedBy, metadata?
-- statuses: pending, in_progress, completed, plus deleted as update action
-- behavior: create/list/get/update task records without spawning child agents; preserve existing spawn/single/parallel/chain delegation behavior
-
-Current source inspection:
-- Probe command: `grep -E "action|taskId|create|list|get|update" packages/coding-agent/src/core/tools/agent.ts` from the repo root.
-- `packages/coding-agent/src/core/tools/agent.ts` currently exposes single `{agent, task}`, parallel `tasks[]`, and `chain[]` modes.
-- No `action`, `taskId`, task-list create/list/get/update schema, or task persistence path is visible in this checkout.
-- This scenario should be rerun after the updated task agent tool lands.
-
-Verdict for current checkout: scenario included, but implementation evidence is pending/absent.
+# S09 native updated task-agent lifecycle
+Evidence mode: source-backed negative probe.
+Current native `agent` schema supports single/parallel/chain only. The expected non-spawn create/list/get/update/delete task lifecycle fields (`action`, `taskId`, `activeForm`, dependencies/metadata/status updates) are not present in packages/coding-agent/src/core/tools/agent.ts or the active harness tool schema.

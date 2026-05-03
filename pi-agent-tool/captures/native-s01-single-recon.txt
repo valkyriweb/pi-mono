@@ -1,12 +1,3 @@
-# Scenario capture: native-s01-single-recon
-# Prompt: Use scout agent to map native agent-tool implementation files and summarize integration points
-# 2026-05-02TmanualZ
-
-Native single-agent reconnaissance is first-class through `agent({ agent, task })`.
-Evidence:
-- `packages/coding-agent/src/core/tools/agent.ts` supports single mode with `{ agent, task }`.
-- `packages/coding-agent/src/core/agents/definitions.ts` includes built-in `scout` for read-only focused exploration.
-- `packages/coding-agent/src/core/agents/executor.ts` creates child `AgentSession`s and bounds tools by parent active tools.
-- `packages/coding-agent/src/core/agents/context.ts` defines child context policies and strips agent/subagent artifacts from forked context.
-
-Result: strong single-agent reconnaissance support with clean model-tool integration and isolated child context controls.
+# S01 native single-agent reconnaissance
+Evidence mode: source-backed; live child not run to avoid paid tokens.
+Native `agent` supports single `{ agent, task }` mode in packages/coding-agent/src/core/tools/agent.ts and built-in agents in packages/coding-agent/src/core/agents/definitions.ts. Isolation: evaluated under native launch with `--no-extensions`; no `subagent` extension loaded.

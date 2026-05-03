@@ -1,56 +1,74 @@
-# Autoresearch: Pi Agent Tool A/B Eval Design
+# Autoresearch: Native Pi `agent` vs `pi-subagents`
 
 ## Objective
 
-Optimize the eval artifacts under `pi-agent-tool/` for a compact, evidence-backed, repeatable comparison of native Pi delegation (`/agents` + `agent`) against the `pi-subagents` extension.
+Compare actual current behavior, UX, reliability, and token/value tradeoffs between native Pi delegation and the installed `pi-subagents` extension.
 
-## Metrics
+The eval must not overfit the scorer. It should prefer real tmux captures where cheap, source-backed evidence where live child runs would spend paid tokens, and honest `pending`/`unavailable` notes where a requested surface is absent.
 
-- **Primary**: `actual_eval_score` (unitless, higher is better) — actual A/B eval progress: real startup/scenario captures, portable capture timestamps, and filled scorecard/findings evidence.
-- **Secondary**: `startup_captures`, `scenario_captures`, `scorecard_rows_touched`, `findings_sections_touched`, `timestamp_syntax_ok`, `max_iterations`.
+## Primary metric
 
-## How to Run
+- **actual_eval_score** (unitless, higher is better): composite score for real captures, filled scorecard, findings, isolation proof, task-agent lifecycle coverage, source probes, and honest limitations.
 
-`./autoresearch.sh` outputs `METRIC name=value` lines.
+## Secondary metrics
 
-## Files in Scope
+- `startup_captures`
+- `scenario_captures`
+- `isolation_verified`
+- `scorecard_rows_touched`
+- `findings_sections_touched`
+- `task_agent_coverage`
+- `source_probe_coverage`
+- `honest_limitations`
 
-- `README.md` — concise overview and start command.
-- `eval-plan.md` — evidence, fair A/B design, metrics, scenarios, rubric.
-- `runbook.md` — exact run steps for both arms.
-- `scorecard-template.md` — fillable score table.
-- `findings-template.md` — final report structure.
-- `scripts/capture-startup.sh` — safe tmux startup capture.
-- `scripts/run-tmux-scenario.sh` — safe tmux scenario capture.
-- `autoresearch.md`, `autoresearch.sh` — loop docs and scorer.
+## How to run
 
-## Off Limits
+```bash
+./scripts/capture-source-probes.sh
+./scripts/capture-startup.sh native
+./scripts/capture-startup.sh subagents
+./scripts/run-tmux-scenario.sh native native-s06-doctor-live '/agents-doctor'
+./scripts/run-tmux-scenario.sh native native-s05-status-live '/agents-status'
+./scripts/run-tmux-scenario.sh native native-s07-ui-selector-live '/agents'
+./scripts/run-tmux-scenario.sh subagents subagents-s06-doctor-live '/subagents-doctor'
+./scripts/run-tmux-scenario.sh subagents subagents-s05-status-removed-live '/subagents-status'
+./scripts/run-tmux-scenario.sh subagents subagents-s07-manager-removed-live '/subagents'
+./autoresearch.sh
+```
 
-- Production source outside `pi-agent-tool/`.
-- Extension source under `~/.pi/agent/git/...` except read-only inspection.
-- Expensive automated eval runs, full builds, paid external calls, network research.
+`./autoresearch.sh` emits `METRIC actual_eval_score=...` and all secondary metrics.
+
+## Files in scope
+
+- `README.md` — overview and quick run commands.
+- `eval-plan.md` — scenario matrix and scoring rubric.
+- `runbook.md` — exact isolation launches and capture commands.
+- `scorecard.md` — filled 9×2 scenario scorecard.
+- `findings.md` — final comparison summary.
+- `isolation-proof.md` — proof that each arm avoided the other tool surface.
+- `source-probes.md` — generated source evidence.
+- `captures/` — tmux and source-backed capture files.
+- `scripts/*.sh` — safe local capture helpers.
+- `autoresearch.sh` — scoring harness.
+
+## Off limits
+
+- Do not modify production Pi source for this evaluation.
+- Do not use native `agent` in the `pi-subagents` arm.
+- Do not use `subagent` or extension commands in the native arm.
+- Do not run paid live child-agent tasks unless source evidence is insufficient and the cost is justified.
 
 ## Constraints
 
-- Keep the eval token-efficient.
-- Prefer fresh-context children and symmetrical tasks.
-- Same model/thinking level across arms.
-- Commands should be read-only except temp files/captures under `pi-agent-tool/`.
-- Cite evidence with local file paths or command snippets, not memory.
+- Same thinking level across arms: `--thinking off` for cheap capture baseline.
+- No live child-agent baseline. Removed-command probes may spend parent-model tokens if intentionally measuring fallback UX.
+- All artifacts stay under `pi-agent-tool/`.
+- Mark removed/unavailable surfaces honestly.
 
-## What's Been Tried
+## What's been tried
 
-- Initial artifact set created from repo-local evidence: native source/tests/docs, installed `pi-subagents` source/changelog, local Codex/Pi lineage references.
-- Scoring script initially checked artifact completeness rather than running expensive interactive evals.
-- The first metric saturated at 100 after enough required files/scenarios/citations/scripts were present.
-- The second metric saturated at 120 after adding Claude Bridge cache-stat accounting.
-- The third metric saturated after validating executability and table consistency.
-- Smoke readiness confirmed `tmux` and a Pi launcher exist.
-- Launcher readiness confirmed helpers prefer repo-local `pi-test.sh`.
-- Dry-run support confirmed helpers can be smoke-checked without opening interactive Pi.
-- Dry-run docs confirmed README/runbook make the cheap check discoverable.
-- Dry-run leak check confirmed cheap helper smoke tests do not leave tmux sessions behind.
-- Resume-limit check confirmed `autoresearch.config.json` has `maxIterations: 60`.
-- Local-launch proof confirmed dry-run output selects `./pi-test.sh` when that source-checkout launcher exists.
-- Dry-run cleanliness confirmed smoke checks do not leak tmux sessions or write capture files.
-- Luke asked to move past dry-run and run the actual eval. Next loop uses `actual_eval_score` to track real startup captures, scenario captures, scorecard progress, and findings progress.
+- Fresh state initialized after clearing previous autoresearch files and captures.
+- Source probes show native Pi now includes `/agents-doctor`, `/agents-status`, saved chains, and `/agents run/parallel/run-chain` scaffolds.
+- Source probes show installed `pi-subagents` is `0.24.0` and removed `/subagents-status` plus the old manager overlay.
+- Current native `agent` schema lacks the requested non-spawn task lifecycle actions; S09 is scored absent/pending.
+- Removed `/subagents` and `/subagents-status` probes fell through to parent model turns; this is useful UX/token evidence but should not be repeated unless intentionally measuring fallback behavior.

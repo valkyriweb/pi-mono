@@ -1,148 +1,80 @@
 # Runbook
 
-## Prep
+## 0. Reset and source probes
 
 ```bash
 cd /Users/luke/Projects/personal/pi-mono-fork/pi-agent-tool
-mkdir -p tmp captures
+rm -rf captures tmp
+mkdir -p captures tmp
+./scripts/capture-source-probes.sh
 ```
 
-Use the same model and thinking level for both arms. Start each arm in a clean terminal session. If using Anthropic models through `claude-bridge`, record cache statistics for every scenario: cache creation input tokens, cache read input tokens, uncached input tokens, output tokens, and any bridge-visible cache hit/miss summary.
+## 1. Native-only arm
 
-Before an interactive run, smoke-check helper launch commands without starting Pi:
+Launch flags:
 
 ```bash
-PI_AGENT_EVAL_DRY_RUN=1 ./scripts/capture-startup.sh native
-PI_AGENT_EVAL_DRY_RUN=1 ./scripts/run-tmux-scenario.sh native-ui '/agents'
+../pi-test.sh --no-session --no-extensions --tools agent,read,grep,find,ls --thinking off
 ```
 
-## Native-only mode
+Expected isolation:
 
-Goal: exercise only built-in `/agents` and native `agent`.
+- Built-in `agent` is available.
+- `pi-subagents` extension is not loaded because of `--no-extensions`.
+- `subagent` tool is not active.
+- Extension commands `/subagents`, `/run`, `/parallel`, `/chain`, `/run-chain`, `/subagents-status`, `/subagents-doctor` are not used.
 
-1. Disable or ignore `pi-subagents`.
-   - Preferred: launch Pi with the extension disabled if your local extension manager supports per-session disabling.
-   - Fallback: do not invoke `/subagents`, `/run`, `/chain`, `/parallel`, `/run-chain`, `/subagents-status`, `/subagents-doctor`, or activate `subagent`.
-2. Capture startup:
+Capture cheap startup/UI evidence:
 
 ```bash
 ./scripts/capture-startup.sh native
+./scripts/run-tmux-scenario.sh native native-s06-doctor-live '/agents-doctor'
+./scripts/run-tmux-scenario.sh native native-s05-status-live '/agents-status'
+./scripts/run-tmux-scenario.sh native native-s07-ui-selector-live '/agents'
 ```
 
-3. Verify:
-   - `/agents` opens the native selector.
-   - `agent` is available as a tool.
-   - `subagent` is not activated.
-   - Extension commands do not influence the run.
-4. Run scenarios 1-9 from `eval-plan.md`.
-5. Fill one Native row per scenario in `scorecard-template.md`.
+Do not run live child-agent prompts unless explicitly needed. Source-backed captures under `captures/native-s0*.txt` cover scenarios where live children would spend tokens.
 
-## `pi-subagents` mode
+## 2. `pi-subagents` arm
 
-Goal: exercise the extension surface.
+Launch flags:
 
-1. Ensure extension is installed/enabled at:
-
-```text
-~/.pi/agent/git/github.com/nicobailon/pi-subagents
+```bash
+../pi-test.sh --no-session --no-builtin-tools --no-extensions \
+  -e ~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/extension/index.ts \
+  --thinking off
 ```
 
-2. Capture startup:
+Expected isolation:
+
+- Built-in native tools are disabled by `--no-builtin-tools`; native `agent` is not active.
+- Only the explicit `pi-subagents` extension is loaded.
+- Native `/agents` is not used.
+- Extension command surface is current installed behavior: `/run`, `/parallel`, `/chain`, `/run-chain`, `/subagents-doctor`; `/subagents` and `/subagents-status` are unavailable in `0.24.0`.
+
+Capture cheap startup/UI evidence:
 
 ```bash
 ./scripts/capture-startup.sh subagents
+./scripts/run-tmux-scenario.sh subagents subagents-s06-doctor-live '/subagents-doctor'
+./scripts/run-tmux-scenario.sh subagents subagents-run-usage-live '/run'
+./scripts/run-tmux-scenario.sh subagents subagents-chain-usage-live '/chain'
+./scripts/run-tmux-scenario.sh subagents subagents-parallel-usage-live '/parallel'
+./scripts/run-tmux-scenario.sh subagents subagents-run-chain-usage-live '/run-chain'
 ```
 
-3. Verify:
-   - `/subagents` opens the extension manager.
-   - `/run`, `/chain`, `/parallel`, `/run-chain`, `/subagents-status`, and `/subagents-doctor` are available.
-   - Activate `subagent` only if testing tool mode.
-4. Run scenarios 1-9 from `eval-plan.md`.
-5. Fill one `pi-subagents` row per scenario in `scorecard-template.md`.
-
-## Scenario prompts
-
-### 1. Single-agent code reconnaissance
-
-Native:
-
-```text
-Use the scout agent to map native agent-tool implementation files and summarize integration points. Cite file paths. Do not modify files.
-```
-
-Extension:
-
-```text
-/run scout Map native agent-tool implementation files and summarize integration points. Cite file paths. Do not modify files.
-```
-
-### 2. Parallel review
-
-Native: use three parallel `agent` tasks: correctness, validation, simplicity.
-
-Extension:
-
-```text
-/parallel reviewer "Review eval-plan.md for correctness evidence gaps" -> reviewer "Review runbook.md for validation gaps" -> reviewer "Review README.md for simplicity and token efficiency"
-```
-
-### 3. Chain handoff
-
-Native: scout -> plan -> reviewer on whether scenario 8 fairly tests context inheritance.
-
-Extension:
-
-```text
-/chain scout "Find context controls in native and extension docs/source" -> plan "Design a fair context discipline test" -> reviewer "Critique fairness and missing controls"
-```
-
-### 4. Saved/reusable workflow
-
-Native: record a reusable prompt snippet or JSON tool-call pattern in captures.
-
-Extension: create or run the closest saved chain via `/subagents` or `/run-chain`.
-
-### 5. Async/status/control
-
-Native: mark unsupported unless current native UI exposes background/status controls.
-
-Extension:
-
-```text
-/run scout --bg Wait briefly, then report the current working directory and list pi-agent-tool files.
-/subagents-status
-```
-
-### 6. Doctor/diagnostics
-
-Native: capture startup/tool availability and note absence of direct doctor if applicable.
-
-Extension:
-
-```text
-/subagents-doctor
-```
-
-### 7. UI manager pass
-
-Use tmux capture, not screenshots by default:
+Removed-command probes are optional and can spend parent-model tokens because Pi treats an unregistered slash string as normal prompt text:
 
 ```bash
-./scripts/run-tmux-scenario.sh native-ui '/agents'
-./scripts/run-tmux-scenario.sh subagents-ui '/subagents'
+./scripts/run-tmux-scenario.sh subagents subagents-s05-status-removed-live '/subagents-status'
+./scripts/run-tmux-scenario.sh subagents subagents-s07-manager-removed-live '/subagents'
 ```
 
-### 8. Context discipline stress
+Do not use native `agent` or `/agents` in this arm.
 
-Ask the child to answer using only `eval-design-prompt.md` and `eval-plan.md`. Penalize over-searching unless justified.
+## 3. Task-agent lifecycle probe
 
-Native: test `context: "none"`, `"slim"`, and/or `"fork"` if accessible in tool call.
-
-Extension: test `--fork` and default mode; note if no exact equivalent exists.
-
-### 9. Updated task agent tool
-
-Native: verify whether the updated non-spawn task action surface is available on the native `agent` tool:
+Native expected request shape from the task brief:
 
 ```json
 {"action":"create","subject":"Map task API","description":"Verify create/list/get/update semantics","activeForm":"Mapping task API"}
@@ -154,24 +86,21 @@ Native: verify whether the updated non-spawn task action surface is available on
 {"action":"update","taskId":"1","status":"deleted"}
 ```
 
-Expected semantics: create/list/get/update task records without spawning a child agent; preserve existing single/parallel/chain delegation modes; support dependencies, metadata, and delete semantics where implemented.
+Current checkout verdict is source-backed: `packages/coding-agent/src/core/tools/agent.ts` does not expose `action`, `taskId`, `activeForm`, lifecycle statuses, dependencies, or metadata fields. Mark native S09 as pending/absent, not failed runtime behavior.
 
-Before scoring, record the source probes so the verdict is reproducible:
+`pi-subagents` has management actions for agent/chain definitions and async run control, but no general structured non-spawn task-list equivalent.
+
+## 4. Score and log
 
 ```bash
-grep -E "action|taskId|create|list|get|update" packages/coding-agent/src/core/tools/agent.ts
-grep -R -E "taskId|TaskList|TaskCreate|metadata|blockedBy|status.*completed" ~/.pi/agent/git/github.com/nicobailon/pi-subagents/src
+./autoresearch.sh
 ```
 
-Extension: record the closest `pi-subagents` equivalent, usually manager/status/saved-chain workflow controls. Mark as no equivalent if the extension lacks general task-list records.
+Before any `keep`, verify:
 
-## Evidence capture
+- `isolation-proof.md` says `native_no_subagent_tool: true`.
+- `isolation-proof.md` says `subagents_no_native_agent_tool: true`.
+- `source-probes.md` includes removed `/subagents-status` and `/subagents` manager evidence for extension `0.24.0`.
+- `./autoresearch.sh` exits 0 and emits `METRIC actual_eval_score=...`.
 
-Save terminal captures under `captures/` with names like:
-
-```text
-captures/native-s01-single-recon.txt
-captures/subagents-s01-single-recon.txt
-```
-
-For each run, record token usage from Pi UI/logs if visible. For Anthropic models via `claude-bridge`, also record cache creation/read token counts and cache hit ratio when exposed by bridge logs. If unavailable, mark `token_source=unavailable` and estimate from prompt/output length.
+Then use `run_experiment` and `log_experiment` with ASI including hypothesis, evidence, isolation proof, and next action hint.

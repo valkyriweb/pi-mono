@@ -1,5 +1,7 @@
-# Startup capture: native
-# 2026-05-03T16:08:24Z
+# Scenario capture: native-s05-status-live
+# mode: native
+# prompt: /agents-status
+# 2026-05-03T16:08:55Z
 # launch: cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Projects/personal/pi-mono-fork/pi-test.sh --no-session --no-extensions --tools agent\,read\,grep\,find\,ls --thinking off 
 
 cd /Users/luke/Projects/personal/pi-mono-fork && PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /Users/luke/Project
@@ -33,12 +35,14 @@ pi-subagents, planning, simplify, skill-authoring, utilities
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
  and restart tmux.
 
+ Native agent status
+
+ Background control: unsupported in native Pi; recent foreground runs are listed below.
+
+ No recent native agent runs.
+
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ~/Projects/personal/pi-mono-fork (autoresearch/pi-agent-tool-eval-2026-05-02)
 $0.000 (sub) 4.3% 12k/272k (auto)                                                  (openai-codex) gpt-5.5 • thinking off
-
-
-
-

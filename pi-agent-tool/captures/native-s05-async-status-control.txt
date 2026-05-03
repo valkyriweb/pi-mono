@@ -1,0 +1,3 @@
+# S05 native async/background/status/control
+Evidence mode: source-backed plus tmux `/agents-status` capture.
+Native has `/agents-status` recent-run diagnostics, but status.ts explicitly says background control is unsupported in native Pi. This is status visibility, not async pause/resume/control.
