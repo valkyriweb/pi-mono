@@ -155,6 +155,12 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `scenario_verdict_findings_one_tiny_live_claim`
 - `scenario_verdict_findings_current_failure_claim`
 - `scenario_verdict_verified`
+- `source_runtime_extension_source_rows`
+- `source_runtime_scorecard_rows_caveated`
+- `source_runtime_manifest_rows_caveated`
+- `source_runtime_eval_plan_global_caveat`
+- `source_runtime_scenario_rule_caveat`
+- `source_runtime_boundary_verified`
 - `task_lifecycle_acceptance_rows`
 - `task_lifecycle_native_fields_present`
 - `task_lifecycle_native_actions_present`
@@ -210,6 +216,7 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - `capture-timeline.md` — timestamp audit separating prior extension-loaded captures from current load-failure captures.
 - `stale-evidence-policy.md` — reviewer checklist for current vs prior `pi-subagents` evidence.
 - `scenario-verdict-audit.md` — per-row classification of current-live, current-load-failure, prior-live, and source-backed evidence.
+- `source-runtime-boundary.md` — row-level guard that source-backed extension evidence is not current runtime proof.
 - `task-lifecycle-audit.md` — S09 native task lifecycle acceptance probe and extension closest-equivalent audit.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
@@ -257,3 +264,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration found stale `eval-plan.md` wording that still said S01 had no live child after the native live probe; it added `scripts/check-eval-plan-currentness.py` plus `eval-plan-currentness.md` and updated the plan's S01, runtime, token, and metric caveats.
 - Next iteration fixed a generated `command-surface.md` bullet-join bug where the extension-load audit guardrail and `/subagents` reappearance warning rendered as one fused bullet, and added a command-surface markdown guardrail metric.
 - Next iteration found tracked `scorecard-template.md` still contained stale filled baseline scores and obsolete source-only/runtime claims; it converted the file to placeholder-only scaffolding and added `scripts/check-scorecard-template.py` plus `scorecard-template-audit.md`.
+- Next iteration found `pi-subagents` source-backed scorecard rows could still be read as current runtime proof despite the extension load failure; it added row-level blocked-runtime caveats plus `scripts/check-source-runtime-boundary.py` and `source-runtime-boundary.md`.

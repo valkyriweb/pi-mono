@@ -17,6 +17,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Capture timeline | `capture-timeline.md` | present | Timestamp audit showing older extension-loaded captures predate newer current load-failure captures. |
 | Stale evidence policy | `stale-evidence-policy.md` | present | Reviewer checklist preventing prior loaded-extension captures from being cited as current runtime proof. |
 | Scenario verdict audit | `scenario-verdict-audit.md` | present | Classifies every scored row as current-live, current-load-failure, prior-live, or source-backed. |
+| Source/runtime boundary audit | `source-runtime-boundary.md` | present | Ensures `pi-subagents` source-backed rows are not worded as current runtime proof while the extension load is blocked. |
 | Token evidence | `token-evidence.md` | present | Records native `$0.000` registered command captures, native S01 child cost, and `pi-subagents` prior removed-command fallthrough token/cost readings. |
 | Token accounting audit | `token-accounting-audit.md` | present | Checks model-call/token wording across findings, scorecard, token evidence, and live child output. |
 | Repro hygiene audit | `repro-hygiene.md` | present | Ensures `autoresearch.sh` syntax-checks Python helpers without dirtying `scripts/__pycache__`. |
@@ -35,11 +36,11 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | S01 single recon | native | `captures/native-s01-live-child-output.txt` | live child output | `live-child-output.md`; native child completed, used read tool, returned exactly three files | present |
 | S01 single recon | pi-subagents | `captures/subagents-s01-live-child-output.txt` | live runtime failure | `live-child-output.md`; `extension-load-audit.md`; `capture-timeline.md`; `stale-evidence-policy.md`; current fresh extension load fails before `/run scout` can execute | present |
 | S02 parallel review | native | `captures/native-s02-parallel-review.txt` | source-backed | `source-probes.md` native `tasks[]` schema | present |
-| S02 parallel review | pi-subagents | `captures/subagents-s02-parallel-review.txt` | source-backed | `source-probes.md` `/parallel`, `tasks[]`, `--bg`, `--fork` | present |
+| S02 parallel review | pi-subagents | `captures/subagents-s02-parallel-review.txt` | source-backed only | `source-probes.md` `/parallel`, `tasks[]`, `--bg`, `--fork`; `command-surface.md`; current runtime load blocked | present |
 | S03 chain handoff | native | `captures/native-s03-chain-handoff.txt` | source-backed | `source-probes.md` native `chain[]` and `/agents run-chain` | present |
-| S03 chain handoff | pi-subagents | `captures/subagents-s03-chain-handoff.txt` | source-backed | `source-probes.md` `/chain` and `/run-chain` | present |
+| S03 chain handoff | pi-subagents | `captures/subagents-s03-chain-handoff.txt` | source-backed only | `source-probes.md` `/chain` and `/run-chain`; `command-surface.md`; current runtime load blocked | present |
 | S04 saved workflow | native | `captures/native-s04-saved-workflow.txt` | source-backed | `source-probes.md` native saved chain handler/docs | present |
-| S04 saved workflow | pi-subagents | `captures/subagents-s04-saved-workflow.txt` | source-backed | `source-probes.md` `/run-chain`; `CHANGELOG.md` 0.24.0 removed save UI | present |
+| S04 saved workflow | pi-subagents | `captures/subagents-s04-saved-workflow.txt` | source-backed only | `source-probes.md` `/run-chain`; `CHANGELOG.md` 0.24.0 removed save UI; `command-surface.md`; current runtime load blocked | present |
 | S05 async/status/control | native | `captures/native-s05-async-status-control.txt` | source + live tmux | `captures/native-s05-status-live.txt`; native status source says background control unsupported | present |
 | S05 async/status/control | pi-subagents | `captures/subagents-s05-async-status-control.txt` | source + prior live fallthrough | `captures/subagents-s05-status-removed-live.txt`; `capture-timeline.md`; tool schema has status/interrupt/resume, `/subagents-status` removed | present |
 | S06 doctor diagnostics | native | `captures/native-s06-doctor-diagnostics.txt` | source + live tmux | `captures/native-s06-doctor-live.txt`; native doctor source | present |
@@ -47,9 +48,9 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | S07 UI manager/selector | native | `captures/native-s07-ui-manager-selector.txt` | source + live tmux | `captures/native-s07-ui-selector-live.txt`; `/agents` selector source | present |
 | S07 UI manager/selector | pi-subagents | `captures/subagents-s07-ui-manager-selector.txt` | source + prior live fallthrough | `captures/subagents-s07-manager-removed-live.txt`; `capture-timeline.md`; `pi-subagents` 0.24.0 removed manager overlay | present |
 | S08 context discipline | native | `captures/native-s08-context-discipline.txt` | source-backed | `source-probes.md` native `default/fork/slim/none` and filtered fork context | present |
-| S08 context discipline | pi-subagents | `captures/subagents-s08-context-discipline.txt` | source-backed | `source-probes.md` `--fork` only; prompt runtime blocks recursive delegation | present |
+| S08 context discipline | pi-subagents | `captures/subagents-s08-context-discipline.txt` | source-backed only | `source-probes.md` `--fork` only; prompt runtime blocks recursive delegation; `command-surface.md`; current runtime load blocked | present |
 | S09 task agent tool | native | `captures/native-s09-task-agent-tool.txt` | source-backed negative probe | `source-probes.md` native task lifecycle grep exits 1 for `action/taskId/create/list/get/update` | present |
-| S09 task agent tool | pi-subagents | `captures/subagents-s09-task-agent-tool.txt` | source-backed closest equivalent | `source-probes.md` extension management/status actions; no general task-list equivalent | present |
+| S09 task agent tool | pi-subagents | `captures/subagents-s09-task-agent-tool.txt` | source-backed closest equivalent only | `source-probes.md` extension management/status actions; no general task-list equivalent; `command-surface.md`; current runtime load blocked | present |
 
 ## Version and removed-surface guardrails
 
@@ -59,6 +60,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 - `capture-timeline.md` records that the older extension-loaded captures predate the newer current load-failure captures; rerun them before using them as current-runtime proof after loader changes.
 - `stale-evidence-policy.md` is the reviewer checklist for applying that distinction consistently across scorecard, token evidence, and findings.
 - `scenario-verdict-audit.md` classifies all 18 scored rows by evidence type so current runtime, prior runtime, and source-backed claims remain separate.
+- `source-runtime-boundary.md` enforces the row-level caveat that `pi-subagents` source-backed rows are static capability evidence, not current runtime proof while the extension loader fails.
 - `command-surface.md` keeps its extension-load audit guardrail and `/subagents` reappearance warning as separate bullets so the warning does not get buried in malformed Markdown.
 - `token-accounting-audit.md` keeps model-call and token/cost claims aligned after adding the native S01 child probe.
 - `repro-hygiene.md` keeps the scorer itself reproducible by avoiding py-compile bytecode writes during syntax checks.

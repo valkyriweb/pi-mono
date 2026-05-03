@@ -16,6 +16,7 @@ AUDITED_GLOBAL_ARTIFACTS = {
     "capture-timeline.md",
     "stale-evidence-policy.md",
     "scenario-verdict-audit.md",
+    "source-runtime-boundary.md",
     "token-evidence.md",
     "token-accounting-audit.md",
     "repro-hygiene.md",

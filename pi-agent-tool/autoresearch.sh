@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md eval-plan-currentness.md runbook.md scorecard.md scorecard-template.md scorecard-template-audit.md findings.md evidence-manifest.md command-surface.md token-evidence.md token-accounting-audit.md repro-hygiene.md recommendation-consistency.md rerun-commands.md artifact-index.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md scenario-verdict-audit.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md eval-plan-currentness.md runbook.md scorecard.md scorecard-template.md scorecard-template-audit.md findings.md evidence-manifest.md command-surface.md token-evidence.md token-accounting-audit.md repro-hygiene.md recommendation-consistency.md rerun-commands.md artifact-index.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md scenario-verdict-audit.md source-runtime-boundary.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -358,6 +358,18 @@ scenario_verdict_findings_one_tiny_live_claim=$(get_scenario_verdict_metric scen
 scenario_verdict_findings_current_failure_claim=$(get_scenario_verdict_metric scenario_verdict_findings_current_failure_claim)
 scenario_verdict_verified=$(get_scenario_verdict_metric scenario_verdict_verified)
 
+source_runtime_output=$(python3 scripts/check-source-runtime-boundary.py)
+get_source_runtime_metric() {
+  local name="$1"
+  printf '%s\n' "$source_runtime_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+source_runtime_extension_source_rows=$(get_source_runtime_metric source_runtime_extension_source_rows)
+source_runtime_scorecard_rows_caveated=$(get_source_runtime_metric source_runtime_scorecard_rows_caveated)
+source_runtime_manifest_rows_caveated=$(get_source_runtime_metric source_runtime_manifest_rows_caveated)
+source_runtime_eval_plan_global_caveat=$(get_source_runtime_metric source_runtime_eval_plan_global_caveat)
+source_runtime_scenario_rule_caveat=$(get_source_runtime_metric source_runtime_scenario_rule_caveat)
+source_runtime_boundary_verified=$(get_source_runtime_metric source_runtime_boundary_verified)
+
 task_lifecycle_output=$(python3 scripts/check-task-lifecycle.py)
 get_task_lifecycle_metric() {
   local name="$1"
@@ -474,8 +486,8 @@ score=$((score + recommendation_native_default * 5))
 score=$((score + recommendation_rerun_trigger * 5))
 score=$((score + recommendation_removed_slash_protection * 5))
 score=$((score + recommendation_consistency_verified * 10))
-score=$((score + $(cap "$rerun_readme_commands_present" 28)))
-score=$((score + $(cap "$rerun_runbook_anchors_present" 17)))
+score=$((score + $(cap "$rerun_readme_commands_present" 29)))
+score=$((score + $(cap "$rerun_runbook_anchors_present" 18)))
 score=$((score + rerun_readme_removed_manager_probe * 8))
 score=$((score + rerun_readme_live_child_checker * 5))
 score=$((score + rerun_readme_write_generators * 5))
@@ -494,11 +506,11 @@ score=$((score + scorecard_template_current_columns * 5))
 score=$((score + $(cap "$scorecard_template_placeholder_rows" 18)))
 score=$((score + scorecard_template_no_stale_claims * 8))
 score=$((score + scorecard_template_verified * 10))
-score=$((score + $(cap "$artifact_index_required_files" 26)))
-score=$((score + $(cap "$artifact_index_readme_required_present" 26)))
+score=$((score + $(cap "$artifact_index_required_files" 27)))
+score=$((score + $(cap "$artifact_index_readme_required_present" 27)))
 score=$((score + artifact_index_readme_directory_entries * 4))
-score=$((score + $(cap "$artifact_index_manifest_audited_present" 19)))
-score=$((score + $(cap "$artifact_index_required_files_exist" 26)))
+score=$((score + $(cap "$artifact_index_manifest_audited_present" 20)))
+score=$((score + $(cap "$artifact_index_required_files_exist" 27)))
 score=$((score + artifact_index_verified * 10))
 score=$((score + $(cap "$scenario_verdict_rows" 18)))
 score=$((score + scenario_verdict_current_live_rows * 3))
@@ -512,6 +524,12 @@ score=$((score + scenario_verdict_findings_no_stale_false_claim * 8))
 score=$((score + scenario_verdict_findings_one_tiny_live_claim * 5))
 score=$((score + scenario_verdict_findings_current_failure_claim * 5))
 score=$((score + scenario_verdict_verified * 12))
+score=$((score + source_runtime_extension_source_rows * 3))
+score=$((score + source_runtime_scorecard_rows_caveated * 3))
+score=$((score + source_runtime_manifest_rows_caveated * 3))
+score=$((score + source_runtime_eval_plan_global_caveat * 5))
+score=$((score + source_runtime_scenario_rule_caveat * 5))
+score=$((score + source_runtime_boundary_verified * 10))
 score=$((score + $(cap "$task_lifecycle_acceptance_rows" 16)))
 score=$((score + $(cap "$task_lifecycle_extension_rows" 12)))
 score=$((score + task_lifecycle_native_absent * 10))
@@ -617,9 +635,9 @@ missing=0
 (( recommendation_rerun_trigger == 1 )) || missing=1
 (( recommendation_removed_slash_protection == 1 )) || missing=1
 (( recommendation_consistency_verified == 1 )) || missing=1
-(( rerun_readme_commands_expected == 28 )) || missing=1
+(( rerun_readme_commands_expected == 29 )) || missing=1
 (( rerun_readme_commands_present == rerun_readme_commands_expected )) || missing=1
-(( rerun_runbook_anchors_expected == 17 )) || missing=1
+(( rerun_runbook_anchors_expected == 18 )) || missing=1
 (( rerun_runbook_anchors_present == rerun_runbook_anchors_expected )) || missing=1
 (( rerun_readme_removed_manager_probe == 1 )) || missing=1
 (( rerun_readme_live_child_checker == 1 )) || missing=1
@@ -642,7 +660,7 @@ missing=0
 (( artifact_index_required_files == ${#required_files[@]} )) || missing=1
 (( artifact_index_readme_required_present == artifact_index_required_files )) || missing=1
 (( artifact_index_readme_directory_entries == 2 )) || missing=1
-(( artifact_index_manifest_audited_expected == 19 )) || missing=1
+(( artifact_index_manifest_audited_expected == 20 )) || missing=1
 (( artifact_index_manifest_audited_present == artifact_index_manifest_audited_expected )) || missing=1
 (( artifact_index_required_files_exist == artifact_index_required_files )) || missing=1
 (( artifact_index_verified == 1 )) || missing=1
@@ -659,6 +677,12 @@ missing=0
 (( scenario_verdict_findings_one_tiny_live_claim == 1 )) || missing=1
 (( scenario_verdict_findings_current_failure_claim == 1 )) || missing=1
 (( scenario_verdict_verified == 1 )) || missing=1
+(( source_runtime_extension_source_rows == 5 )) || missing=1
+(( source_runtime_scorecard_rows_caveated == 5 )) || missing=1
+(( source_runtime_manifest_rows_caveated == 5 )) || missing=1
+(( source_runtime_eval_plan_global_caveat == 1 )) || missing=1
+(( source_runtime_scenario_rule_caveat == 1 )) || missing=1
+(( source_runtime_boundary_verified == 1 )) || missing=1
 (( task_lifecycle_acceptance_rows == 16 )) || missing=1
 (( task_lifecycle_native_fields_present == 0 )) || missing=1
 (( task_lifecycle_native_actions_present == 0 )) || missing=1
@@ -672,7 +696,7 @@ missing=0
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified token_accounting_verified=$token_accounting_verified repro_hygiene_verified=$repro_hygiene_verified recommendation_consistency_verified=$recommendation_consistency_verified rerun_commands_verified=$rerun_commands_verified eval_plan_currentness_verified=$eval_plan_currentness_verified scorecard_template_verified=$scorecard_template_verified artifact_index_verified=$artifact_index_verified scenario_verdict_verified=$scenario_verdict_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified token_accounting_verified=$token_accounting_verified repro_hygiene_verified=$repro_hygiene_verified recommendation_consistency_verified=$recommendation_consistency_verified rerun_commands_verified=$rerun_commands_verified eval_plan_currentness_verified=$eval_plan_currentness_verified scorecard_template_verified=$scorecard_template_verified artifact_index_verified=$artifact_index_verified scenario_verdict_verified=$scenario_verdict_verified source_runtime_boundary_verified=$source_runtime_boundary_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -822,6 +846,12 @@ echo "METRIC scenario_verdict_findings_no_stale_false_claim=$scenario_verdict_fi
 echo "METRIC scenario_verdict_findings_one_tiny_live_claim=$scenario_verdict_findings_one_tiny_live_claim"
 echo "METRIC scenario_verdict_findings_current_failure_claim=$scenario_verdict_findings_current_failure_claim"
 echo "METRIC scenario_verdict_verified=$scenario_verdict_verified"
+echo "METRIC source_runtime_extension_source_rows=$source_runtime_extension_source_rows"
+echo "METRIC source_runtime_scorecard_rows_caveated=$source_runtime_scorecard_rows_caveated"
+echo "METRIC source_runtime_manifest_rows_caveated=$source_runtime_manifest_rows_caveated"
+echo "METRIC source_runtime_eval_plan_global_caveat=$source_runtime_eval_plan_global_caveat"
+echo "METRIC source_runtime_scenario_rule_caveat=$source_runtime_scenario_rule_caveat"
+echo "METRIC source_runtime_boundary_verified=$source_runtime_boundary_verified"
 echo "METRIC task_lifecycle_acceptance_rows=$task_lifecycle_acceptance_rows"
 echo "METRIC task_lifecycle_native_fields_present=$task_lifecycle_native_fields_present"
 echo "METRIC task_lifecycle_native_actions_present=$task_lifecycle_native_actions_present"

@@ -6,11 +6,11 @@ Purpose: keep the artifact inventories synchronized. As the eval accumulated evi
 
 | Check | Value | Meaning |
 |---|---:|---|
-| required files | 26 | Files listed in `autoresearch.sh` `required_files`. |
-| README required files present | 26/26 | Required files named in README Fresh artifacts. |
+| required files | 27 | Files listed in `autoresearch.sh` `required_files`. |
+| README required files present | 27/27 | Required files named in README Fresh artifacts. |
 | README directory entries present | 2 | README names `captures/` and `scripts/`. |
-| manifest audited artifacts present | 19/19 | Evidence manifest indexes all audited evidence artifacts. |
-| required files exist | 26/26 | Required files are non-empty on disk. |
+| manifest audited artifacts present | 20/20 | Evidence manifest indexes all audited evidence artifacts. |
+| required files exist | 27/27 | Required files are non-empty on disk. |
 | verified | 1 | All index checks passed. |
 
 ## Missing entries

@@ -125,7 +125,17 @@ python3 scripts/check-scenario-verdicts.py
 
 Current verdict: 4 current-live rows, 1 current-load-failure row, 3 prior-live rows, and 10 source-backed rows.
 
-## 2.10. Token accounting audit
+## 2.10. Source/runtime boundary audit
+
+Before review/finalization, verify source-backed `pi-subagents` rows do not read like current runtime proof while the extension loader is failing:
+
+```bash
+python3 scripts/check-source-runtime-boundary.py
+```
+
+Current verdict: five source-backed `pi-subagents` rows (S02, S03, S04, S08, S09) are caveated in both scorecard and evidence manifest as source-only/current-runtime blocked.
+
+## 2.11. Token accounting audit
 
 After any live probe or token-evidence wording change, verify model-call/token language:
 
@@ -135,7 +145,7 @@ python3 scripts/check-token-accounting.py
 
 Current verdict: one native S01 child probe has paid footer evidence, three native registered command probes are `$0.000`, two prior extension removed-command fallthroughs total $0.111, and current extension S01 has no child token accounting because loading fails.
 
-## 2.11. Repro hygiene audit
+## 2.12. Repro hygiene audit
 
 After adding any `scripts/check-*.py` helper or changing the scorer, verify the runner does not dirty Python bytecode caches:
 
@@ -145,7 +155,7 @@ python3 scripts/check-repro-hygiene.py
 
 Current verdict: `autoresearch.sh` syntax-checks `scripts/check-*.py` with in-memory `compile(...)` instead of `python -m py_compile`, and `scripts/__pycache__` stays clean.
 
-## 2.12. Recommendation consistency audit
+## 2.13. Recommendation consistency audit
 
 Before final handoff, verify the recommendation does not imply the currently failing `pi-subagents` runtime is usable:
 
@@ -155,7 +165,7 @@ python3 scripts/check-recommendation-consistency.py
 
 Current verdict: native remains the default delegation recommendation; `pi-subagents` is source/tool-schema useful for async/control only after the module-format load failure is fixed and S01 plus cheap extension command probes are rerun.
 
-## 2.13. Rerun command audit
+## 2.14. Rerun command audit
 
 After changing README/runbook commands or adding generated checks, verify reproduction coverage:
 
@@ -165,7 +175,7 @@ python3 scripts/check-rerun-commands.py
 
 Current verdict: README and runbook include the preserved `/subagents` removed-command probe, live-child checker, generated-artifact checks, and final scorer.
 
-## 2.14. Artifact index audit
+## 2.15. Artifact index audit
 
 After adding/removing artifact files, keep README, evidence manifest, and scorer-required files synchronized:
 
@@ -175,7 +185,7 @@ python3 scripts/check-artifact-index.py
 
 Current verdict: README Fresh artifacts names every `autoresearch.sh` required file plus `captures/` and `scripts/`; evidence manifest indexes every audited evidence artifact.
 
-## 2.15. Eval plan currentness audit
+## 2.16. Eval plan currentness audit
 
 After live/failure evidence changes, keep the planning artifact from contradicting the current evidence class:
 
@@ -185,7 +195,7 @@ python3 scripts/check-eval-plan-currentness.py
 
 Current verdict: `eval-plan.md` names the live native S01 child probe, current `pi-subagents` S01 load failure, token/cost exceptions, and delegates the expanded secondary metric list to `autoresearch.md`.
 
-## 2.16. Scorecard template audit
+## 2.17. Scorecard template audit
 
 The tracked template is scaffolding only; ensure it does not carry stale filled scores or obsolete source-only claims:
 
@@ -230,6 +240,7 @@ Before any `keep`, verify:
 - `capture-timeline.md` exists and `scripts/check-capture-timeline.py` validates timestamp ordering between prior extension-loaded captures and current load-failure captures.
 - `stale-evidence-policy.md` exists and `scripts/check-stale-evidence-policy.py` validates current-vs-prior evidence wording.
 - `scenario-verdict-audit.md` exists and `scripts/check-scenario-verdicts.py` validates every scorecard row's evidence class.
+- `source-runtime-boundary.md` exists and `scripts/check-source-runtime-boundary.py` validates source-backed `pi-subagents` rows are caveated as source-only/current-runtime blocked.
 - `token-accounting-audit.md` exists and `scripts/check-token-accounting.py` validates model-call/token wording across scorecard, findings, token evidence, and live child output.
 - `repro-hygiene.md` exists and `scripts/check-repro-hygiene.py` validates the scorer's Python syntax checks do not dirty `scripts/__pycache__`.
 - `recommendation-consistency.md` exists and `scripts/check-recommendation-consistency.py` validates the final recommendation gates `pi-subagents` runtime use on fixing/rerunning the loader failure.

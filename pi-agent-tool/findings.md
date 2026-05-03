@@ -84,6 +84,7 @@
 - `capture-timeline.md` makes the mixed capture state explicit: seven older extension-loaded captures predate the two current load-failure captures, so historical/source capability and current runtime availability are not conflated.
 - `stale-evidence-policy.md` gives reviewers the rule of use: cite load-failure captures for current runtime, cite older loaded-extension captures only as historical/source-supported behavior unless they are rerun.
 - `scenario-verdict-audit.md` classifies all 18 scored rows as current-live, current-load-failure, prior-live, or source-backed so the final verdict cannot quietly mix evidence classes.
+- `source-runtime-boundary.md` caveats source-backed `pi-subagents` rows at row level so installed-source capability is not mistaken for current runtime availability while the extension loader fails.
 - `token-accounting-audit.md` keeps the model-call/token accounting honest: one native S01 child probe, three zero-cost native registered commands, two prior extension fallthroughs, and no current extension child token accounting.
 - `repro-hygiene.md` keeps repeated scorer runs from generating Python bytecode-cache noise, so eval artifacts remain reproducible.
 - `recommendation-consistency.md` gates any `pi-subagents` async/control recommendation on fixing the current load failure and rerunning the relevant probes.
@@ -94,7 +95,7 @@
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
-- Scenario captures for S02-S04, S08, and S09 are source-backed to avoid paid child-agent runs.
+- Scenario captures for S02-S04, S08, and S09 are source-backed to avoid paid child-agent runs; `pi-subagents` rows in that set are caveated as source-only/current-runtime blocked until the loader is fixed and rerun.
 - S01 now includes one tiny live child-output probe plus an extension load audit.
 - `pi-subagents` live-command captures are timestamp-audited and governed by `stale-evidence-policy.md` because older loaded-extension captures coexist with newer load-failure captures.
 - S05-S07 include cheap command/UI captures plus source evidence, marked as prior where the extension arm is affected by the current load failure.
