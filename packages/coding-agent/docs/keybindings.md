@@ -89,6 +89,14 @@ Modifier combinations: `ctrl+shift+x`, `alt+ctrl+x`, `ctrl+shift+alt+x`, `ctrl+1
 | `app.editor.external` | `ctrl+g` | Open in external editor (`$VISUAL` or `$EDITOR`) |
 | `app.clipboard.pasteImage` | `ctrl+v` (`alt+v` on Windows) | Paste image from clipboard |
 
+### Native Agents
+
+| Keybinding id | Default | Description |
+|--------|---------|-------------|
+| `app.agents.interrupt` | `i` | Interrupt selected background agent run in `/agents runs` |
+| `app.agents.cancel` | `c` | Cancel selected background agent run in `/agents runs` |
+| `app.agents.resume` | `r` | Resume selected background agent run in `/agents runs` |
+
 ### Sessions
 
 | Keybinding id | Default | Description |

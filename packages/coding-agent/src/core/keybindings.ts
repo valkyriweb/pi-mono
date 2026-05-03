@@ -30,6 +30,9 @@ export interface AppKeybindings {
 	"app.session.tree": true;
 	"app.session.fork": true;
 	"app.session.resume": true;
+	"app.agents.interrupt": true;
+	"app.agents.cancel": true;
+	"app.agents.resume": true;
 	"app.tree.foldOrUp": true;
 	"app.tree.unfoldOrDown": true;
 	"app.tree.editLabel": true;
@@ -111,6 +114,9 @@ export const KEYBINDINGS = {
 	"app.session.tree": { defaultKeys: [], description: "Open session tree" },
 	"app.session.fork": { defaultKeys: [], description: "Fork current session" },
 	"app.session.resume": { defaultKeys: [], description: "Resume a session" },
+	"app.agents.interrupt": { defaultKeys: "i", description: "Interrupt selected background agent run" },
+	"app.agents.cancel": { defaultKeys: "c", description: "Cancel selected background agent run" },
+	"app.agents.resume": { defaultKeys: "r", description: "Resume selected background agent run" },
 	"app.tree.foldOrUp": {
 		defaultKeys: ["ctrl+left", "alt+left"],
 		description: "Fold tree branch or move up",

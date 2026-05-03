@@ -1,6 +1,6 @@
 import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import type { Api, ImageContent, Model, TextContent } from "@mariozechner/pi-ai";
+import type { Api, ImageContent, Model, TextContent, ToolReferenceContent } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
 import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile } from "fs/promises";
@@ -173,7 +173,7 @@ function formatCompactReadResult(classification: CompactReadClassification, them
 
 function formatReadResult(
 	args: { path?: string; file_path?: string; offset?: number; limit?: number } | undefined,
-	result: { content: (TextContent | ImageContent)[]; details?: ReadToolDetails },
+	result: { content: (TextContent | ImageContent | ToolReferenceContent)[]; details?: ReadToolDetails },
 	options: ToolRenderResultOptions,
 	theme: Theme,
 	showImages: boolean,

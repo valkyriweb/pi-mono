@@ -1,4 +1,5 @@
 // UI Components for extensions
+export { type AgentRunsSelectorAction, AgentRunsSelectorComponent } from "./agent-runs-selector.js";
 export { AgentsSelectorComponent } from "./agents-selector.js";
 export { ArminComponent } from "./armin.js";
 export { AssistantMessageComponent } from "./assistant-message.js";
