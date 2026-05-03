@@ -104,6 +104,7 @@ Before any `keep`, verify:
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.
+- `findings-alignment.md` exists and `scripts/check-findings-alignment.py` validates prose/numeric winner alignment with documented exceptions.
 - `./autoresearch.sh` exits 0 and emits `METRIC actual_eval_score=...`.
 
 Then use `run_experiment` and `log_experiment` with ASI including hypothesis, evidence, isolation proof, and next action hint.

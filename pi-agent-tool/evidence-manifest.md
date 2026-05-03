@@ -11,6 +11,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Source probes | `source-probes.md` | present | Includes native command/tool probes, extension command/tool probes, removed-surface proof, and S09 negative task lifecycle probe. |
 | Token evidence | `token-evidence.md` | present | Records native `$0.000` registered command captures and `pi-subagents` removed-command fallthrough token/cost readings. |
 | Score analysis | `score-analysis.md` | present | Computed from `scorecard.md`; validates summary averages and numeric scenario winners. |
+| Findings alignment | `findings-alignment.md` | present | Compares prose winners to numeric winners and documents intentional exceptions. |
 | Isolation proof | `isolation-proof.md` | present | Records native/no-subagent and extension/no-native-agent booleans. |
 
 ## Scenario evidence map

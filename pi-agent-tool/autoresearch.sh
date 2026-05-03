@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md token-evidence.md score-analysis.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md token-evidence.md score-analysis.md findings-alignment.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -12,7 +12,7 @@ for script in scripts/capture-startup.sh scripts/run-tmux-scenario.sh scripts/ca
   bash -n "$script" || bash_syntax_ok=0
 done
 python_syntax_ok=1
-python3 -m py_compile scripts/check-scorecard-consistency.py || python_syntax_ok=0
+python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py || python_syntax_ok=0
 
 startup_captures=0
 [[ -s captures/native-startup.txt ]] && ((startup_captures+=1))
@@ -145,6 +145,17 @@ if (( scorecard_numeric_rows == 18 )) \
   scorecard_analysis_verified=1
 fi
 
+findings_alignment_output=$(python3 scripts/check-findings-alignment.py)
+get_alignment_metric() {
+  local name="$1"
+  printf '%s\n' "$findings_alignment_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+findings_alignment_rows=$(get_alignment_metric findings_alignment_rows)
+findings_alignment_aligned=$(get_alignment_metric findings_alignment_aligned)
+findings_alignment_exceptions=$(get_alignment_metric findings_alignment_exceptions)
+findings_alignment_conflicts=$(get_alignment_metric findings_alignment_conflicts)
+findings_alignment_verified=$(get_alignment_metric findings_alignment_verified)
+
 # Composite score rewards evidence completeness and isolation, capped to avoid padding.
 cap() {
   local value="$1"
@@ -176,6 +187,10 @@ score=$((score + $(cap "$scorecard_numeric_rows" 18)))
 score=$((score + $(cap "$scorecard_analysis_rows" 9) * 2))
 score=$((score + scorecard_average_consistency * 10))
 score=$((score + scorecard_analysis_verified * 10))
+score=$((score + $(cap "$findings_alignment_rows" 9) * 2))
+score=$((score + findings_alignment_aligned * 2))
+score=$((score + findings_alignment_exceptions))
+score=$((score + findings_alignment_verified * 10))
 
 missing=0
 (( required_file_count == ${#required_files[@]} )) || missing=1
@@ -203,10 +218,15 @@ missing=0
 (( scorecard_numeric_subagents_wins == 2 )) || missing=1
 (( scorecard_analysis_rows == 9 )) || missing=1
 (( scorecard_analysis_verified == 1 )) || missing=1
+(( findings_alignment_rows == 9 )) || missing=1
+(( findings_alignment_aligned == 5 )) || missing=1
+(( findings_alignment_exceptions == 4 )) || missing=1
+(( findings_alignment_conflicts == 0 )) || missing=1
+(( findings_alignment_verified == 1 )) || missing=1
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -240,3 +260,8 @@ echo "METRIC scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins"
 echo "METRIC scorecard_numeric_ties=$scorecard_numeric_ties"
 echo "METRIC scorecard_analysis_rows=$scorecard_analysis_rows"
 echo "METRIC scorecard_analysis_verified=$scorecard_analysis_verified"
+echo "METRIC findings_alignment_rows=$findings_alignment_rows"
+echo "METRIC findings_alignment_aligned=$findings_alignment_aligned"
+echo "METRIC findings_alignment_exceptions=$findings_alignment_exceptions"
+echo "METRIC findings_alignment_conflicts=$findings_alignment_conflicts"
+echo "METRIC findings_alignment_verified=$findings_alignment_verified"

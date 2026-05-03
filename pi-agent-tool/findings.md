@@ -77,6 +77,7 @@
 ## Evidence quality notes
 
 - `score-analysis.md` computes scorecard averages and numeric winners from the filled rows; it corrected a stale `pi-subagents` UX average from 3.2 to 3.3.
+- `findings-alignment.md` checks that prose winners align with numeric winners, with documented exceptions for capability ties and non-equivalent closest matches.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
 - Scenario captures for S01-S04, S08, and S09 are source-backed to avoid paid child-agent runs.

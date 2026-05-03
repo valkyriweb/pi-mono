@@ -39,6 +39,11 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `scorecard_numeric_ties`
 - `scorecard_analysis_rows`
 - `scorecard_analysis_verified`
+- `findings_alignment_rows`
+- `findings_alignment_aligned`
+- `findings_alignment_exceptions`
+- `findings_alignment_conflicts`
+- `findings_alignment_verified`
 
 ## How to run
 
@@ -67,6 +72,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `evidence-manifest.md` — scorecard-to-evidence map and integrity guard.
 - `token-evidence.md` — live footer token/cost evidence for native registered commands vs removed extension commands.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
+- `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
 - `captures/` — tmux and source-backed capture files.
@@ -97,3 +103,4 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - Next iteration added `evidence-manifest.md` plus scorer checks that every scorecard evidence path exists, every scenario has a manifest row, live captures are linked, and the `pi-subagents 0.24.0` removed-surface guard is preserved.
 - Next iteration added `token-evidence.md` and scorer checks for native `$0.000` registered-command captures, two removed-command fallthrough token/cost captures, and aggregate $0.111 extension fallthrough cost.
 - Next iteration added `scripts/check-scorecard-consistency.py`, `score-analysis.md`, and scorer checks that scorecard summary averages match computed values; this caught and fixed a stale `pi-subagents` UX average (3.2 -> 3.3).
+- Next iteration added `scripts/check-findings-alignment.py`, `findings-alignment.md`, and scorer checks that prose winners align with numeric winners or have documented judgment-call exceptions (5 aligned, 4 intentional exceptions, 0 conflicts).
