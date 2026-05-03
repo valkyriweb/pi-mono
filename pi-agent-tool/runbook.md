@@ -145,6 +145,16 @@ python3 scripts/check-repro-hygiene.py
 
 Current verdict: `autoresearch.sh` syntax-checks `scripts/check-*.py` with in-memory `compile(...)` instead of `python -m py_compile`, and `scripts/__pycache__` stays clean.
 
+## 2.12. Recommendation consistency audit
+
+Before final handoff, verify the recommendation does not imply the currently failing `pi-subagents` runtime is usable:
+
+```bash
+python3 scripts/check-recommendation-consistency.py
+```
+
+Current verdict: native remains the default delegation recommendation; `pi-subagents` is source/tool-schema useful for async/control only after the module-format load failure is fixed and S01 plus cheap extension command probes are rerun.
+
 ## 3. Task-agent lifecycle probe
 
 Native expected request shape from the task brief:
@@ -182,6 +192,7 @@ Before any `keep`, verify:
 - `scenario-verdict-audit.md` exists and `scripts/check-scenario-verdicts.py` validates every scorecard row's evidence class.
 - `token-accounting-audit.md` exists and `scripts/check-token-accounting.py` validates model-call/token wording across scorecard, findings, token evidence, and live child output.
 - `repro-hygiene.md` exists and `scripts/check-repro-hygiene.py` validates the scorer's Python syntax checks do not dirty `scripts/__pycache__`.
+- `recommendation-consistency.md` exists and `scripts/check-recommendation-consistency.py` validates the final recommendation gates `pi-subagents` runtime use on fixing/rerunning the loader failure.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

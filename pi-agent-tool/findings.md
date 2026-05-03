@@ -3,7 +3,7 @@
 ## Executive summary
 
 - Winner: native for core delegation, context discipline, saved-chain parity, native diagnostics, and recent-run visibility.
-- Winner: `pi-subagents` only where background async/status/control/resume matters.
+- Source/tool-schema winner: `pi-subagents` only where background async/status/control/resume matters; current runtime use is blocked until the module-format load failure is fixed and rerun.
 - Current installed `pi-subagents` is `0.24.0`; it removed the requested `/subagents` manager UI and `/subagents-status` slash overlay. Those are scored as unavailable, not pending captures.
 - Native Pi now has `/agents-doctor`, `/agents-status`, `/agents run`, `/agents parallel`, `/agents run-chain`, and saved chains. That narrows the older extension advantage substantially.
 - S09 task-agent lifecycle is not implemented in the current native `agent` schema: no `action`, `taskId`, `activeForm`, dependency, metadata, or create/list/get/update/delete task record surface found.
@@ -47,8 +47,8 @@
 ## S05 Async/background/status/control
 
 - Native: partial. `/agents-status` shows recent foreground child runs and details, but native status explicitly says background control is unsupported.
-- `pi-subagents`: strongest. Tool actions support async/background status, interrupt, and resume. Caveat: `/subagents-status` slash overlay was removed; the live probe fell through to a normal model turn that invoked `subagent list` and cost roughly ↑11k/↓106 tokens. Use `subagent({action:"status"})`, widgets, logs, or completion notifications.
-- Winner: `pi-subagents`.
+- `pi-subagents`: strongest source/tool-schema surface for async/background status, interrupt, and resume. Caveat: current fresh extension loading is blocked; in the earlier loaded-extension probe, removed `/subagents-status` fell through to a normal model turn that invoked `subagent list` and cost roughly ↑11k/↓106 tokens. Once loading is fixed and rerun, use `subagent({action:"status"})`, widgets, logs, or completion notifications.
+- Winner: `pi-subagents` for source-level background-control capability; current-runtime availability is blocked until the loader issue is fixed.
 
 ## S06 Doctor/diagnostics
 
@@ -86,6 +86,7 @@
 - `scenario-verdict-audit.md` classifies all 18 scored rows as current-live, current-load-failure, prior-live, or source-backed so the final verdict cannot quietly mix evidence classes.
 - `token-accounting-audit.md` keeps the model-call/token accounting honest: one native S01 child probe, three zero-cost native registered commands, two prior extension fallthroughs, and no current extension child token accounting.
 - `repro-hygiene.md` keeps repeated scorer runs from generating Python bytecode-cache noise, so eval artifacts remain reproducible.
+- `recommendation-consistency.md` gates any `pi-subagents` async/control recommendation on fixing the current load failure and rerunning the relevant probes.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
@@ -108,4 +109,4 @@
 
 ## Recommendation
 
-Use native `agent` as Pi's default delegation layer. Keep `pi-subagents` only for background async/control/resume workflows that native intentionally does not cover. If consolidating or continuing to ship `pi-subagents`, protect removed slash surfaces from falling through to expensive model turns. Prioritize native task lifecycle actions (S09) and decide whether background control belongs in core or should stay extension-owned.
+Use native `agent` as Pi's default delegation layer. Do not rely on the current installed `pi-subagents` runtime until the module-format load failure is fixed and S01 plus cheap command probes are rerun. After that, keep `pi-subagents` only for background async/control/resume workflows that native intentionally does not cover. If consolidating or continuing to ship `pi-subagents`, protect removed slash surfaces from falling through to expensive model turns. Prioritize native task lifecycle actions (S09) and decide whether background control belongs in core or should stay extension-owned.
