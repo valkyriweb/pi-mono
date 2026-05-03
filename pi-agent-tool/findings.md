@@ -79,6 +79,7 @@
 - `score-analysis.md` computes scorecard averages and numeric winners from the filled rows; it corrected a stale `pi-subagents` UX average from 3.2 to 3.3.
 - `findings-alignment.md` checks that prose winners align with numeric winners, with documented exceptions for capability ties and non-equivalent closest matches.
 - `command-surface.md` verifies the current native and extension slash-command surfaces, launch isolation flags, and removed `pi-subagents` 0.24.0 surfaces so command drift cannot silently invalidate the eval.
+- `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
 - Scenario captures for S01-S04, S08, and S09 are source-backed to avoid paid child-agent runs.

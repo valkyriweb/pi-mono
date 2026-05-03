@@ -106,6 +106,7 @@ Before any `keep`, verify:
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.
 - `findings-alignment.md` exists and `scripts/check-findings-alignment.py` validates prose/numeric winner alignment with documented exceptions.
+- `task-lifecycle-audit.md` exists and `scripts/check-task-lifecycle.py` validates the S09 native absent/pending verdict and extension closest-equivalent non-equivalence.
 - `./autoresearch.sh` exits 0 and emits `METRIC actual_eval_score=...`.
 
 Then use `run_experiment` and `log_experiment` with ASI including hypothesis, evidence, isolation proof, and next action hint.

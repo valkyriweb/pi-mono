@@ -13,6 +13,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Token evidence | `token-evidence.md` | present | Records native `$0.000` registered command captures and `pi-subagents` removed-command fallthrough token/cost readings. |
 | Score analysis | `score-analysis.md` | present | Computed from `scorecard.md`; validates summary averages and numeric scenario winners. |
 | Findings alignment | `findings-alignment.md` | present | Compares prose winners to numeric winners and documents intentional exceptions. |
+| Task lifecycle audit | `task-lifecycle-audit.md` | present | S09 acceptance probe for native lifecycle absence/pending status and extension closest-equivalent non-equivalence. |
 | Isolation proof | `isolation-proof.md` | present | Records native/no-subagent and extension/no-native-agent booleans. |
 
 ## Scenario evidence map

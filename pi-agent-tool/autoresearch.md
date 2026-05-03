@@ -51,6 +51,16 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `command_surface_launch_isolation`
 - `command_surface_removed_changelog_verified`
 - `command_surface_verified`
+- `task_lifecycle_acceptance_rows`
+- `task_lifecycle_native_fields_present`
+- `task_lifecycle_native_actions_present`
+- `task_lifecycle_native_statuses_present`
+- `task_lifecycle_native_absent`
+- `task_lifecycle_delegation_preserved`
+- `task_lifecycle_extension_rows`
+- `task_lifecycle_extension_management_actions`
+- `task_lifecycle_extension_equivalent_absent`
+- `task_lifecycle_audit_verified`
 
 ## How to run
 
@@ -81,6 +91,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `token-evidence.md` — live footer token/cost evidence for native registered commands vs removed extension commands.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
+- `task-lifecycle-audit.md` — S09 native task lifecycle acceptance probe and extension closest-equivalent audit.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
 - `captures/` — tmux and source-backed capture files.
@@ -113,3 +124,4 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - Next iteration added `scripts/check-scorecard-consistency.py`, `score-analysis.md`, and scorer checks that scorecard summary averages match computed values; this caught and fixed a stale `pi-subagents` UX average (3.2 -> 3.3).
 - Next iteration added `scripts/check-findings-alignment.py`, `findings-alignment.md`, and scorer checks that prose winners align with numeric winners or have documented judgment-call exceptions (5 aligned, 4 intentional exceptions, 0 conflicts).
 - Next iteration added `scripts/check-command-surface.py`, `command-surface.md`, and scorer checks that native `/agents*` commands, extension `/run`/`/chain`/`/parallel`/`/run-chain`/`/subagents-doctor`, removed extension surfaces, launch flags, and 0.24.0 changelog claims remain in sync.
+- Next iteration added `scripts/check-task-lifecycle.py`, `task-lifecycle-audit.md`, and scorer checks that native S09 lifecycle fields/actions/status literals are absent, existing delegation modes remain present, and `pi-subagents` management/async controls are closest-equivalent only rather than a general task-list API.

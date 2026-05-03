@@ -20,6 +20,7 @@ Current source reality matters: installed `pi-subagents` is `0.24.0`, where `/su
 - `token-evidence.md` — live footer token/cost evidence for registered native commands vs removed extension commands.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
+- `task-lifecycle-audit.md` — S09 native task lifecycle acceptance probe and extension closest-equivalent audit.
 - `isolation-proof.md` — proof of active surface isolation.
 - `source-probes.md` — source-backed evidence snippets.
 - `captures/` — tmux and source-backed scenario captures.

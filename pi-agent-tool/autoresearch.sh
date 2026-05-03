@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md score-analysis.md findings-alignment.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md score-analysis.md findings-alignment.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -12,7 +12,7 @@ for script in scripts/capture-startup.sh scripts/run-tmux-scenario.sh scripts/ca
   bash -n "$script" || bash_syntax_ok=0
 done
 python_syntax_ok=1
-python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py scripts/check-command-surface.py || python_syntax_ok=0
+python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py scripts/check-command-surface.py scripts/check-task-lifecycle.py || python_syntax_ok=0
 
 startup_captures=0
 [[ -s captures/native-startup.txt ]] && ((startup_captures+=1))
@@ -169,6 +169,22 @@ command_surface_removed_changelog_verified=$(get_command_surface_metric command_
 command_surface_verified=$(get_command_surface_metric command_surface_verified)
 command_surface_rows=$(grep -Ec '^\| `/[^`]+` \|' command-surface.md || true)
 
+task_lifecycle_output=$(python3 scripts/check-task-lifecycle.py)
+get_task_lifecycle_metric() {
+  local name="$1"
+  printf '%s\n' "$task_lifecycle_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+task_lifecycle_acceptance_rows=$(get_task_lifecycle_metric task_lifecycle_acceptance_rows)
+task_lifecycle_native_fields_present=$(get_task_lifecycle_metric task_lifecycle_native_fields_present)
+task_lifecycle_native_actions_present=$(get_task_lifecycle_metric task_lifecycle_native_actions_present)
+task_lifecycle_native_statuses_present=$(get_task_lifecycle_metric task_lifecycle_native_statuses_present)
+task_lifecycle_native_absent=$(get_task_lifecycle_metric task_lifecycle_native_absent)
+task_lifecycle_delegation_preserved=$(get_task_lifecycle_metric task_lifecycle_delegation_preserved)
+task_lifecycle_extension_rows=$(get_task_lifecycle_metric task_lifecycle_extension_rows)
+task_lifecycle_extension_management_actions=$(get_task_lifecycle_metric task_lifecycle_extension_management_actions)
+task_lifecycle_extension_equivalent_absent=$(get_task_lifecycle_metric task_lifecycle_extension_equivalent_absent)
+task_lifecycle_audit_verified=$(get_task_lifecycle_metric task_lifecycle_audit_verified)
+
 # Composite score rewards evidence completeness and isolation, capped to avoid padding.
 cap() {
   local value="$1"
@@ -211,6 +227,13 @@ score=$((score + command_surface_extension_removed_absent * 3))
 score=$((score + command_surface_launch_isolation * 3))
 score=$((score + command_surface_removed_changelog_verified * 6))
 score=$((score + command_surface_verified * 10))
+score=$((score + $(cap "$task_lifecycle_acceptance_rows" 16)))
+score=$((score + $(cap "$task_lifecycle_extension_rows" 12)))
+score=$((score + task_lifecycle_native_absent * 10))
+score=$((score + task_lifecycle_delegation_preserved * 8))
+score=$((score + $(cap "$task_lifecycle_extension_management_actions" 9)))
+score=$((score + task_lifecycle_extension_equivalent_absent * 10))
+score=$((score + task_lifecycle_audit_verified * 12))
 
 missing=0
 (( required_file_count == ${#required_files[@]} )) || missing=1
@@ -250,10 +273,20 @@ missing=0
 (( command_surface_launch_isolation == 2 )) || missing=1
 (( command_surface_removed_changelog_verified == 1 )) || missing=1
 (( command_surface_verified == 1 )) || missing=1
+(( task_lifecycle_acceptance_rows == 16 )) || missing=1
+(( task_lifecycle_native_fields_present == 0 )) || missing=1
+(( task_lifecycle_native_actions_present == 0 )) || missing=1
+(( task_lifecycle_native_statuses_present == 0 )) || missing=1
+(( task_lifecycle_native_absent == 1 )) || missing=1
+(( task_lifecycle_delegation_preserved == 1 )) || missing=1
+(( task_lifecycle_extension_rows == 12 )) || missing=1
+(( task_lifecycle_extension_management_actions >= 8 )) || missing=1
+(( task_lifecycle_extension_equivalent_absent == 1 )) || missing=1
+(( task_lifecycle_audit_verified == 1 )) || missing=1
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_native_expected_present=$command_surface_native_expected_present command_surface_extension_expected_present=$command_surface_extension_expected_present command_surface_extension_removed_absent=$command_surface_extension_removed_absent command_surface_launch_isolation=$command_surface_launch_isolation command_surface_verified=$command_surface_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_native_expected_present=$command_surface_native_expected_present command_surface_extension_expected_present=$command_surface_extension_expected_present command_surface_extension_removed_absent=$command_surface_extension_removed_absent command_surface_launch_isolation=$command_surface_launch_isolation command_surface_verified=$command_surface_verified task_lifecycle_acceptance_rows=$task_lifecycle_acceptance_rows task_lifecycle_native_absent=$task_lifecycle_native_absent task_lifecycle_delegation_preserved=$task_lifecycle_delegation_preserved task_lifecycle_extension_equivalent_absent=$task_lifecycle_extension_equivalent_absent task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -299,3 +332,13 @@ echo "METRIC command_surface_extension_removed_absent=$command_surface_extension
 echo "METRIC command_surface_launch_isolation=$command_surface_launch_isolation"
 echo "METRIC command_surface_removed_changelog_verified=$command_surface_removed_changelog_verified"
 echo "METRIC command_surface_verified=$command_surface_verified"
+echo "METRIC task_lifecycle_acceptance_rows=$task_lifecycle_acceptance_rows"
+echo "METRIC task_lifecycle_native_fields_present=$task_lifecycle_native_fields_present"
+echo "METRIC task_lifecycle_native_actions_present=$task_lifecycle_native_actions_present"
+echo "METRIC task_lifecycle_native_statuses_present=$task_lifecycle_native_statuses_present"
+echo "METRIC task_lifecycle_native_absent=$task_lifecycle_native_absent"
+echo "METRIC task_lifecycle_delegation_preserved=$task_lifecycle_delegation_preserved"
+echo "METRIC task_lifecycle_extension_rows=$task_lifecycle_extension_rows"
+echo "METRIC task_lifecycle_extension_management_actions=$task_lifecycle_extension_management_actions"
+echo "METRIC task_lifecycle_extension_equivalent_absent=$task_lifecycle_extension_equivalent_absent"
+echo "METRIC task_lifecycle_audit_verified=$task_lifecycle_audit_verified"
