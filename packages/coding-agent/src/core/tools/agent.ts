@@ -111,24 +111,52 @@ function formatUsage(run: AgentRunDetails): string | undefined {
 	return `${run.usage.totalTokens} tok`;
 }
 
+function formatRunStats(run: AgentRunDetails): string {
+	return [
+		`${run.toolCallCount} tool ${run.toolCallCount === 1 ? "use" : "uses"}`,
+		formatUsage(run),
+		formatDuration(run.durationMs),
+	]
+		.filter((part): part is string => Boolean(part))
+		.join(" · ");
+}
+
+function previewText(text: string, maxLength = 120): string {
+	const compact = text.replace(/\s+/g, " ").trim();
+	return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
+}
+
+function formatToolActivity(run: AgentRunDetails): string {
+	if (run.currentToolName) {
+		return `${run.currentToolName}${run.currentToolArgsPreview ? `: ${previewText(run.currentToolArgsPreview)}` : ""}`;
+	}
+	const lastTool = run.recentToolCalls[run.recentToolCalls.length - 1];
+	if (lastTool) {
+		return `${lastTool.name}${lastTool.argsPreview ? `: ${previewText(lastTool.argsPreview)}` : ""}`;
+	}
+	const snippet = run.recentOutputSnippets[run.recentOutputSnippets.length - 1];
+	if (snippet) return previewText(snippet);
+	if (run.status === "running") return `Working on: ${previewText(run.description ?? run.task)}`;
+	if (run.status === "completed") return "Done";
+	return run.error ? previewText(run.error) : run.status;
+}
+
 function summarizeRuns(runs: AgentRunDetails[]): string {
 	return runs
 		.map((run, index) => {
+			const isLast = index === runs.length - 1;
+			const branch = isLast ? "└─" : "├─";
+			const indent = isLast ? "   " : "│  ";
 			const label = run.description ? `${run.agent} (${run.description})` : run.agent;
-			const status = run.status === "completed" ? "completed" : run.status;
-			const stats = [`${run.toolCallCount} tools`, formatUsage(run), formatDuration(run.durationMs)]
-				.filter((part): part is string => Boolean(part))
-				.join(", ");
-			const current = run.currentToolName ? ` current: ${run.currentToolName}` : "";
 			const refs = [
 				run.sessionId ? `session ${run.sessionId}` : undefined,
 				run.outputPath ? `output ${run.outputPath}` : undefined,
 			]
 				.filter((part): part is string => Boolean(part))
-				.join(", ");
-			const suffix = refs ? ` [${refs}]` : "";
-			const error = run.error ? ` (${run.error})` : "";
-			return `${index + 1}. ${label}: ${status} · ${stats}${current}${suffix}${error}`;
+				.join(" · ");
+			const refSuffix = refs ? ` · ${refs}` : "";
+			const status = run.status === "running" ? "running" : run.status;
+			return `${branch} ${label} · ${status} · ${formatRunStats(run)}${refSuffix}\n${indent}⎿  ${formatToolActivity(run)}`;
 		})
 		.join("\n");
 }
@@ -168,16 +196,23 @@ function formatProgress(progress: AgentExecutionProgress): string {
 	const completed = progress.runs.filter((run) => run.status === "completed").length;
 	const running = progress.runs.filter((run) => run.status === "running").length;
 	const failed = progress.runs.filter((run) => run.status === "failed").length;
-	const lines = [
-		`${progress.mode}: ${completed}/${progress.runs.length} done${running ? `, ${running} running` : ""}${failed ? `, ${failed} failed` : ""}`,
-	];
+	const total = progress.runs.length;
+	const noun = total === 1 ? "agent" : "agents";
+	const headline = running > 0 ? `Running ${total} ${noun}…` : `${completed}/${total} ${noun} finished`;
+	const status = `${headline}${running ? ` · ${running} running` : ""}${failed ? ` · ${failed} failed` : ""}`;
 	const summary = summarizeRuns(progress.runs);
-	if (summary) lines.push(summary);
-	return lines.join("\n");
+	return summary ? `${progress.mode}: ${status}\n${summary}` : `${progress.mode}: ${status}`;
 }
 
 function formatFinalResult(details: AgentToolDetails): string {
-	const lines = [`agent ${details.mode}: ${details.status}`];
+	const failed = details.runs.filter((run) => run.status === "failed").length;
+	const completed = details.runs.filter((run) => run.status === "completed").length;
+	const total = details.runs.length;
+	const noun = total === 1 ? "agent" : "agents";
+	const lines = [
+		`agent ${details.mode}: ${details.status} · ${completed}/${total} ${noun} finished${failed ? ` · ${failed} failed` : ""}`,
+	];
+
 	const summary = summarizeRuns(details.runs);
 	if (summary) lines.push(summary);
 	const outputs = details.runs
@@ -289,7 +324,8 @@ export function createAgentToolDefinition(
 				].join("\n");
 				component.addChild(new Text(expandedText, 0, 0));
 			} else {
-				component.addChild(new Text(text.split("\n").slice(0, 8).join("\n"), 0, 0));
+				const collapsedText = result.details ? formatFinalResult(result.details) : text;
+				component.addChild(new Text(collapsedText.split("\n").slice(0, 8).join("\n"), 0, 0));
 			}
 			return component;
 		},

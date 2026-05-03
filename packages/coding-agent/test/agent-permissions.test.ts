@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.js";
 import { resolveEffectiveTools } from "../src/core/agents/executor.js";
 
-const generalPurpose = getBuiltinAgentDefinitions().find((agent) => agent.id === "general-purpose");
+const generalPurpose = getBuiltinAgentDefinitions().find((agent) => agent.id === "general");
 const scout = getBuiltinAgentDefinitions().find((agent) => agent.id === "scout");
 
 describe("agent tool permissions", () => {

@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { writeAgentOutput } from "../src/core/agents/output.js";
+import type { AgentToolDetails } from "../src/core/agents/types.js";
 import { createAgentToolDefinition, normalizeAgentToolMode } from "../src/core/tools/agent.js";
+import { theme } from "../src/modes/interactive/theme/theme.js";
 
 const tempDirs: string[] = [];
 
@@ -46,6 +48,48 @@ describe("agent tool", () => {
 	test("tool guidelines nudge parent toward concurrent tool-use blocks", () => {
 		const tool = createAgentToolDefinition(process.cwd());
 		expect(tool.promptGuidelines?.join("\n")).toContain("multiple agent tool-use blocks");
+	});
+
+	test("collapsed render shows per-agent work activity", () => {
+		const tool = createAgentToolDefinition(process.cwd());
+		const details: AgentToolDetails = {
+			mode: "parallel",
+			status: "completed",
+			runs: [
+				{
+					agent: "explore",
+					source: "builtin",
+					task: "Find render code",
+					status: "completed",
+					context: {
+						mode: "slim",
+						includeTranscript: false,
+						includeProjectContext: false,
+						includeSkills: false,
+						includeAppendSystemPrompt: false,
+					},
+					effectiveTools: ["grep"],
+					deniedTools: ["agent"],
+					durationMs: 1200,
+					toolCallCount: 1,
+					messageCount: 3,
+					recentToolCalls: [{ name: "grep", argsPreview: "AgentProgressLine", startedAt: 1 }],
+					recentOutputSnippets: [],
+					loadedSkills: [],
+					invokedSkills: { count: 0, names: [] },
+				},
+			],
+		};
+		const result = { content: [{ type: "text" as const, text: "agent parallel: completed" }], details };
+		const renderResult = tool.renderResult;
+		expect(renderResult).toBeDefined();
+		if (!renderResult) return;
+		const context = {} as unknown as Parameters<typeof renderResult>[3];
+		const component = renderResult(result, { expanded: false, isPartial: false }, theme, context);
+		const text = component.render(120).join("\n");
+		expect(text).toContain("└─");
+		expect(text).toContain("explore");
+		expect(text).toContain("⎿  grep: AgentProgressLine");
 	});
 
 	test("project agent confirmation cannot be bypassed by tool arguments", async () => {

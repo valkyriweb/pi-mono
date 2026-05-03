@@ -349,7 +349,7 @@ Pi includes a built-in `agent` tool for child-agent delegation. It supports:
 - parallel: `{ tasks: [{ agent, task }, ...], concurrency }`
 - chain: `{ chain: [{ agent, task: "Use {previous}" }, ...] }`
 
-Built-in agents: `general-purpose`, `worker`, `explore`, `plan`, `scout`, `reviewer`, and `statusline-setup`. User agents can be added as Markdown files in `~/.pi/agent/agents/*.md`; project agents in `.pi/agents/*.md` require explicit `agentScope: "project"` or `"both"` and confirmation.
+Built-in agents: `general`, `worker`, `explore`, `plan`, `scout`, `reviewer`, and `statusline-setup`. User agents can be added as Markdown files in `~/.pi/agent/agents/*.md`; project agents in `.pi/agents/*.md` require explicit `agentScope: "project"` or `"both"` and confirmation.
 
 Context modes: `default` loads normal project context without the parent transcript, `fork` includes a filtered parent transcript, `slim` omits project context and skills, and `none` keeps only Pi's base prompt plus the selected agent prompt. Child tools are bounded by the parent's active tools and recursive `agent` calls are denied.
 

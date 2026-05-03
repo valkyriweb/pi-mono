@@ -21,7 +21,7 @@ describe("agent tool suite: single", () => {
 		]);
 
 		const details = await executeAgentTool(
-			{ mode: "single", tasks: [{ agent: "general-purpose", task: "Report child tools" }] },
+			{ mode: "single", tasks: [{ agent: "general", task: "Report child tools" }] },
 			{
 				parentServices: {
 					cwd: harness.tempDir,
