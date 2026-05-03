@@ -15,16 +15,16 @@
 | Launch isolation | `--no-extensions --tools agent,read,grep,find,ls` | `--no-builtin-tools --no-extensions -e <pi-subagents>` |
 | Thinking | `off` | `off` |
 | Model calls in baseline | none | two removed-command fallthrough probes (`/subagents`, `/subagents-status`), no child-agent runs |
-| Startup capture | `captures/native-startup.txt` | `captures/subagents-startup.txt` |
-| Live cheap captures | `/agents-doctor`, `/agents-status`, `/agents` | `/subagents-doctor`, removed `/subagents-status`, removed `/subagents` |
+| Startup capture | `captures/native-startup.txt` | `captures/subagents-startup.txt` (current fresh launch fails to load extension) |
+| Live cheap captures | `/agents-doctor`, `/agents-status`, `/agents`, S01 native child output | prior `/subagents-doctor`, removed `/subagents-status`, removed `/subagents`; current S01 `/run scout` fails before extension loads |
 | Source probes | `source-probes.md` | `source-probes.md` |
 | Token accounting | unavailable / no model calls | fallthrough captures show about ↑22k prompt and ↓187 completion tokens total |
 
 ## S01 Single-agent reconnaissance
 
-- Native: strong. Built-in `agent({agent, task})` is first-class and keeps child tools bounded by parent active tools.
-- `pi-subagents`: good. `/run` and `subagent({agent, task})` are available, but extension setup is more moving parts.
-- Winner: native by integration simplicity.
+- Native: strong. Live `/agents run scout` completed, used one `read` tool on `pi-agent-tool/README.md`, and returned exactly three artifact filenames within the requested scope.
+- `pi-subagents`: source declares `/run` and `subagent({agent, task})`, but the current fresh extension launch fails with a module-format load error before `/run scout` can execute.
+- Winner: native by integration simplicity and current runtime reliability.
 
 ## S02 Parallel review
 
@@ -79,6 +79,7 @@
 - `score-analysis.md` computes scorecard averages and numeric winners from the filled rows; it corrected a stale `pi-subagents` UX average from 3.2 to 3.3.
 - `findings-alignment.md` checks that prose winners align with numeric winners, with documented exceptions for capability ties and non-equivalent closest matches.
 - `command-surface.md` verifies the current native and extension slash-command surfaces, launch isolation flags, and removed `pi-subagents` 0.24.0 surfaces so command drift cannot silently invalidate the eval.
+- `live-child-output.md` records one tiny symmetric S01 run: native child output verified; current `pi-subagents` fresh runtime fails before child output.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.

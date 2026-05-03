@@ -8,7 +8,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 
 ## Primary metric
 
-- **actual_eval_score** (unitless, higher is better): composite score for real captures, filled scorecard, findings, isolation proof, task-agent lifecycle coverage, source probes, and honest limitations.
+- **actual_eval_score** (unitless, higher is better): composite score for real captures, filled scorecard, findings, isolation proof, live child-output evidence, task-agent lifecycle coverage, source probes, and honest limitations.
 
 ## Secondary metrics
 
@@ -50,7 +50,20 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `command_surface_extension_removed_absent`
 - `command_surface_launch_isolation`
 - `command_surface_removed_changelog_verified`
+- `command_surface_subagents_runtime_loaded`
+- `command_surface_subagents_runtime_load_failed`
 - `command_surface_verified`
+- `live_child_rows`
+- `live_native_child_completed`
+- `live_native_child_read_tool`
+- `live_native_child_exact_three`
+- `live_native_child_tokens`
+- `live_native_child_cost_cents`
+- `live_subagents_load_error`
+- `live_subagents_module_format_error`
+- `live_subagents_shell_fallthrough`
+- `live_subagents_no_child_started`
+- `live_child_output_verified`
 - `task_lifecycle_acceptance_rows`
 - `task_lifecycle_native_fields_present`
 - `task_lifecycle_native_actions_present`
@@ -74,6 +87,8 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 ./scripts/run-tmux-scenario.sh subagents subagents-s06-doctor-live '/subagents-doctor'
 ./scripts/run-tmux-scenario.sh subagents subagents-s05-status-removed-live '/subagents-status'
 ./scripts/run-tmux-scenario.sh subagents subagents-s07-manager-removed-live '/subagents'
+PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh native native-s01-live-child-output '/agents run scout -- Read pi-agent-tool/README.md and list exactly three artifact filenames from Fresh artifacts with one phrase each. Keep under 60 words. Do not modify files.'
+PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagents-s01-live-child-output '/run scout Read pi-agent-tool/README.md and list exactly three artifact filenames from Fresh artifacts with one phrase each. Keep under 60 words. Do not modify files.'
 ./autoresearch.sh
 ```
 
@@ -91,6 +106,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `token-evidence.md` — live footer token/cost evidence for native registered commands vs removed extension commands.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
+- `live-child-output.md` — one tiny S01 live child-output probe: native success vs current extension load failure.
 - `task-lifecycle-audit.md` — S09 native task lifecycle acceptance probe and extension closest-equivalent audit.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
@@ -108,7 +124,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 ## Constraints
 
 - Same thinking level across arms: `--thinking off` for cheap capture baseline.
-- No live child-agent baseline. Removed-command probes may spend parent-model tokens if intentionally measuring fallback UX.
+- No broad live child-agent baseline. One tiny S01 live probe is allowed once source-backed evidence is exhausted. Removed-command probes may spend parent-model tokens if intentionally measuring fallback UX.
 - All artifacts stay under `pi-agent-tool/`.
 - Mark removed/unavailable surfaces honestly.
 
@@ -125,3 +141,4 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - Next iteration added `scripts/check-findings-alignment.py`, `findings-alignment.md`, and scorer checks that prose winners align with numeric winners or have documented judgment-call exceptions (5 aligned, 4 intentional exceptions, 0 conflicts).
 - Next iteration added `scripts/check-command-surface.py`, `command-surface.md`, and scorer checks that native `/agents*` commands, extension `/run`/`/chain`/`/parallel`/`/run-chain`/`/subagents-doctor`, removed extension surfaces, launch flags, and 0.24.0 changelog claims remain in sync.
 - Next iteration added `scripts/check-task-lifecycle.py`, `task-lifecycle-audit.md`, and scorer checks that native S09 lifecycle fields/actions/status literals are absent, existing delegation modes remain present, and `pi-subagents` management/async controls are closest-equivalent only rather than a general task-list API.
+- Next iteration ran one tiny symmetric S01 live child-output probe and added `scripts/check-live-child-output.py` plus `live-child-output.md`; native completed a live scout child with one read tool, while the current `pi-subagents` fresh launch failed before `/run scout` because the extension did not load.

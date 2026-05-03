@@ -37,6 +37,9 @@ Extension isolation launch check:
 
 - `captures/subagents-startup.txt` includes `--no-builtin-tools`: true.
 - `captures/subagents-startup.txt` explicitly loads only the `pi-subagents` extension via `-e`: true.
+- `captures/subagents-startup.txt` shows extension runtime loaded: false.
+- `captures/subagents-startup.txt` shows current module-format load failure: true.
+- Source command presence remains useful, but runtime command availability is currently blocked by the extension load failure.
 
 ## Drift guard summary
 
@@ -45,4 +48,5 @@ Extension isolation launch check:
 - Removed/absent extension surfaces absent: 3/3.
 - Removed-surface changelog guard: 1.
 - Launch isolation guards passed: 2/2.
+- Current extension runtime load failure detected: 1.
 - If `/subagents` or `/subagents-status` reappears, this file and the scorecard must be updated rather than silently carrying stale removal findings.

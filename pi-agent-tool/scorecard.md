@@ -4,8 +4,8 @@ Filled baseline for current local checkout and installed extension. Token fields
 
 | Scenario | Arm | Correctness 1-5 | Coverage 1-5 | UX 1-5 | Robustness 1-5 | Flexibility 1-5 | Evidence 1-5 | Prompt tokens | Completion tokens | Total tokens | Context notes | Latency | Reliability notes | `value_per_1k_tokens` | Evidence file |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|
-| S01 single recon | native | 5 | 5 | 4 | 5 | 5 | 4 | n/a | n/a | n/a | Single `{agent, task}` with bounded tools and context modes. | n/a | source-backed, no live child | high | captures/native-s01-single-recon.txt |
-| S01 single recon | pi-subagents | 4 | 4 | 4 | 4 | 4 | 4 | n/a | n/a | n/a | `/run` and `subagent({agent, task})`; extension isolation via launch flags. | n/a | source-backed, no live child | high | captures/subagents-s01-single-recon.txt |
+| S01 single recon | native | 5 | 5 | 4 | 5 | 5 | 5 | ~13k | ~159 | ~13.2k | Live native `/agents run scout` used the native `agent` tool, read `pi-agent-tool/README.md`, and returned exactly three artifact filenames. | ~6.9s child | live child completed; 1 read tool; 1958 child tokens; parent footer ~$0.076 | high | captures/native-s01-live-child-output.txt |
+| S01 single recon | pi-subagents | 1 | 1 | 1 | 1 | 1 | 5 | n/a | n/a | n/a | Current fresh extension launch failed before `/run scout`; source still declares `/run`, but runtime command surface was unavailable. | startup failure | live capture shows extension load error, then shell-level `zsh: no such file or directory: /run` | low | captures/subagents-s01-live-child-output.txt |
 | S02 parallel review | native | 5 | 5 | 4 | 5 | 5 | 4 | n/a | n/a | n/a | Native `tasks[]`, bounded concurrency, child session refs. | n/a | source-backed, no live child | high | captures/native-s02-parallel-review.txt |
 | S02 parallel review | pi-subagents | 4 | 5 | 4 | 4 | 5 | 4 | n/a | n/a | n/a | `/parallel`, `tasks[]`, `--bg`, `--fork`. | n/a | source-backed, no live child | high | captures/subagents-s02-parallel-review.txt |
 | S03 chain handoff | native | 5 | 5 | 4 | 5 | 5 | 4 | n/a | n/a | n/a | Native `chain[]` plus saved-chain scaffold. | n/a | source-backed, no live child | high | captures/native-s03-chain-handoff.txt |
@@ -27,5 +27,5 @@ Filled baseline for current local checkout and installed extension. Token fields
 
 | Arm | Avg correctness | Avg coverage | Avg UX | Avg robustness | Avg flexibility | Avg evidence | Overall value/token |
 |---|---:|---:|---:|---:|---:|---:|---|
-| native | 4.1 | 4.1 | 3.7 | 4.4 | 3.9 | 4.6 | High for core delegation, diagnostics, saved chains, and context control; weak for requested task lifecycle and background control. |
-| pi-subagents | 3.2 | 3.7 | 3.3 | 3.7 | 3.9 | 4.6 | High for async/control and extension workflows; current 0.24.0 loses requested `/subagents` manager and `/subagents-status`, and removed commands can fall through into token-spending model turns. |
+| native | 4.1 | 4.1 | 3.7 | 4.4 | 3.9 | 4.7 | High for core delegation, diagnostics, saved chains, and context control; weak for requested task lifecycle and background control. |
+| pi-subagents | 2.9 | 3.3 | 3.0 | 3.3 | 3.6 | 4.7 | Source has async/control and extension workflows, but current fresh extension launch fails under the eval command; 0.24.0 also loses requested `/subagents` manager and `/subagents-status`, and removed commands can fall through into token-spending model turns when the extension loads. |

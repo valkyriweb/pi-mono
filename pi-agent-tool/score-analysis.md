@@ -6,14 +6,14 @@ Generated from `scorecard.md` by `scripts/check-scorecard-consistency.py`. This 
 
 | Arm | Avg correctness | Avg coverage | Avg UX | Avg robustness | Avg flexibility | Avg evidence |
 |---|---:|---:|---:|---:|---:|---:|
-| native | 4.1 | 4.1 | 3.7 | 4.4 | 3.9 | 4.6 |
-| pi-subagents | 3.2 | 3.7 | 3.3 | 3.7 | 3.9 | 4.6 |
+| native | 4.1 | 4.1 | 3.7 | 4.4 | 3.9 | 4.7 |
+| pi-subagents | 2.9 | 3.3 | 3.0 | 3.3 | 3.6 | 4.7 |
 
 ## Scenario numeric winners
 
 | Scenario | Native total | `pi-subagents` total | Numeric winner |
 |---|---:|---:|---|
-| S01 single recon | 28 | 24 | native |
+| S01 single recon | 29 | 10 | native |
 | S02 parallel review | 28 | 26 | native |
 | S03 chain handoff | 28 | 26 | native |
 | S04 saved workflow | 26 | 23 | native |

@@ -48,9 +48,10 @@ Launch flags:
 Expected isolation:
 
 - Built-in native tools are disabled by `--no-builtin-tools`; native `agent` is not active.
-- Only the explicit `pi-subagents` extension is loaded.
+- Only the explicit `pi-subagents` extension is attempted via `-e`.
 - Native `/agents` is not used.
-- Extension command surface is current installed behavior: `/run`, `/parallel`, `/chain`, `/run-chain`, `/subagents-doctor`; `/subagents` and `/subagents-status` are unavailable in `0.24.0`.
+- Extension source command surface is current installed behavior: `/run`, `/parallel`, `/chain`, `/run-chain`, `/subagents-doctor`; `/subagents` and `/subagents-status` are unavailable in `0.24.0`.
+- Current runtime caveat: the fresh eval launch now fails to load `pi-subagents` with a module-format error, so runtime command availability is blocked until that loader issue is fixed.
 
 Capture cheap startup/UI evidence:
 
@@ -71,6 +72,18 @@ Removed-command probes are optional and can spend parent-model tokens because Pi
 ```
 
 Do not use native `agent` or `/agents` in this arm.
+
+## 2.5. Tiny live child-output probe
+
+Only run this when source-backed evidence is no longer enough and the token spend is justified. It is intentionally one tiny S01 probe, not a broad live-child benchmark:
+
+```bash
+PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh native native-s01-live-child-output '/agents run scout -- Read pi-agent-tool/README.md and list exactly three artifact filenames from Fresh artifacts with one phrase each. Keep under 60 words. Do not modify files.'
+PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagents-s01-live-child-output '/run scout Read pi-agent-tool/README.md and list exactly three artifact filenames from Fresh artifacts with one phrase each. Keep under 60 words. Do not modify files.'
+python3 scripts/check-live-child-output.py
+```
+
+Current verdict: native completed a real child scout run; `pi-subagents` failed before child execution because the extension did not load.
 
 ## 3. Task-agent lifecycle probe
 
@@ -101,7 +114,8 @@ Before any `keep`, verify:
 - `isolation-proof.md` says `native_no_subagent_tool: true`.
 - `isolation-proof.md` says `subagents_no_native_agent_tool: true`.
 - `source-probes.md` includes removed `/subagents-status` and `/subagents` manager evidence for extension `0.24.0`.
-- `command-surface.md` exists and `scripts/check-command-surface.py` validates current native/extension command surfaces and launch flags.
+- `command-surface.md` exists and `scripts/check-command-surface.py` validates current native/extension command surfaces, launch flags, and the current extension runtime load failure.
+- `live-child-output.md` exists and `scripts/check-live-child-output.py` validates the tiny S01 live probe.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

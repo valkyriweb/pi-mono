@@ -5,7 +5,7 @@ Fresh A/B evaluation under `pi-agent-tool/` comparing:
 1. Native Pi `/agents`, `/agents-doctor`, `/agents-status`, saved chains, and the built-in `agent` tool.
 2. `pi-subagents` extension `/run`, `/parallel`, `/chain`, `/run-chain`, `/subagents-doctor`, and `subagent` tool actions.
 
-Current source reality matters: installed `pi-subagents` is `0.24.0`, where `/subagents` manager UI and `/subagents-status` were removed. The eval scores those requested surfaces as unavailable rather than pretending parity.
+Current source/runtime reality matters: installed `pi-subagents` is `0.24.0`, where `/subagents` manager UI and `/subagents-status` were removed, and the current fresh eval launch now fails to load the extension with a module-format error. The eval scores those requested or unavailable surfaces honestly rather than pretending parity.
 
 ## Fresh artifacts
 
@@ -20,6 +20,7 @@ Current source reality matters: installed `pi-subagents` is `0.24.0`, where `/su
 - `token-evidence.md` — live footer token/cost evidence for registered native commands vs removed extension commands.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
+- `live-child-output.md` — one tiny S01 live child-output probe: native success vs current extension load failure.
 - `task-lifecycle-audit.md` — S09 native task lifecycle acceptance probe and extension closest-equivalent audit.
 - `isolation-proof.md` — proof of active surface isolation.
 - `source-probes.md` — source-backed evidence snippets.
@@ -38,8 +39,9 @@ cd /Users/luke/Projects/personal/pi-mono-fork/pi-agent-tool
 ./scripts/run-tmux-scenario.sh native native-s07-ui-selector-live '/agents'
 ./scripts/run-tmux-scenario.sh subagents subagents-s06-doctor-live '/subagents-doctor'
 ./scripts/run-tmux-scenario.sh subagents subagents-s05-status-removed-live '/subagents-status'
-./scripts/run-tmux-scenario.sh subagents subagents-s07-manager-removed-live '/subagents'
+PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh native native-s01-live-child-output '/agents run scout -- Read pi-agent-tool/README.md and list exactly three artifact filenames from Fresh artifacts with one phrase each. Keep under 60 words. Do not modify files.'
+PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagents-s01-live-child-output '/run scout Read pi-agent-tool/README.md and list exactly three artifact filenames from Fresh artifacts with one phrase each. Keep under 60 words. Do not modify files.'
 ./autoresearch.sh
 ```
 
-Live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. Two removed-command probes in the extension arm did fall through to parent model turns; `token-evidence.md` records the observed ↑22k/↓187 token, $0.111 cost. `evidence-manifest.md` ties each scorecard row to an existing evidence file so stale paths fail the scorer.
+Broad live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. One tiny S01 live probe was added because source-only evidence was exhausted: native completed, while the extension failed to load before `/run scout`. Two earlier removed-command probes in the extension arm did fall through to parent model turns; `token-evidence.md` records the observed ↑22k/↓187 token, $0.111 cost. `evidence-manifest.md` ties each scorecard row to an existing evidence file so stale paths fail the scorer.

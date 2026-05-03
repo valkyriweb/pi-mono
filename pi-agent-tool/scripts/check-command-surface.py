@@ -36,7 +36,7 @@ def extension_version() -> str:
     return match.group(1)
 
 
-def check_launch_flags() -> tuple[int, int]:
+def check_launch_flags() -> tuple[int, int, int, int]:
     native = read(ROOT / "captures/native-startup.txt")
     subagents = read(ROOT / "captures/subagents-startup.txt")
     native_ok = all(fragment in native for fragment in ["--no-session", "--no-extensions", "--tools", "agent", "--thinking off"])
@@ -44,7 +44,9 @@ def check_launch_flags() -> tuple[int, int]:
         fragment in subagents
         for fragment in ["--no-session", "--no-builtin-tools", "--no-extensions", "-e", "pi-subagents/src/extension/index.ts", "--thinking off"]
     )
-    return int(native_ok), int(subagents_ok)
+    subagents_runtime_loaded = "[Extensions]" in subagents and "Failed to load extension" not in subagents
+    subagents_runtime_load_failed = "Failed to load extension" in subagents and "Cannot determine intended module format" in subagents
+    return int(native_ok), int(subagents_ok), int(subagents_runtime_loaded), int(subagents_runtime_load_failed)
 
 
 def check_removed_changelog() -> int:
@@ -106,6 +108,9 @@ def write_markdown(path: Path, data: dict[str, object]) -> None:
             "",
             f"- `captures/subagents-startup.txt` includes `--no-builtin-tools`: {str(bool(data['subagents_launch_ok'])).lower()}.",
             f"- `captures/subagents-startup.txt` explicitly loads only the `pi-subagents` extension via `-e`: {str(bool(data['subagents_launch_ok'])).lower()}.",
+            f"- `captures/subagents-startup.txt` shows extension runtime loaded: {str(bool(data['subagents_runtime_loaded'])).lower()}.",
+            f"- `captures/subagents-startup.txt` shows current module-format load failure: {str(bool(data['subagents_runtime_load_failed'])).lower()}.",
+            "- Source command presence remains useful, but runtime command availability is currently blocked by the extension load failure.",
             "",
             "## Drift guard summary",
             "",
@@ -114,6 +119,7 @@ def write_markdown(path: Path, data: dict[str, object]) -> None:
             f"- Removed/absent extension surfaces absent: {data['extension_removed_absent']}/3.",
             f"- Removed-surface changelog guard: {data['removed_changelog_verified']}.",
             f"- Launch isolation guards passed: {data['launch_isolation_count']}/2.",
+            f"- Current extension runtime load failure detected: {data['subagents_runtime_load_failed']}.",
             "- If `/subagents` or `/subagents-status` reappears, this file and the scorecard must be updated rather than silently carrying stale removal findings.",
             "",
         ]
@@ -129,7 +135,7 @@ def main() -> int:
     native_commands = parse_native_builtin_commands()
     extension_commands = parse_extension_commands()
     ext_version = extension_version()
-    native_launch_ok, subagents_launch_ok = check_launch_flags()
+    native_launch_ok, subagents_launch_ok, subagents_runtime_loaded, subagents_runtime_load_failed = check_launch_flags()
     removed_changelog_verified = check_removed_changelog()
 
     native_expected_present = len(NATIVE_EXPECTED & native_commands)
@@ -144,6 +150,7 @@ def main() -> int:
         and ext_version == "0.24.0"
         and launch_isolation_count == 2
         and removed_changelog_verified == 1
+        and subagents_runtime_load_failed == 1
     )
 
     data: dict[str, object] = {
@@ -157,6 +164,8 @@ def main() -> int:
         "extension_expected_present": extension_expected_present,
         "extension_removed_absent": extension_removed_absent,
         "launch_isolation_count": launch_isolation_count,
+        "subagents_runtime_loaded": subagents_runtime_loaded,
+        "subagents_runtime_load_failed": subagents_runtime_load_failed,
         "removed_changelog_verified": removed_changelog_verified,
     }
     if args.write:
@@ -167,6 +176,8 @@ def main() -> int:
     print(f"command_surface_extension_removed_absent={extension_removed_absent}")
     print(f"command_surface_launch_isolation={launch_isolation_count}")
     print(f"command_surface_removed_changelog_verified={removed_changelog_verified}")
+    print(f"command_surface_subagents_runtime_loaded={subagents_runtime_loaded}")
+    print(f"command_surface_subagents_runtime_load_failed={subagents_runtime_load_failed}")
     print(f"command_surface_verified={command_surface_verified}")
     return 0 if command_surface_verified else 1
 

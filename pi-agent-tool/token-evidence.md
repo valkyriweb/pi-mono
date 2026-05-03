@@ -9,8 +9,10 @@ Purpose: record the token/value evidence that is visible in live tmux captures, 
 | S05 async/status/control | native | `captures/native-s05-status-live.txt` | 0 | 0 | $0.000 | Registered native `/agents-status` handled locally; no model turn. |
 | S06 doctor diagnostics | native | `captures/native-s06-doctor-live.txt` | 0 | 0 | $0.000 | Registered native `/agents-doctor` handled locally; no model turn. |
 | S07 UI manager/selector | native | `captures/native-s07-ui-selector-live.txt` | 0 | 0 | $0.000 | Registered native `/agents` selector handled locally; no model turn. |
-| S05 async/status/control | pi-subagents | `captures/subagents-s05-status-removed-live.txt` | ~11k | 106 | $0.056 | Removed `/subagents-status` was not registered, fell through to parent model, and invoked `subagent list`. |
-| S07 UI manager/selector | pi-subagents | `captures/subagents-s07-manager-removed-live.txt` | ~11k | 81 | $0.055 | Removed `/subagents` was not registered, fell through to parent model, and invoked `subagent list`. |
+| S01 single recon | native | `captures/native-s01-live-child-output.txt` | ~13k | ~159 | $0.076 | Live native child scout completed; child details show 1958 tokens and one `read` tool use. |
+| S01 single recon | pi-subagents | `captures/subagents-s01-live-child-output.txt` | n/a | n/a | n/a | Current fresh extension launch failed before `/run scout`; no child output/token accounting available. |
+| S05 async/status/control | pi-subagents | `captures/subagents-s05-status-removed-live.txt` | ~11k | 106 | $0.056 | Removed `/subagents-status` was not registered, fell through to parent model, and invoked `subagent list` in an earlier successful extension load. |
+| S07 UI manager/selector | pi-subagents | `captures/subagents-s07-manager-removed-live.txt` | ~11k | 81 | $0.055 | Removed `/subagents` was not registered, fell through to parent model, and invoked `subagent list` in an earlier successful extension load. |
 
 ## Aggregate observed removed-command cost
 

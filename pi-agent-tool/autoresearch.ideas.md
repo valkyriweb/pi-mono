@@ -1,2 +1,2 @@
-- Run one symmetric low-cost live child-agent scenario for S01-S03 under the same launch flags to measure actual output quality and token usage, but only if source-backed evidence is no longer enough.
+- If the current `pi-subagents` module-format extension load failure is fixed, rerun the S01 live child-output probe plus cheap `/run`/`/chain`/`/parallel` usage captures and rescore the extension rows instead of preserving the failure verdict.
 - If a branch lands native non-spawn task lifecycle actions, rerun S09 source probes and add a focused task lifecycle live/tool-schema capture.
