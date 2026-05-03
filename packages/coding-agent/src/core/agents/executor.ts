@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Api, AssistantMessage, Model, TextContent, Usage } from "@mariozechner/pi-ai";
 import type { AgentSession } from "../agent-session.js";
@@ -23,6 +24,9 @@ import {
 	attachAgentRecentRunController,
 	failAgentRecentRun,
 	finishAgentRecentRun,
+	formatAgentDurationMs,
+	getAgentRecentRunGeneration,
+	markAgentRecentRunNeedsAttention,
 	restartAgentRecentRun,
 	startAgentRecentRun,
 	updateAgentRecentRunProgress,
@@ -46,6 +50,8 @@ const GLOBAL_DENY_TOOLS = new Set(["agent"]);
 const DEFAULT_CONCURRENCY = 4;
 const MAX_CONCURRENCY = 8;
 const MAX_PARALLEL_TASKS = 8;
+const BACKGROUND_MONITOR_INTERVAL_MS = 30_000;
+const BACKGROUND_STALE_PROGRESS_MS = 10 * 60_000;
 
 export interface AgentToolParentServices {
 	cwd: string;
@@ -488,19 +494,26 @@ async function mapWithConcurrency<T>(
 	items: T[],
 	concurrency: number,
 	run: (item: T, index: number) => Promise<AgentRunDetails>,
-): Promise<AgentRunDetails[]> {
-	const results: AgentRunDetails[] = new Array(items.length);
+): Promise<{ results: AgentRunDetails[]; errors: unknown[] }> {
+	const results: Array<AgentRunDetails | undefined> = new Array(items.length);
+	const errors: unknown[] = [];
 	let nextIndex = 0;
 	const workerCount = Math.min(concurrency, items.length);
 	const workers = Array.from({ length: workerCount }, async () => {
 		while (nextIndex < items.length) {
 			const index = nextIndex;
 			nextIndex += 1;
-			results[index] = await run(items[index], index);
+			try {
+				results[index] = await run(items[index], index);
+			} catch (error) {
+				errors.push(error);
+				const details = getErrorDetails(error);
+				if (details) results[index] = details;
+			}
 		}
 	});
 	await Promise.all(workers);
-	return results;
+	return { results: results.filter((result): result is AgentRunDetails => Boolean(result)), errors };
 }
 
 function getErrorDetails(error: unknown): AgentRunDetails | undefined {
@@ -514,11 +527,15 @@ async function resumeSingleBackgroundRun(
 	input: AgentToolExecutionInput,
 	options: AgentExecutorOptions,
 	recentRun: AgentRecentRun,
+	expectedGeneration: number,
 	prompt?: string,
 ): Promise<AgentToolDetails> {
 	if (input.mode !== "single") throw new Error("Only single background agent runs can be resumed");
 	const previousRun = recentRun.runs[0];
 	if (!previousRun?.sessionPath) throw new Error(`${recentRun.id} has no child session path to resume`);
+	if (!existsSync(previousRun.sessionPath)) {
+		throw new Error(`${recentRun.id} child session path no longer exists: ${previousRun.sessionPath}`);
+	}
 
 	const registry = await loadAgentRegistry({ cwd: options.parentServices.cwd, agentScope: input.agentScope });
 	const originalTask = input.tasks[0];
@@ -602,7 +619,7 @@ async function resumeSingleBackgroundRun(
 	} catch (error) {
 		const failed = getErrorDetails(error);
 		if (!failed) {
-			failAgentRecentRun(recentRun, error);
+			failAgentRecentRun(recentRun, error, expectedGeneration);
 			throw error;
 		}
 		const failedDetails: AgentToolDetails = {
@@ -613,7 +630,7 @@ async function resumeSingleBackgroundRun(
 			background: true,
 			chainDir: input.chainDir,
 		};
-		finishAgentRecentRun(recentRun, failedDetails);
+		finishAgentRecentRun(recentRun, failedDetails, expectedGeneration);
 		return failedDetails;
 	}
 
@@ -625,7 +642,7 @@ async function resumeSingleBackgroundRun(
 		background: true,
 		chainDir: input.chainDir,
 	};
-	finishAgentRecentRun(recentRun, completedDetails);
+	finishAgentRecentRun(recentRun, completedDetails, expectedGeneration);
 	return completedDetails;
 }
 
@@ -633,6 +650,7 @@ async function executeAgentToolToCompletion(
 	input: AgentToolExecutionInput,
 	options: AgentExecutorOptions,
 	recentRun: AgentRecentRun,
+	expectedGeneration = getAgentRecentRunGeneration(recentRun),
 ): Promise<AgentToolDetails> {
 	const registry = await loadAgentRegistry({ cwd: options.parentServices.cwd, agentScope: input.agentScope });
 	const runs: AgentRunDetails[] = [];
@@ -666,7 +684,7 @@ async function executeAgentToolToCompletion(
 			}
 		} else if (input.mode === "parallel") {
 			const normalizedTasks = input.tasks.map(makeTask);
-			const results = await mapWithConcurrency(normalizedTasks, concurrency, async (task) => {
+			const { results, errors } = await mapWithConcurrency(normalizedTasks, concurrency, async (task) => {
 				const result = await runChild({
 					...options,
 					registry,
@@ -681,6 +699,7 @@ async function executeAgentToolToCompletion(
 				return result;
 			});
 			runs.splice(0, runs.length, ...results);
+			if (errors.length > 0) throw errors[0];
 		} else {
 			const result = await runChild({
 				...options,
@@ -697,7 +716,20 @@ async function executeAgentToolToCompletion(
 	} catch (error) {
 		const details = getErrorDetails(error);
 		if (!details) {
-			failAgentRecentRun(recentRun, error);
+			if (options.signal?.aborted) {
+				const abortedDetails: AgentToolDetails = {
+					mode: input.mode,
+					status: getAbortedRunStatus(options),
+					runs,
+					runId: recentRun.id,
+					background: input.background === true,
+					concurrency,
+					chainDir: input.chainDir,
+				};
+				finishAgentRecentRun(recentRun, abortedDetails, expectedGeneration);
+				return abortedDetails;
+			}
+			failAgentRecentRun(recentRun, error, expectedGeneration);
 			throw error;
 		}
 		if (!runs.includes(details)) runs.push(details);
@@ -710,7 +742,7 @@ async function executeAgentToolToCompletion(
 			concurrency,
 			chainDir: input.chainDir,
 		};
-		finishAgentRecentRun(recentRun, failedDetails);
+		finishAgentRecentRun(recentRun, failedDetails, expectedGeneration);
 		return failedDetails;
 	}
 
@@ -723,7 +755,7 @@ async function executeAgentToolToCompletion(
 		concurrency: input.mode === "parallel" ? concurrency : undefined,
 		chainDir: input.chainDir,
 	};
-	finishAgentRecentRun(recentRun, completedDetails);
+	finishAgentRecentRun(recentRun, completedDetails, expectedGeneration);
 	return completedDetails;
 }
 
@@ -736,17 +768,49 @@ export async function executeAgentTool(
 
 	let abortController = new AbortController();
 	let abortStatus: AgentToolStatus | undefined;
+	let activeRunPromise: Promise<void> = Promise.resolve();
+	let lastActivityAt = Date.now();
+	let monitor: NodeJS.Timeout | undefined;
 	const activeSessions = new Set<AgentSession>();
-	const makeBackgroundOptions = (): AgentExecutorOptions => ({
+	const touchActivity = () => {
+		lastActivityAt = Date.now();
+	};
+	const stopMonitor = () => {
+		if (monitor) clearInterval(monitor);
+		monitor = undefined;
+	};
+	const startMonitor = (generation: number) => {
+		stopMonitor();
+		touchActivity();
+		monitor = setInterval(() => {
+			if (getAgentRecentRunGeneration(recentRun) !== generation || recentRun.status !== "running") {
+				stopMonitor();
+				return;
+			}
+			const staleMs = Date.now() - lastActivityAt;
+			if (staleMs >= BACKGROUND_STALE_PROGRESS_MS) {
+				markAgentRecentRunNeedsAttention(
+					recentRun,
+					`No child progress for ${formatAgentDurationMs(staleMs)}; inspect or stop it with /agents runs`,
+				);
+			}
+		}, BACKGROUND_MONITOR_INTERVAL_MS);
+	};
+	const makeBackgroundOptions = (generation: number): AgentExecutorOptions => ({
 		...options,
 		signal: abortController.signal,
 		abortStatus: () => abortStatus,
-		onProgress: (progress) => updateAgentRecentRunProgress(recentRun, progress),
+		onProgress: (progress) => {
+			touchActivity();
+			updateAgentRecentRunProgress(recentRun, progress, generation);
+		},
 		onChildSessionStart: (session, details) => {
+			touchActivity();
 			activeSessions.add(session);
 			options.onChildSessionStart?.(session, details);
 		},
 		onChildSessionEnd: (session, details) => {
+			touchActivity();
 			activeSessions.delete(session);
 			options.onChildSessionEnd?.(session, details);
 		},
@@ -757,32 +821,48 @@ export async function executeAgentTool(
 			void session.abort().catch(() => {});
 		}
 	};
-	const launch = () => {
-		void executeAgentToolToCompletion(input, makeBackgroundOptions(), recentRun).catch(() => {});
+	const launch = (run: (generation: number) => Promise<AgentToolDetails>) => {
+		const generation = getAgentRecentRunGeneration(recentRun);
+		startMonitor(generation);
+		activeRunPromise = run(generation)
+			.then(
+				() => {},
+				(error) => {
+					failAgentRecentRun(recentRun, error, generation);
+				},
+			)
+			.finally(() => {
+				if (getAgentRecentRunGeneration(recentRun) === generation) stopMonitor();
+			});
 	};
 
 	attachAgentRecentRunController(recentRun.id, {
-		interrupt: () => {
+		interrupt: async () => {
 			abortStatus = "interrupted";
 			abortActiveSessions();
 			abortController.abort();
+			await activeRunPromise;
 		},
-		cancel: () => {
+		cancel: async () => {
 			abortStatus = "cancelled";
 			abortActiveSessions();
 			abortController.abort();
+			await activeRunPromise;
 		},
-		resume: (prompt) => {
+		resume: async (prompt) => {
+			await activeRunPromise;
 			abortController = new AbortController();
 			abortStatus = undefined;
 			restartAgentRecentRun(recentRun);
-			void resumeSingleBackgroundRun(input, makeBackgroundOptions(), recentRun, prompt).catch((error) => {
-				failAgentRecentRun(recentRun, error);
-			});
+			launch((generation) =>
+				resumeSingleBackgroundRun(input, makeBackgroundOptions(generation), recentRun, generation, prompt),
+			);
 		},
 	});
 
-	launch();
+	launch((generation) =>
+		executeAgentToolToCompletion(input, makeBackgroundOptions(generation), recentRun, generation),
+	);
 	return {
 		mode: input.mode,
 		status: "running",

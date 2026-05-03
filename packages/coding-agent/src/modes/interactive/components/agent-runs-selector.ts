@@ -1,5 +1,5 @@
 import { Container, getKeybindings, Spacer, Text } from "@mariozechner/pi-tui";
-import type { AgentRecentRun } from "../../../core/agents/status.js";
+import { type AgentRecentRun, formatAgentDurationMs } from "../../../core/agents/status.js";
 import type { AgentToolStatus } from "../../../core/agents/types.js";
 import { theme } from "../theme/theme.js";
 import { DynamicBorder } from "./dynamic-border.js";
@@ -9,6 +9,7 @@ export type AgentRunsSelectorAction = "detail" | "interrupt" | "cancel" | "resum
 
 export class AgentRunsSelectorComponent extends Container {
 	private selectedIndex = 0;
+	private displayedRuns: AgentRecentRun[] = [];
 	private readonly listContainer = new Container();
 	private readonly detailText = new Text("", 1, 0);
 
@@ -21,12 +22,8 @@ export class AgentRunsSelectorComponent extends Container {
 		this.rebuild();
 	}
 
-	private get runs(): AgentRecentRun[] {
-		return this.getRuns();
-	}
-
 	private selectedRun(): AgentRecentRun | undefined {
-		return this.runs[this.selectedIndex];
+		return this.displayedRuns[this.selectedIndex];
 	}
 
 	private statusText(status: AgentToolStatus): string {
@@ -44,7 +41,7 @@ export class AgentRunsSelectorComponent extends Container {
 	}
 
 	private formatDuration(run: AgentRecentRun): string {
-		return run.durationMs !== undefined ? `${run.durationMs}ms` : "running";
+		return run.durationMs !== undefined ? formatAgentDurationMs(run.durationMs) : "running";
 	}
 
 	private formatRunRow(run: AgentRecentRun, selected: boolean): string {
@@ -52,7 +49,8 @@ export class AgentRunsSelectorComponent extends Container {
 		const id = selected ? theme.fg("accent", run.id) : theme.fg("text", run.id);
 		const execution = run.execution === "background" ? "bg" : "fg";
 		const resumable = run.resumable ? theme.fg("warning", " resumable") : "";
-		return `${prefix}${id} ${execution} ${this.statusText(run.status)}${resumable} ${theme.fg("muted", run.agents.join(", "))}`;
+		const attention = run.needsAttention ? theme.fg("warning", " needs attention") : "";
+		return `${prefix}${id} ${execution} ${this.statusText(run.status)}${resumable}${attention} ${theme.fg("muted", run.agents.join(", "))}`;
 	}
 
 	private formatDetail(run: AgentRecentRun | undefined): string {
@@ -62,6 +60,7 @@ export class AgentRunsSelectorComponent extends Container {
 			`agents: ${run.agents.join(", ") || "n/a"}`,
 		];
 		if (run.resumable) lines.push(`resumable: yes (${keyHint("app.agents.resume", "resume")})`);
+		if (run.needsAttention) lines.push(`needs attention: ${run.attentionMessage ?? "check run"}`);
 		if (run.sessionRefs.length > 0) {
 			lines.push(
 				`sessions: ${run.sessionRefs
@@ -78,7 +77,8 @@ export class AgentRunsSelectorComponent extends Container {
 	private rebuild(): void {
 		this.clear();
 		this.listContainer.clear();
-		const runs = this.runs;
+		const runs = this.getRuns();
+		this.displayedRuns = runs;
 		if (runs.length === 0) {
 			this.selectedIndex = 0;
 			this.listContainer.addChild(new Text(theme.fg("muted", "No native agent runs yet"), 1, 0));
@@ -125,7 +125,7 @@ export class AgentRunsSelectorComponent extends Container {
 	}
 
 	handleInput(keyData: string): void {
-		const runs = this.runs;
+		const runs = this.displayedRuns;
 		const kb = getKeybindings();
 		if (kb.matches(keyData, "tui.select.up")) {
 			this.selectedIndex = Math.max(0, this.selectedIndex - 1);

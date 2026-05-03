@@ -232,9 +232,9 @@ Saved chains live in `~/.pi/agent/chains/*.json` or project `.pi/chains/*.json`:
 }
 ```
 
-Project chains override user chains with the same name. `/agents-status` tracks recent native foreground and background child-agent runs. Detail mode shows the child session ref/path, status timeline summary, recent tool calls, invoked skills, usage, errors, output refs, and whether an interrupted background run can be resumed. Background runs also appear in the footer with a `/agents runs` shortcut to the selectable control panel.
+Project chains override user chains with the same name. `/agents-status` tracks recent native foreground and background child-agent runs. Detail mode shows the child session ref/path, status timeline summary, recent tool calls, invoked skills, usage, errors, output refs, and whether an interrupted background run can be resumed. Background runs also appear in the footer with a `/agents runs` shortcut to the selectable control panel. Pi does not enforce a hard timeout for child agents; background runs are monitored for stalled progress and marked `needs attention` so you can inspect, interrupt, or cancel them from `/agents runs`.
 
-During a native `agent` tool call, collapsed rendering shows mode, agents, per-child status, current tool, tool count, token usage when known, duration, and session/output refs. Expanded rendering adds recent tools, recent output snippets, invoked/loaded skills, model/thinking, errors, and output paths.
+During a native `agent` tool call, collapsed rendering shows mode, agents, per-child status, current tool, tool count, compact token usage (`32k tok`), minute-aware duration (`1m 12s`), and session/output refs. Expanded rendering adds recent tools, recent output snippets, invoked/loaded skills, model/thinking, errors, and output paths.
 
 Child sessions are persisted as normal Pi sessions with the parent session recorded as their parent reference. Inspect them via `/agents-status <run-id>` or the printed session path. Native background resume continues single-child interrupted runs from the persisted child session when the original Pi process still owns the run controller.
 

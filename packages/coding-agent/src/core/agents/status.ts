@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type {
 	AgentExecutionProgress,
 	AgentRunDetails,
@@ -23,6 +24,8 @@ export interface AgentRecentRun {
 	sessionRefs: Array<{ agent: string; sessionId?: string; sessionPath?: string }>;
 	runs: AgentRunDetails[];
 	resumable: boolean;
+	needsAttention: boolean;
+	attentionMessage?: string;
 	error?: string;
 }
 
@@ -44,6 +47,7 @@ const MAX_RECENT_RUNS = 25;
 const recentRuns: AgentRecentRun[] = [];
 const liveRunControllers = new Map<string, AgentRecentRunController>();
 const recentRunListeners = new Set<AgentRecentRunsListener>();
+const runGenerations = new WeakMap<AgentRecentRun, number>();
 let nextRunId = 1;
 
 function nowIso(): string {
@@ -105,8 +109,23 @@ function isTerminalStatus(status: AgentToolStatus): boolean {
 	return status !== "running";
 }
 
+function getRunGeneration(run: AgentRecentRun): number {
+	return runGenerations.get(run) ?? 0;
+}
+
+function isExpectedGeneration(run: AgentRecentRun, expectedGeneration?: number): boolean {
+	return expectedGeneration === undefined || getRunGeneration(run) === expectedGeneration;
+}
+
+export function getAgentRecentRunGeneration(run: AgentRecentRun): number {
+	return getRunGeneration(run);
+}
+
 function canResumeRun(run: AgentRecentRun): boolean {
-	return run.execution === "background" && run.status === "interrupted" && run.sessionRefs.length === 1;
+	if (run.mode !== "single" || run.execution !== "background" || run.status !== "interrupted") return false;
+	if (run.sessionRefs.length !== 1) return false;
+	const sessionPath = run.sessionRefs[0]?.sessionPath;
+	return Boolean(sessionPath && existsSync(sessionPath));
 }
 
 function refreshRunSummary(run: AgentRecentRun, runs: AgentRunDetails[]): void {
@@ -128,11 +147,17 @@ function applyRunDetails(
 	run: AgentRecentRun,
 	details: AgentToolDetails | AgentExecutionProgress,
 	terminal = isTerminalStatus(details.status),
+	expectedGeneration?: number,
 ): void {
+	if (!isExpectedGeneration(run, expectedGeneration)) return;
 	run.status = details.status;
 	updateRunTimestamps(run, terminal);
 	refreshRunSummary(run, details.runs);
 	if (run.status !== "interrupted") run.resumable = false;
+	if (run.status === "running") {
+		run.needsAttention = false;
+		run.attentionMessage = undefined;
+	}
 	if (run.status === "completed" || run.status === "cancelled" || run.status === "failed") {
 		liveRunControllers.delete(run.id);
 	}
@@ -176,26 +201,49 @@ export function startAgentRecentRun(
 		sessionRefs: [],
 		runs: [],
 		resumable: false,
+		needsAttention: false,
 	};
+	runGenerations.set(run, 0);
 	recentRuns.unshift(run);
-	if (recentRuns.length > MAX_RECENT_RUNS) recentRuns.length = MAX_RECENT_RUNS;
+	while (recentRuns.length > MAX_RECENT_RUNS) {
+		let evictIndex = -1;
+		for (let index = recentRuns.length - 1; index >= 0; index--) {
+			if (recentRuns[index]?.status !== "running") {
+				evictIndex = index;
+				break;
+			}
+		}
+		if (evictIndex === -1) break;
+		recentRuns.splice(evictIndex, 1);
+	}
 	notifyAgentRecentRunsChanged();
 	return run;
 }
 
-export function updateAgentRecentRunProgress(run: AgentRecentRun, details: AgentExecutionProgress): void {
-	applyRunDetails(run, details, details.status !== "running");
+export function updateAgentRecentRunProgress(
+	run: AgentRecentRun,
+	details: AgentExecutionProgress,
+	expectedGeneration?: number,
+): void {
+	applyRunDetails(run, details, details.status !== "running", expectedGeneration);
 }
 
-export function finishAgentRecentRun(run: AgentRecentRun, details: AgentToolDetails): void {
-	applyRunDetails(run, details, true);
+export function finishAgentRecentRun(
+	run: AgentRecentRun,
+	details: AgentToolDetails,
+	expectedGeneration?: number,
+): void {
+	applyRunDetails(run, details, true, expectedGeneration);
 }
 
-export function failAgentRecentRun(run: AgentRecentRun, error: unknown): void {
+export function failAgentRecentRun(run: AgentRecentRun, error: unknown, expectedGeneration?: number): void {
+	if (!isExpectedGeneration(run, expectedGeneration)) return;
 	run.status = "failed";
 	updateRunTimestamps(run, true);
 	run.error = error instanceof Error ? error.message : String(error);
 	run.resumable = false;
+	run.needsAttention = false;
+	run.attentionMessage = undefined;
 	liveRunControllers.delete(run.id);
 	notifyAgentRecentRunsChanged();
 }
@@ -209,12 +257,15 @@ export function detachAgentRecentRunController(runId: string): void {
 }
 
 export function restartAgentRecentRun(run: AgentRecentRun): void {
+	runGenerations.set(run, getRunGeneration(run) + 1);
 	run.status = "running";
 	run.updatedAt = nowIso();
 	run.endedAt = undefined;
 	run.durationMs = undefined;
 	run.error = undefined;
 	run.resumable = false;
+	run.needsAttention = false;
+	run.attentionMessage = undefined;
 	run.runs = run.runs.map((child) => (child.status === "interrupted" ? { ...child, status: "running" } : child));
 	notifyAgentRecentRunsChanged();
 }
@@ -262,6 +313,15 @@ export function listAgentRecentRuns(): AgentRecentRun[] {
 	return recentRuns.map(cloneRecentRun);
 }
 
+export function markAgentRecentRunNeedsAttention(run: AgentRecentRun, message: string): void {
+	if (run.status !== "running") return;
+	if (run.needsAttention && run.attentionMessage === message) return;
+	run.needsAttention = true;
+	run.attentionMessage = message;
+	run.updatedAt = nowIso();
+	notifyAgentRecentRunsChanged();
+}
+
 export function clearAgentRecentRunsForTests(): void {
 	recentRuns.length = 0;
 	liveRunControllers.clear();
@@ -269,12 +329,28 @@ export function clearAgentRecentRunsForTests(): void {
 	nextRunId = 1;
 }
 
+export function formatAgentTokenCount(count: number): string {
+	if (count < 1000) return String(count);
+	return `${Math.floor(count / 1000)}k`;
+}
+
+export function formatAgentDurationMs(ms: number): string {
+	if (ms < 1000) return `${ms}ms`;
+	const totalSeconds = Math.floor(ms / 1000);
+	if (totalSeconds < 60) return `${totalSeconds}s`;
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
 function formatUsage(run: AgentRunDetails): string | undefined {
 	if (!run.usage) return undefined;
 	const cache =
-		run.usage.cacheRead || run.usage.cacheWrite ? ` cache r/w ${run.usage.cacheRead}/${run.usage.cacheWrite}` : "";
+		run.usage.cacheRead || run.usage.cacheWrite
+			? ` cache r/w ${formatAgentTokenCount(run.usage.cacheRead)}/${formatAgentTokenCount(run.usage.cacheWrite)}`
+			: "";
 	const cost = run.usage.cost.total > 0 ? ` $${run.usage.cost.total.toFixed(4)}` : "";
-	return `${run.usage.totalTokens} tok${cache}${cost}`;
+	return `${formatAgentTokenCount(run.usage.totalTokens)} tok${cache}${cost}`;
 }
 
 function formatRunDetail(run: AgentRunDetails, index: number): string[] {
@@ -300,11 +376,11 @@ function formatRunDetail(run: AgentRunDetails, index: number): string[] {
 }
 
 function formatDuration(run: AgentRecentRun): string {
-	return run.durationMs !== undefined ? `${run.durationMs}ms` : "running";
+	return run.durationMs !== undefined ? formatAgentDurationMs(run.durationMs) : "running";
 }
 
 function formatChildDuration(run: AgentRunDetails): string {
-	return run.durationMs !== undefined ? `${run.durationMs}ms` : "running";
+	return run.durationMs !== undefined ? formatAgentDurationMs(run.durationMs) : "running";
 }
 
 function countRunsByStatus(runs: AgentRecentRun[], status: AgentToolStatus): number {
@@ -317,20 +393,23 @@ function formatCount(count: number, label: string): string | undefined {
 }
 
 export function formatAgentFooterStatus(runs = listAgentRecentRuns()): string | undefined {
-	const backgroundRuns = runs.filter((run) => run.execution === "background");
+	const backgroundRuns = runs.filter(
+		(run) =>
+			run.execution === "background" &&
+			(run.status === "running" || run.status === "interrupted" || run.status === "failed" || run.needsAttention),
+	);
 	if (backgroundRuns.length === 0) return undefined;
 	const statusParts = [
 		formatCount(countRunsByStatus(backgroundRuns, "running"), "running"),
 		formatCount(countRunsByStatus(backgroundRuns, "interrupted"), "interrupted"),
 		formatCount(backgroundRuns.filter((run) => run.resumable).length, "resumable"),
 		formatCount(countRunsByStatus(backgroundRuns, "failed"), "failed"),
-		formatCount(countRunsByStatus(backgroundRuns, "cancelled"), "cancelled"),
-		formatCount(countRunsByStatus(backgroundRuns, "completed"), "completed"),
 	].filter((part): part is string => Boolean(part));
 	const latest = backgroundRuns[0];
 	const latestAgents = latest.agents.length > 0 ? ` ${latest.agents.join(",")}` : "";
-	const latestLabel = `${latest.id} ${latest.status}${latest.resumable ? " resumable" : ""}${latestAgents}`;
-	return `Agents: ${statusParts.join(", ")} · ${latestLabel} · /agents runs`;
+	const attention = backgroundRuns.some((run) => run.needsAttention) ? " · needs attention" : "";
+	const latestLabel = `${latest.id} ${latest.status}${latest.resumable ? " resumable" : ""}${latest.needsAttention ? " needs attention" : ""}${latestAgents}`;
+	return `Agents: ${statusParts.join(", ")}${attention} · ${latestLabel} · /agents runs`;
 }
 
 export function formatAgentStatus(runs = listAgentRecentRuns(), detailId?: string): string {
@@ -350,6 +429,7 @@ export function formatAgentStatus(runs = listAgentRecentRuns(), detailId?: strin
 			`updated: ${detailRun.updatedAt}`,
 		);
 		if (detailRun.resumable) lines.push(`resumable: yes (/agents resume ${detailRun.id} [-- prompt])`);
+		if (detailRun.needsAttention) lines.push(`needs attention: ${detailRun.attentionMessage ?? "check run"}`);
 		if (detailRun.error) lines.push(`error: ${detailRun.error}`);
 		if (detailRun.runs.length === 0) lines.push("No child run details recorded yet.");
 		for (const [index, run] of detailRun.runs.entries()) lines.push(...formatRunDetail(run, index));
@@ -367,8 +447,11 @@ export function formatAgentStatus(runs = listAgentRecentRuns(), detailId?: strin
 				: "";
 		const error = run.error ? ` error: ${run.error}` : "";
 		const resumable = run.resumable ? " resumable" : "";
+		const attention = run.needsAttention
+			? ` needs-attention${run.attentionMessage ? `: ${run.attentionMessage}` : ""}`
+			: "";
 		lines.push(
-			`${run.id} ${run.mode} ${run.execution} ${run.status}${resumable} ${formatDuration(run)} agents: ${run.agents.join(", ")}${sessions}${outputs}${error}`,
+			`${run.id} ${run.mode} ${run.execution} ${run.status}${resumable}${attention} ${formatDuration(run)} agents: ${run.agents.join(", ")}${sessions}${outputs}${error}`,
 		);
 	}
 	lines.push(

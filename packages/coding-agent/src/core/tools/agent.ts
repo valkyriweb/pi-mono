@@ -5,7 +5,9 @@ import { type Static, Type } from "typebox";
 import { type AgentToolParentServices, executeAgentTool } from "../agents/executor.js";
 import {
 	cancelAgentRecentRun,
+	formatAgentDurationMs,
 	formatAgentStatus,
+	formatAgentTokenCount,
 	interruptAgentRecentRun,
 	resumeAgentRecentRun,
 } from "../agents/status.js";
@@ -127,21 +129,16 @@ export function normalizeAgentToolMode(params: AgentToolInput): {
 	return { mode: "chain", tasks: params.chain ?? [] };
 }
 
-function formatDuration(ms: number): string {
-	if (ms < 1000) return `${ms}ms`;
-	return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
-}
-
 function formatUsage(run: AgentRunDetails): string | undefined {
 	if (!run.usage) return undefined;
-	return `${run.usage.totalTokens} tok`;
+	return `${formatAgentTokenCount(run.usage.totalTokens)} tok`;
 }
 
 function formatRunStats(run: AgentRunDetails): string {
 	return [
 		`${run.toolCallCount} tool ${run.toolCallCount === 1 ? "use" : "uses"}`,
 		formatUsage(run),
-		formatDuration(run.durationMs),
+		formatAgentDurationMs(run.durationMs),
 	]
 		.filter((part): part is string => Boolean(part))
 		.join(" · ");
@@ -191,7 +188,7 @@ function formatExpandedRun(run: AgentRunDetails, index: number): string {
 	const lines = [
 		`${index + 1}. ${run.agent}: ${run.status}`,
 		`   model: ${run.model ? `${run.model.provider}/${run.model.id}` : "inherit"} · thinking: ${run.thinking ?? "off"}`,
-		`   tools: ${run.toolCallCount} · messages: ${run.messageCount} · duration: ${formatDuration(run.durationMs)}${formatUsage(run) ? ` · ${formatUsage(run)}` : ""}`,
+		`   tools: ${run.toolCallCount} · messages: ${run.messageCount} · duration: ${formatAgentDurationMs(run.durationMs)}${formatUsage(run) ? ` · ${formatUsage(run)}` : ""}`,
 	];
 	if (run.currentToolName)
 		lines.push(

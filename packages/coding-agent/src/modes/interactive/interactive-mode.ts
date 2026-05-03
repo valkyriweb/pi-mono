@@ -3962,7 +3962,8 @@ export class InteractiveMode {
 		}
 		if (args.startsWith("run ")) {
 			const [agentId, task = ""] = args.slice(4).split(/\s+--\s+/, 2);
-			await this.session.prompt(`Use the native agent tool to run ${agentId} with this task: ${task}`);
+			this.editor.setText(`Use the native agent tool to run ${agentId} with this task: ${task}`);
+			this.ui.setFocus(this.editor);
 			return;
 		}
 		if (args.startsWith("parallel ")) {
@@ -3971,9 +3972,10 @@ export class InteractiveMode {
 				.split(",")
 				.map((agent) => agent.trim())
 				.filter(Boolean);
-			await this.session.prompt(
+			this.editor.setText(
 				`Use the native agent tool parallel mode for these agents: ${agents.join(", ")}. Task for each: ${task}`,
 			);
+			this.ui.setFocus(this.editor);
 			return;
 		}
 		if (args.startsWith("run-chain ")) {
@@ -3992,9 +3994,10 @@ export class InteractiveMode {
 				thinking: chain.thinking,
 				outputMode: chain.outputMode,
 			});
-			await this.session.prompt(
+			this.editor.setText(
 				`Use the native agent tool chain mode to run saved chain ${chain.name}${task ? ` for this task: ${task}` : ""}. Chain input: ${chainInput}`,
 			);
+			this.ui.setFocus(this.editor);
 			return;
 		}
 		const agent = registry.agents.find((candidate) => candidate.id === args);

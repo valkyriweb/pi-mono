@@ -1,20 +1,30 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
 	attachAgentRecentRunController,
 	cancelAgentRecentRun,
 	clearAgentRecentRunsForTests,
 	failAgentRecentRun,
 	finishAgentRecentRun,
+	formatAgentDurationMs,
 	formatAgentFooterStatus,
 	formatAgentStatus,
+	formatAgentTokenCount,
 	interruptAgentRecentRun,
 	listAgentRecentRuns,
+	markAgentRecentRunNeedsAttention,
+	restartAgentRecentRun,
 	resumeAgentRecentRun,
 	startAgentRecentRun,
 	subscribeAgentRecentRuns,
 	updateAgentRecentRunProgress,
 } from "../src/core/agents/status.js";
 import type { AgentRunDetails } from "../src/core/agents/types.js";
+
+let tempDir = "";
+let childSessionPath = "";
 
 function makeRunDetails(status: AgentRunDetails["status"] = "completed"): AgentRunDetails {
 	return {
@@ -39,13 +49,25 @@ function makeRunDetails(status: AgentRunDetails["status"] = "completed"): AgentR
 		loadedSkills: [],
 		invokedSkills: { count: 0, names: [] },
 		sessionId: "child-session",
-		sessionPath: "/tmp/child-session.jsonl",
+		sessionPath: childSessionPath,
 		outputPath: status === "completed" ? "reports/scout.md" : undefined,
 	};
 }
 
 describe("native agent status", () => {
-	beforeEach(() => clearAgentRecentRunsForTests());
+	beforeEach(() => {
+		clearAgentRecentRunsForTests();
+		tempDir = mkdtempSync(join(tmpdir(), "agent-status-"));
+		childSessionPath = join(tempDir, "child-session.jsonl");
+		writeFileSync(
+			childSessionPath,
+			`${JSON.stringify({ type: "session", version: 1, id: "child-session", timestamp: new Date().toISOString(), cwd: tempDir })}\n`,
+		);
+	});
+
+	afterEach(() => {
+		if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+	});
 
 	test("tracks recent completed foreground runs", () => {
 		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map files" }]);
@@ -89,7 +111,7 @@ describe("native agent status", () => {
 
 		const detail = formatAgentStatus(undefined, "agent-1");
 		expect(detail).toContain("agent-1 single background running");
-		expect(detail).toContain("session: /tmp/child-session.jsonl");
+		expect(detail).toContain(`session: ${childSessionPath}`);
 	});
 
 	test("interrupt and cancel update background status", async () => {
@@ -137,6 +159,20 @@ describe("native agent status", () => {
 		expect(formatAgentFooterStatus()).toContain("/agents runs");
 	});
 
+	test("formats agent tokens and durations compactly", () => {
+		expect(formatAgentTokenCount(32_559)).toBe("32k");
+		expect(formatAgentDurationMs(59_000)).toBe("59s");
+		expect(formatAgentDurationMs(61_000)).toBe("1m 1s");
+	});
+
+	test("marks stale background runs as needing attention", () => {
+		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map files" }], { background: true });
+		markAgentRecentRunNeedsAttention(run, "No child progress for 10m");
+
+		expect(formatAgentFooterStatus()).toContain("needs attention");
+		expect(formatAgentStatus()).toContain("needs-attention: No child progress for 10m");
+	});
+
 	test("notifies subscribers when recent runs change", () => {
 		const listener = vi.fn();
 		const unsubscribe = subscribeAgentRecentRuns(listener);
@@ -154,6 +190,49 @@ describe("native agent status", () => {
 		});
 
 		expect(listener).toHaveBeenCalledTimes(2);
+	});
+
+	test("does not mark non-single interrupted runs resumable", async () => {
+		const run = startAgentRecentRun(
+			"parallel",
+			[
+				{ agent: "scout", task: "Map files" },
+				{ agent: "reviewer", task: "Review files" },
+			],
+			{ background: true },
+		);
+		updateAgentRecentRunProgress(run, {
+			mode: "parallel",
+			status: "running",
+			runs: [makeRunDetails("running")],
+		});
+		attachAgentRecentRunController(run.id, { interrupt: vi.fn(), resume: vi.fn() });
+
+		await interruptAgentRecentRun(run.id);
+
+		expect(formatAgentStatus()).toContain("agent-1 parallel background interrupted");
+		expect(formatAgentStatus()).not.toContain("resumable");
+	});
+
+	test("ignores stale generation completions after resume restart", () => {
+		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map files" }], { background: true });
+		updateAgentRecentRunProgress(run, {
+			mode: "single",
+			status: "running",
+			runs: [makeRunDetails("running")],
+		});
+		restartAgentRecentRun(run);
+		finishAgentRecentRun(
+			run,
+			{
+				mode: "single",
+				status: "completed",
+				runs: [makeRunDetails("completed")],
+			},
+			0,
+		);
+
+		expect(formatAgentStatus()).toContain("agent-1 single background running");
 	});
 
 	test("resume control delegates resumable background runs", async () => {
