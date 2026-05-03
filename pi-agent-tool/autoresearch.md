@@ -25,6 +25,11 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `evidence_manifest_rows`
 - `live_capture_links`
 - `version_guard_verified`
+- `token_evidence_rows`
+- `native_zero_cost_captures`
+- `removed_command_token_captures`
+- `fallthrough_cost_cents`
+- `token_evidence_verified`
 
 ## How to run
 
@@ -51,6 +56,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `scorecard.md` — filled 9×2 scenario scorecard.
 - `findings.md` — final comparison summary.
 - `evidence-manifest.md` — scorecard-to-evidence map and integrity guard.
+- `token-evidence.md` — live footer token/cost evidence for native registered commands vs removed extension commands.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
 - `captures/` — tmux and source-backed capture files.
@@ -79,3 +85,4 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - Current native `agent` schema lacks the requested non-spawn task lifecycle actions; S09 is scored absent/pending.
 - Removed `/subagents` and `/subagents-status` probes fell through to parent model turns; this is useful UX/token evidence but should not be repeated unless intentionally measuring fallback behavior.
 - Next iteration added `evidence-manifest.md` plus scorer checks that every scorecard evidence path exists, every scenario has a manifest row, live captures are linked, and the `pi-subagents 0.24.0` removed-surface guard is preserved.
+- Next iteration added `token-evidence.md` and scorer checks for native `$0.000` registered-command captures, two removed-command fallthrough token/cost captures, and aggregate $0.111 extension fallthrough cost.

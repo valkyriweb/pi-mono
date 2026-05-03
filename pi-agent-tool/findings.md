@@ -81,6 +81,7 @@
 - Scenario captures for S01-S04, S08, and S09 are source-backed to avoid paid child-agent runs.
 - S05-S07 include cheap command/UI captures plus source evidence.
 - Two extension removed-command probes (`/subagents`, `/subagents-status`) were not recognized as commands and fell through to model turns; this is real UX/token evidence and is recorded instead of hidden.
+- `token-evidence.md` records footer token/cost readings: native registered command probes show `$0.000`, while removed `/subagents-status` + `/subagents` fallthrough probes show about ↑22k prompt, ↓187 completion tokens, and $0.111 total cost.
 - Token/cache fields are mostly `n/a`; exact cache details are unavailable, but the fallthrough captures show footer token/cost summaries.
 - `/subagents` and `/subagents-status` are not pending evidence; current extension source/changelog says they were removed.
 
@@ -94,4 +95,4 @@
 
 ## Recommendation
 
-Use native `agent` as Pi's default delegation layer. Keep `pi-subagents` only for background async/control/resume workflows that native intentionally does not cover. If consolidating, prioritize native task lifecycle actions (S09) and decide whether background control belongs in core or should stay extension-owned.
+Use native `agent` as Pi's default delegation layer. Keep `pi-subagents` only for background async/control/resume workflows that native intentionally does not cover. If consolidating or continuing to ship `pi-subagents`, protect removed slash surfaces from falling through to expensive model turns. Prioritize native task lifecycle actions (S09) and decide whether background control belongs in core or should stay extension-owned.

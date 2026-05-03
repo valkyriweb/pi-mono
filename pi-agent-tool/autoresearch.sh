@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md token-evidence.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -78,6 +78,47 @@ if grep -Eq 'pi-subagents 0\.24\.0' evidence-manifest.md source-probes.md findin
   version_guard_verified=1
 fi
 
+token_evidence_rows=$(grep -Ec '^\| S[0-9][0-9] .*\|' token-evidence.md || true)
+native_zero_cost_captures=$(
+  grep -El '\$0\.000' \
+    captures/native-s05-status-live.txt \
+    captures/native-s06-doctor-live.txt \
+    captures/native-s07-ui-selector-live.txt \
+    2>/dev/null \
+    | wc -l \
+    | tr -d ' '
+)
+removed_command_token_captures=$(
+  grep -El '↑11k ↓(106|81) \$0\.(056|055).*gpt-5\.5.*thinking off' \
+    captures/subagents-s05-status-removed-live.txt \
+    captures/subagents-s07-manager-removed-live.txt \
+    2>/dev/null \
+    | wc -l \
+    | tr -d ' '
+)
+fallthrough_cost_cents=$(
+  python3 - <<'PY'
+from pathlib import Path
+import re
+paths = [Path('captures/subagents-s05-status-removed-live.txt'), Path('captures/subagents-s07-manager-removed-live.txt')]
+total = 0.0
+for path in paths:
+    text = path.read_text(errors='ignore') if path.exists() else ''
+    matches = re.findall(r'\$(0\.\d+)', text)
+    if matches:
+        total += float(matches[-1])
+print(round(total * 100, 1))
+PY
+)
+token_evidence_verified=0
+if (( token_evidence_rows >= 5 )) \
+  && (( native_zero_cost_captures == 3 )) \
+  && (( removed_command_token_captures == 2 )) \
+  && grep -Fq '$0.111' token-evidence.md \
+  && grep -Fq 'token-spend footgun' token-evidence.md; then
+  token_evidence_verified=1
+fi
+
 # Composite score rewards evidence completeness and isolation, capped to avoid padding.
 cap() {
   local value="$1"
@@ -100,6 +141,10 @@ score=$((score + $(cap "$evidence_file_coverage" 18)))
 score=$((score + $(cap "$evidence_manifest_rows" 18)))
 score=$((score + $(cap "$live_capture_links" 10)))
 score=$((score + version_guard_verified * 8))
+score=$((score + $(cap "$token_evidence_rows" 5) * 2))
+score=$((score + native_zero_cost_captures * 2))
+score=$((score + removed_command_token_captures * 4))
+score=$((score + token_evidence_verified * 10))
 
 missing=0
 (( required_file_count == ${#required_files[@]} )) || missing=1
@@ -115,10 +160,14 @@ missing=0
 (( evidence_manifest_rows >= 18 )) || missing=1
 (( live_capture_links >= 8 )) || missing=1
 (( version_guard_verified == 1 )) || missing=1
+(( token_evidence_rows >= 5 )) || missing=1
+(( native_zero_cost_captures == 3 )) || missing=1
+(( removed_command_token_captures == 2 )) || missing=1
+(( token_evidence_verified == 1 )) || missing=1
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -138,3 +187,8 @@ echo "METRIC evidence_file_coverage=$evidence_file_coverage"
 echo "METRIC evidence_manifest_rows=$evidence_manifest_rows"
 echo "METRIC live_capture_links=$live_capture_links"
 echo "METRIC version_guard_verified=$version_guard_verified"
+echo "METRIC token_evidence_rows=$token_evidence_rows"
+echo "METRIC native_zero_cost_captures=$native_zero_cost_captures"
+echo "METRIC removed_command_token_captures=$removed_command_token_captures"
+echo "METRIC fallthrough_cost_cents=$fallthrough_cost_cents"
+echo "METRIC token_evidence_verified=$token_evidence_verified"
