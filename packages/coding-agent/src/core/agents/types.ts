@@ -3,9 +3,9 @@ import type { Api, Model, Usage } from "@mariozechner/pi-ai";
 
 export type AgentSource = "builtin" | "user" | "project";
 export type ContextMode = "default" | "fork" | "slim" | "none";
-export type AgentRunStatus = "running" | "completed" | "failed" | "cancelled";
+export type AgentRunStatus = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 export type AgentToolMode = "single" | "parallel" | "chain";
-export type AgentToolStatus = "running" | "completed" | "failed" | "cancelled";
+export type AgentToolStatus = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 export type AgentOutputMode = "inline" | "file" | "both";
 export type AgentScope = "user" | "project" | "both";
 export type AgentToolList = string[] | "*";
@@ -112,6 +112,10 @@ export interface AgentToolDetails {
 	mode: AgentToolMode;
 	status: AgentToolStatus;
 	runs: AgentRunDetails[];
+	runId?: string;
+	background?: boolean;
+	resumable?: boolean;
+	message?: string;
 	concurrency?: number;
 	chainDir?: string;
 }

@@ -6,6 +6,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Added
 
+- Added native background lifecycle control for the built-in `agent` tool, including background launch, footer visibility, selectable `/agents runs` controls, `/agents-status` visibility, interrupt/cancel, and single-run resume.
 - Added `pi-agent-tool/eval-design-prompt.md` to design a token-efficient A/B eval comparing native Pi agents with `pi-subagents`.
 - Added a native built-in `agent` tool with single, parallel, and chain modes, built-in child agent definitions, user/project Markdown discovery, context modes, `/agents`, and migration docs for the legacy `subagent` extension example.
 - Added native-search backend selection for the built-in `grep` and `find` tools, preferring controlled/system `ugrep` and `bfs` before falling back to managed/system `rg` and `fd`.

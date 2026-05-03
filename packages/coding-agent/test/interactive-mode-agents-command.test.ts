@@ -1,6 +1,10 @@
+import { setKeybindings } from "@mariozechner/pi-tui";
 import stripAnsi from "strip-ansi";
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.js";
 import type { AgentDefinition } from "../src/core/agents/types.js";
+import { KeybindingsManager } from "../src/core/keybindings.js";
+import { AgentRunsSelectorComponent } from "../src/modes/interactive/components/agent-runs-selector.js";
 import { AgentsSelectorComponent } from "../src/modes/interactive/components/agents-selector.js";
 import { initTheme } from "../src/modes/interactive/theme/theme.js";
 
@@ -28,6 +32,11 @@ describe("/agents selector", () => {
 		initTheme("dark");
 	});
 
+	beforeEach(() => {
+		setKeybindings(new KeybindingsManager());
+		clearAgentRecentRunsForTests();
+	});
+
 	test("renders list and detail", () => {
 		const selector = new AgentsSelectorComponent(
 			agents,
@@ -46,5 +55,23 @@ describe("/agents selector", () => {
 		const selector = new AgentsSelectorComponent(agents, onSelect, () => {});
 		selector.handleInput("\n");
 		expect(onSelect).toHaveBeenCalledWith(agents[0]);
+	});
+
+	test("renders recent run selector and dispatches controls", () => {
+		const run = startAgentRecentRun("single", [{ agent: "worker", task: "Sleep" }], { background: true });
+		const onAction = vi.fn();
+		const selector = new AgentRunsSelectorComponent(
+			() => [run],
+			onAction,
+			() => {},
+		);
+
+		const rendered = stripAnsi(selector.render(100).join("\n"));
+		expect(rendered).toContain("Agent Runs");
+		expect(rendered).toContain("agent-1 bg running worker");
+		expect(rendered).toContain("interrupt");
+
+		selector.handleInput("i");
+		expect(onAction).toHaveBeenCalledWith("interrupt", run);
 	});
 });

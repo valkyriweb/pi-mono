@@ -1,5 +1,6 @@
 import { type Component, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { AgentSession } from "../../../core/agent-session.js";
+import { formatAgentFooterStatus } from "../../../core/agents/status.js";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.js";
 import { theme } from "../theme/theme.js";
 
@@ -205,6 +206,11 @@ export class FooterComponent implements Component {
 
 		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
 		const lines = [pwdLine, dimStatsLeft + dimRemainder];
+
+		const agentStatus = formatAgentFooterStatus();
+		if (agentStatus) {
+			lines.push(truncateToWidth(theme.fg("dim", sanitizeStatusText(agentStatus)), width, theme.fg("dim", "...")));
+		}
 
 		// Add extension statuses on a single line, sorted by key alphabetically
 		const extensionStatuses = this.footerData.getExtensionStatuses();

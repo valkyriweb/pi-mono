@@ -60,7 +60,15 @@ import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../
 import { findAgentChain, loadAgentChainRegistry } from "../../core/agents/chains.js";
 import { buildAgentDoctorReport } from "../../core/agents/doctor.js";
 import { loadAgentRegistry } from "../../core/agents/registry.js";
-import { formatAgentStatus } from "../../core/agents/status.js";
+import {
+	type AgentRecentRun,
+	cancelAgentRecentRun,
+	formatAgentStatus,
+	interruptAgentRecentRun,
+	listAgentRecentRuns,
+	resumeAgentRecentRun,
+	subscribeAgentRecentRuns,
+} from "../../core/agents/status.js";
 import type { AgentDefinition } from "../../core/agents/types.js";
 import type {
 	AutocompleteProviderFactory,
@@ -93,6 +101,7 @@ import { getPiUserAgent } from "../../utils/pi-user-agent.js";
 import { killTrackedDetachedChildren } from "../../utils/shell.js";
 import { ensureTool } from "../../utils/tools-manager.js";
 import { checkForNewPiVersion } from "../../utils/version-check.js";
+import { type AgentRunsSelectorAction, AgentRunsSelectorComponent } from "./components/agent-runs-selector.js";
 import { AgentsSelectorComponent } from "./components/agents-selector.js";
 import { ArminComponent } from "./components/armin.js";
 import { AssistantMessageComponent } from "./components/assistant-message.js";
@@ -276,6 +285,7 @@ export class InteractiveMode {
 
 	// Agent subscription unsubscribe function
 	private unsubscribe?: () => void;
+	private unsubscribeAgentRuns?: () => void;
 	private signalCleanupHandlers: Array<() => void> = [];
 
 	// Track if editor is in bash mode (text starts with !)
@@ -660,6 +670,11 @@ export class InteractiveMode {
 
 		// Set up git branch watcher (uses provider instead of footer)
 		this.footerDataProvider.onBranchChange(() => {
+			this.ui.requestRender();
+		});
+
+		this.unsubscribeAgentRuns = subscribeAgentRecentRuns(() => {
+			this.footer.invalidate();
 			this.ui.requestRender();
 		});
 
@@ -3905,9 +3920,31 @@ export class InteractiveMode {
 			this.showAgentsSelector(registry.agents);
 			return;
 		}
+		if (args === "runs") {
+			this.showAgentRunsSelector();
+			return;
+		}
 		if (args === "status" || args.startsWith("status ")) {
 			const detailId = args.startsWith("status ") ? args.slice(7).trim() : undefined;
 			this.showStatus(formatAgentStatus(undefined, detailId));
+			return;
+		}
+		if (args.startsWith("interrupt ")) {
+			const runId = args.slice(10).trim();
+			const result = await interruptAgentRecentRun(runId);
+			this.showStatus(`${result.message}\n\n${formatAgentStatus(undefined, runId)}`);
+			return;
+		}
+		if (args.startsWith("cancel ")) {
+			const runId = args.slice(7).trim();
+			const result = await cancelAgentRecentRun(runId);
+			this.showStatus(`${result.message}\n\n${formatAgentStatus(undefined, runId)}`);
+			return;
+		}
+		if (args.startsWith("resume ")) {
+			const [runId, prompt] = args.slice(7).split(/\s+--\s+/, 2);
+			const result = await resumeAgentRecentRun(runId.trim(), prompt?.trim());
+			this.showStatus(`${result.message}\n\n${formatAgentStatus(undefined, runId.trim())}`);
 			return;
 		}
 		if (args === "doctor") {
@@ -4080,6 +4117,41 @@ export class InteractiveMode {
 			);
 			return { component: selector, focus: selector };
 		});
+	}
+
+	private showAgentRunsSelector(): void {
+		this.showSelector((done) => {
+			const selector = new AgentRunsSelectorComponent(
+				() => listAgentRecentRuns(),
+				(action, run) => {
+					void this.handleAgentRunSelectorAction(action, run, selector);
+				},
+				() => {
+					done();
+				},
+			);
+			return { component: selector, focus: selector };
+		});
+	}
+
+	private async handleAgentRunSelectorAction(
+		action: AgentRunsSelectorAction,
+		run: AgentRecentRun,
+		selector: AgentRunsSelectorComponent,
+	): Promise<void> {
+		if (action === "detail") {
+			this.showStatus(formatAgentStatus(undefined, run.id));
+			return;
+		}
+		const result =
+			action === "interrupt"
+				? await interruptAgentRecentRun(run.id)
+				: action === "cancel"
+					? await cancelAgentRecentRun(run.id)
+					: await resumeAgentRecentRun(run.id);
+		selector.invalidate();
+		this.showStatus(`${result.message}\n\n${formatAgentStatus(undefined, run.id)}`);
+		this.ui.requestRender();
 	}
 
 	private showModelSelector(initialSearchInput?: string): void {
@@ -5540,6 +5612,10 @@ export class InteractiveMode {
 		this.clearExtensionTerminalInputListeners();
 		this.footer.dispose();
 		this.footerDataProvider.dispose();
+		if (this.unsubscribeAgentRuns) {
+			this.unsubscribeAgentRuns();
+			this.unsubscribeAgentRuns = undefined;
+		}
 		if (this.unsubscribe) {
 			this.unsubscribe();
 		}
