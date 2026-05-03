@@ -12,6 +12,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Command surface | `command-surface.md` | present | Verifies native command presence, extension command presence, removed extension surfaces, launch flags, current extension load failure, and 0.24.0 changelog guard. |
 | Live child output | `live-child-output.md` | present | One tiny S01 live run: native child success vs current `pi-subagents` extension load failure. |
 | Extension load audit | `extension-load-audit.md` | present | Source/capture diagnosis for the current `pi-subagents` module-format load failure before slash-command registration. |
+| Capture timeline | `capture-timeline.md` | present | Timestamp audit showing older extension-loaded captures predate newer current load-failure captures. |
 | Token evidence | `token-evidence.md` | present | Records native `$0.000` registered command captures and `pi-subagents` removed-command fallthrough token/cost readings. |
 | Score analysis | `score-analysis.md` | present | Computed from `scorecard.md`; validates summary averages and numeric scenario winners. |
 | Findings alignment | `findings-alignment.md` | present | Compares prose winners to numeric winners and documents intentional exceptions. |
@@ -23,7 +24,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Scenario | Arm | Scorecard evidence file | Evidence mode | Supporting live/source evidence | Status |
 |---|---|---|---|---|---|
 | S01 single recon | native | `captures/native-s01-live-child-output.txt` | live child output | `live-child-output.md`; native child completed, used read tool, returned exactly three files | present |
-| S01 single recon | pi-subagents | `captures/subagents-s01-live-child-output.txt` | live runtime failure | `live-child-output.md`; `extension-load-audit.md`; current fresh extension load fails before `/run scout` can execute | present |
+| S01 single recon | pi-subagents | `captures/subagents-s01-live-child-output.txt` | live runtime failure | `live-child-output.md`; `extension-load-audit.md`; `capture-timeline.md`; current fresh extension load fails before `/run scout` can execute | present |
 | S02 parallel review | native | `captures/native-s02-parallel-review.txt` | source-backed | `source-probes.md` native `tasks[]` schema | present |
 | S02 parallel review | pi-subagents | `captures/subagents-s02-parallel-review.txt` | source-backed | `source-probes.md` `/parallel`, `tasks[]`, `--bg`, `--fork` | present |
 | S03 chain handoff | native | `captures/native-s03-chain-handoff.txt` | source-backed | `source-probes.md` native `chain[]` and `/agents run-chain` | present |
@@ -31,11 +32,11 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | S04 saved workflow | native | `captures/native-s04-saved-workflow.txt` | source-backed | `source-probes.md` native saved chain handler/docs | present |
 | S04 saved workflow | pi-subagents | `captures/subagents-s04-saved-workflow.txt` | source-backed | `source-probes.md` `/run-chain`; `CHANGELOG.md` 0.24.0 removed save UI | present |
 | S05 async/status/control | native | `captures/native-s05-async-status-control.txt` | source + live tmux | `captures/native-s05-status-live.txt`; native status source says background control unsupported | present |
-| S05 async/status/control | pi-subagents | `captures/subagents-s05-async-status-control.txt` | source + live fallthrough | `captures/subagents-s05-status-removed-live.txt`; tool schema has status/interrupt/resume, `/subagents-status` removed | present |
+| S05 async/status/control | pi-subagents | `captures/subagents-s05-async-status-control.txt` | source + prior live fallthrough | `captures/subagents-s05-status-removed-live.txt`; `capture-timeline.md`; tool schema has status/interrupt/resume, `/subagents-status` removed | present |
 | S06 doctor diagnostics | native | `captures/native-s06-doctor-diagnostics.txt` | source + live tmux | `captures/native-s06-doctor-live.txt`; native doctor source | present |
-| S06 doctor diagnostics | pi-subagents | `captures/subagents-s06-doctor-diagnostics.txt` | source + live tmux | `captures/subagents-s06-doctor-live.txt`; extension doctor source | present |
+| S06 doctor diagnostics | pi-subagents | `captures/subagents-s06-doctor-diagnostics.txt` | source + prior live tmux | `captures/subagents-s06-doctor-live.txt`; `capture-timeline.md`; extension doctor source | present |
 | S07 UI manager/selector | native | `captures/native-s07-ui-manager-selector.txt` | source + live tmux | `captures/native-s07-ui-selector-live.txt`; `/agents` selector source | present |
-| S07 UI manager/selector | pi-subagents | `captures/subagents-s07-ui-manager-selector.txt` | source + live fallthrough | `captures/subagents-s07-manager-removed-live.txt`; `pi-subagents` 0.24.0 removed manager overlay | present |
+| S07 UI manager/selector | pi-subagents | `captures/subagents-s07-ui-manager-selector.txt` | source + prior live fallthrough | `captures/subagents-s07-manager-removed-live.txt`; `capture-timeline.md`; `pi-subagents` 0.24.0 removed manager overlay | present |
 | S08 context discipline | native | `captures/native-s08-context-discipline.txt` | source-backed | `source-probes.md` native `default/fork/slim/none` and filtered fork context | present |
 | S08 context discipline | pi-subagents | `captures/subagents-s08-context-discipline.txt` | source-backed | `source-probes.md` `--fork` only; prompt runtime blocks recursive delegation | present |
 | S09 task agent tool | native | `captures/native-s09-task-agent-tool.txt` | source-backed negative probe | `source-probes.md` native task lifecycle grep exits 1 for `action/taskId/create/list/get/update` | present |
@@ -46,5 +47,6 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 - Current extension version is source-probed as `pi-subagents 0.24.0`.
 - `0.24.0` removed the old `/agents` manager overlay; no `/subagents` replacement is registered in current `src/slash/slash-commands.ts`.
 - `0.24.0` removed `/subagents-status`; async runs remain inspectable through `subagent({ action: "status" })`, notifications, logs, and widgets.
-- The two removed-command probes are preserved because they reveal a real UX/token tradeoff: unregistered slash strings fell through into parent model turns and invoked `subagent list` rather than opening slash UIs.
+- `capture-timeline.md` records that the older extension-loaded captures predate the newer current load-failure captures; rerun them before using them as current-runtime proof after loader changes.
+- The two removed-command probes are preserved because they reveal a real UX/token tradeoff from the earlier loaded-extension state: unregistered slash strings fell through into parent model turns and invoked `subagent list` rather than opening slash UIs.
 - `token-evidence.md` aggregates those footer readings as roughly ↑22k prompt, ↓187 completion tokens, and $0.111 total cost, while comparable native registered command probes remained `$0.000`.
