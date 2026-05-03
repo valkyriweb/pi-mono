@@ -83,6 +83,7 @@
 - `extension-load-audit.md` explains that failure from captures plus source: `pi-subagents` 0.24.0 declares an ESM TypeScript entry, Pi loads it through jiti, and the module-format error happens before slash commands register.
 - `capture-timeline.md` makes the mixed capture state explicit: seven older extension-loaded captures predate the two current load-failure captures, so historical/source capability and current runtime availability are not conflated.
 - `stale-evidence-policy.md` gives reviewers the rule of use: cite load-failure captures for current runtime, cite older loaded-extension captures only as historical/source-supported behavior unless they are rerun.
+- `scenario-verdict-audit.md` classifies all 18 scored rows as current-live, current-load-failure, prior-live, or source-backed so the final verdict cannot quietly mix evidence classes.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
@@ -97,7 +98,7 @@
 
 ## Honest limitations
 
-- No live child-agent outputs were generated, so correctness of model-generated child reports is source-inferred, not runtime-measured.
+- Only one tiny live child-agent output was generated (native S01); broad child-output quality for the remaining scenarios is source-inferred, not runtime-measured.
 - Two removed-command probes did spend parent-model tokens; they did not spawn child agents, and the cost is recorded as part of UX/token evidence.
 - Exact cache creation/cache read values are unavailable in this baseline.
 - tmux UI captures can show startup/command surfaces, but not semantic selector internals as richly as a dedicated TUI test.

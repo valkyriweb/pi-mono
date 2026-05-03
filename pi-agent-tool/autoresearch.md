@@ -88,6 +88,19 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `stale_policy_token_caveat`
 - `stale_policy_rerun_trigger`
 - `stale_policy_verified`
+- `scenario_verdict_rows`
+- `scenario_verdict_current_live_rows`
+- `scenario_verdict_current_failure_rows`
+- `scenario_verdict_prior_live_rows`
+- `scenario_verdict_source_backed_rows`
+- `scenario_verdict_unknown_rows`
+- `scenario_verdict_scorecard_prior_rows`
+- `scenario_verdict_scorecard_current_failure`
+- `scenario_verdict_scorecard_native_live_child`
+- `scenario_verdict_findings_no_stale_false_claim`
+- `scenario_verdict_findings_one_tiny_live_claim`
+- `scenario_verdict_findings_current_failure_claim`
+- `scenario_verdict_verified`
 - `task_lifecycle_acceptance_rows`
 - `task_lifecycle_native_fields_present`
 - `task_lifecycle_native_actions_present`
@@ -134,6 +147,7 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - `extension-load-audit.md` — source/capture diagnosis for the current `pi-subagents` module-format load failure.
 - `capture-timeline.md` — timestamp audit separating prior extension-loaded captures from current load-failure captures.
 - `stale-evidence-policy.md` — reviewer checklist for current vs prior `pi-subagents` evidence.
+- `scenario-verdict-audit.md` — per-row classification of current-live, current-load-failure, prior-live, and source-backed evidence.
 - `task-lifecycle-audit.md` — S09 native task lifecycle acceptance probe and extension closest-equivalent audit.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
@@ -172,3 +186,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration added `scripts/check-extension-load-audit.py` plus `extension-load-audit.md` to diagnose the current `pi-subagents` module-format load failure from package manifest, extension entry, Pi jiti loader, and runtime captures without changing production source.
 - Next iteration added `scripts/check-capture-timeline.py` plus `capture-timeline.md` to document that seven older extension-loaded captures predate the two current load-failure captures, preventing stale/live evidence from being treated as simultaneous.
 - Next iteration added `scripts/check-stale-evidence-policy.py` plus `stale-evidence-policy.md` to enforce the reviewer rule that older loaded-extension captures are historical/source-supported only until rerun after the loader issue is fixed.
+- Next iteration added `scripts/check-scenario-verdicts.py` plus `scenario-verdict-audit.md` to classify all 18 scorecard rows by evidence type and catch stale claims like saying no live child output exists after the native S01 probe.
