@@ -9,7 +9,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Native startup capture | `captures/native-startup.txt` | present | Launch includes `--no-extensions --tools agent,read,grep,find,ls --thinking off`. |
 | `pi-subagents` startup capture | `captures/subagents-startup.txt` | present | Launch includes `--no-builtin-tools --no-extensions -e <pi-subagents> --thinking off`. |
 | Source probes | `source-probes.md` | present | Includes native command/tool probes, extension command/tool probes, removed-surface proof, and S09 negative task lifecycle probe. |
-| Command surface | `command-surface.md` | present | Verifies native command presence, extension command presence, removed extension surfaces, launch flags, current extension load failure, and 0.24.0 changelog guard. |
+| Command surface | `command-surface.md` | present | Verifies native command presence, extension command presence, removed extension surfaces, launch flags, current extension load failure, markdown guardrail split, and 0.24.0 changelog guard. |
 | Eval plan currentness | `eval-plan-currentness.md` | present | Ensures `eval-plan.md` no longer claims S01 is source-only after the live native child probe and current extension load failure were added. |
 | Live child output | `live-child-output.md` | present | One tiny S01 live run: native child success vs current `pi-subagents` extension load failure. |
 | Extension load audit | `extension-load-audit.md` | present | Source/capture diagnosis for the current `pi-subagents` module-format load failure before slash-command registration. |
@@ -58,6 +58,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 - `capture-timeline.md` records that the older extension-loaded captures predate the newer current load-failure captures; rerun them before using them as current-runtime proof after loader changes.
 - `stale-evidence-policy.md` is the reviewer checklist for applying that distinction consistently across scorecard, token evidence, and findings.
 - `scenario-verdict-audit.md` classifies all 18 scored rows by evidence type so current runtime, prior runtime, and source-backed claims remain separate.
+- `command-surface.md` keeps its extension-load audit guardrail and `/subagents` reappearance warning as separate bullets so the warning does not get buried in malformed Markdown.
 - `token-accounting-audit.md` keeps model-call and token/cost claims aligned after adding the native S01 child probe.
 - `repro-hygiene.md` keeps the scorer itself reproducible by avoiding py-compile bytecode writes during syntax checks.
 - `recommendation-consistency.md` keeps final guidance aligned with the current load failure: use native by default; only use `pi-subagents` for async/control after fixing and rerunning the extension probes.

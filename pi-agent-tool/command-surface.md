@@ -50,4 +50,5 @@ Extension isolation launch check:
 - Removed-surface changelog guard: 1.
 - Launch isolation guards passed: 2/2.
 - Current extension runtime load failure detected: 1.
-- Extension load audit: `extension-load-audit.md`.- If `/subagents` or `/subagents-status` reappears, this file and the scorecard must be updated rather than silently carrying stale removal findings.
+- Extension load audit: `extension-load-audit.md`.
+- If `/subagents` or `/subagents-status` reappears, this file and the scorecard must be updated rather than silently carrying stale removal findings.

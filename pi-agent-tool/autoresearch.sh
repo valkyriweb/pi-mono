@@ -181,6 +181,7 @@ command_surface_launch_isolation=$(get_command_surface_metric command_surface_la
 command_surface_removed_changelog_verified=$(get_command_surface_metric command_surface_removed_changelog_verified)
 command_surface_subagents_runtime_loaded=$(get_command_surface_metric command_surface_subagents_runtime_loaded)
 command_surface_subagents_runtime_load_failed=$(get_command_surface_metric command_surface_subagents_runtime_load_failed)
+command_surface_markdown_guardrail_split=$(get_command_surface_metric command_surface_markdown_guardrail_split)
 command_surface_verified=$(get_command_surface_metric command_surface_verified)
 command_surface_rows=$(grep -Ec '^\| `/[^`]+` \|' command-surface.md || true)
 
@@ -403,6 +404,7 @@ score=$((score + command_surface_extension_removed_absent * 3))
 score=$((score + command_surface_launch_isolation * 3))
 score=$((score + command_surface_removed_changelog_verified * 6))
 score=$((score + command_surface_subagents_runtime_load_failed * 8))
+score=$((score + command_surface_markdown_guardrail_split * 6))
 score=$((score + command_surface_verified * 10))
 score=$((score + live_child_rows * 4))
 score=$((score + live_native_child_completed * 8))
@@ -539,6 +541,7 @@ missing=0
 (( command_surface_removed_changelog_verified == 1 )) || missing=1
 (( command_surface_subagents_runtime_loaded == 0 )) || missing=1
 (( command_surface_subagents_runtime_load_failed == 1 )) || missing=1
+(( command_surface_markdown_guardrail_split == 1 )) || missing=1
 (( command_surface_verified == 1 )) || missing=1
 (( live_child_rows == 2 )) || missing=1
 (( live_native_child_completed == 1 )) || missing=1
@@ -692,6 +695,7 @@ echo "METRIC command_surface_launch_isolation=$command_surface_launch_isolation"
 echo "METRIC command_surface_removed_changelog_verified=$command_surface_removed_changelog_verified"
 echo "METRIC command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded"
 echo "METRIC command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed"
+echo "METRIC command_surface_markdown_guardrail_split=$command_surface_markdown_guardrail_split"
 echo "METRIC command_surface_verified=$command_surface_verified"
 echo "METRIC live_child_rows=$live_child_rows"
 echo "METRIC live_native_child_completed=$live_native_child_completed"

@@ -52,6 +52,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `command_surface_removed_changelog_verified`
 - `command_surface_subagents_runtime_loaded`
 - `command_surface_subagents_runtime_load_failed`
+- `command_surface_markdown_guardrail_split`
 - `command_surface_verified`
 - `live_child_rows`
 - `live_native_child_completed`
@@ -246,3 +247,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration added `scripts/check-rerun-commands.py` plus `rerun-commands.md`, and updated README's quick-run block to include the preserved `/subagents` removed-command probe, live-child checker, write-mode generators, and final audit checks.
 - Next iteration added `scripts/check-artifact-index.py` plus `artifact-index.md` and updated README/evidence-manifest/runbook so artifact indexes stay synchronized with `autoresearch.sh` required files.
 - Next iteration found stale `eval-plan.md` wording that still said S01 had no live child after the native live probe; it added `scripts/check-eval-plan-currentness.py` plus `eval-plan-currentness.md` and updated the plan's S01, runtime, token, and metric caveats.
+- Next iteration fixed a generated `command-surface.md` bullet-join bug where the extension-load audit guardrail and `/subagents` reappearance warning rendered as one fused bullet, and added a command-surface markdown guardrail metric.

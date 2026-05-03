@@ -121,7 +121,7 @@ def write_markdown(path: Path, data: dict[str, object]) -> None:
             f"- Removed-surface changelog guard: {data['removed_changelog_verified']}.",
             f"- Launch isolation guards passed: {data['launch_isolation_count']}/2.",
             f"- Current extension runtime load failure detected: {data['subagents_runtime_load_failed']}.",
-            "- Extension load audit: `extension-load-audit.md`."
+            "- Extension load audit: `extension-load-audit.md`.",
             "- If `/subagents` or `/subagents-status` reappears, this file and the scorecard must be updated rather than silently carrying stale removal findings.",
             "",
         ]
@@ -145,15 +145,6 @@ def main() -> int:
     extension_absent = {command for command in EXTENSION_REMOVED_OR_ABSENT if command not in extension_commands}
     extension_removed_absent = len(extension_absent)
     launch_isolation_count = native_launch_ok + subagents_launch_ok
-    command_surface_verified = int(
-        native_expected_present == len(NATIVE_EXPECTED)
-        and extension_expected_present == len(EXTENSION_EXPECTED)
-        and extension_removed_absent == len(EXTENSION_REMOVED_OR_ABSENT)
-        and ext_version == "0.24.0"
-        and launch_isolation_count == 2
-        and removed_changelog_verified == 1
-        and subagents_runtime_load_failed == 1
-    )
 
     data: dict[str, object] = {
         "native_commands": native_commands,
@@ -173,6 +164,22 @@ def main() -> int:
     if args.write:
         write_markdown(ROOT / "command-surface.md", data)
 
+    current_markdown = read(ROOT / "command-surface.md") if (ROOT / "command-surface.md").exists() else ""
+    markdown_guardrail_split = int(
+        "`extension-load-audit.md`.- If" not in current_markdown
+        and "- Extension load audit: `extension-load-audit.md`.\n- If `/subagents` or `/subagents-status` reappears" in current_markdown
+    )
+    command_surface_verified = int(
+        native_expected_present == len(NATIVE_EXPECTED)
+        and extension_expected_present == len(EXTENSION_EXPECTED)
+        and extension_removed_absent == len(EXTENSION_REMOVED_OR_ABSENT)
+        and ext_version == "0.24.0"
+        and launch_isolation_count == 2
+        and removed_changelog_verified == 1
+        and subagents_runtime_load_failed == 1
+        and markdown_guardrail_split == 1
+    )
+
     print(f"command_surface_native_expected_present={native_expected_present}")
     print(f"command_surface_extension_expected_present={extension_expected_present}")
     print(f"command_surface_extension_removed_absent={extension_removed_absent}")
@@ -180,6 +187,7 @@ def main() -> int:
     print(f"command_surface_removed_changelog_verified={removed_changelog_verified}")
     print(f"command_surface_subagents_runtime_loaded={subagents_runtime_loaded}")
     print(f"command_surface_subagents_runtime_load_failed={subagents_runtime_load_failed}")
+    print(f"command_surface_markdown_guardrail_split={markdown_guardrail_split}")
     print(f"command_surface_verified={command_surface_verified}")
     return 0 if command_surface_verified else 1
 

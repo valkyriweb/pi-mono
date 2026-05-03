@@ -214,7 +214,7 @@ Before any `keep`, verify:
 - `isolation-proof.md` says `native_no_subagent_tool: true`.
 - `isolation-proof.md` says `subagents_no_native_agent_tool: true`.
 - `source-probes.md` includes removed `/subagents-status` and `/subagents` manager evidence for extension `0.24.0`.
-- `command-surface.md` exists and `scripts/check-command-surface.py` validates current native/extension command surfaces, launch flags, and the current extension runtime load failure.
+- `command-surface.md` exists and `scripts/check-command-surface.py` validates current native/extension command surfaces, launch flags, the current extension runtime load failure, and the markdown guardrail split for the extension-load audit warning.
 - `live-child-output.md` exists and `scripts/check-live-child-output.py` validates the tiny S01 live probe.
 - `extension-load-audit.md` exists and `scripts/check-extension-load-audit.py` validates the current module-format load-failure diagnosis without patching production source.
 - `capture-timeline.md` exists and `scripts/check-capture-timeline.py` validates timestamp ordering between prior extension-loaded captures and current load-failure captures.
