@@ -9,6 +9,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Native startup capture | `captures/native-startup.txt` | present | Launch includes `--no-extensions --tools agent,read,grep,find,ls --thinking off`. |
 | `pi-subagents` startup capture | `captures/subagents-startup.txt` | present | Launch includes `--no-builtin-tools --no-extensions -e <pi-subagents> --thinking off`. |
 | Source probes | `source-probes.md` | present | Includes native command/tool probes, extension command/tool probes, removed-surface proof, and S09 negative task lifecycle probe. |
+| Command surface | `command-surface.md` | present | Verifies native command presence, extension command presence, removed extension surfaces, launch flags, and 0.24.0 changelog guard. |
 | Token evidence | `token-evidence.md` | present | Records native `$0.000` registered command captures and `pi-subagents` removed-command fallthrough token/cost readings. |
 | Score analysis | `score-analysis.md` | present | Computed from `scorecard.md`; validates summary averages and numeric scenario winners. |
 | Findings alignment | `findings-alignment.md` | present | Compares prose winners to numeric winners and documents intentional exceptions. |

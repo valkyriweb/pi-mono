@@ -101,6 +101,7 @@ Before any `keep`, verify:
 - `isolation-proof.md` says `native_no_subagent_tool: true`.
 - `isolation-proof.md` says `subagents_no_native_agent_tool: true`.
 - `source-probes.md` includes removed `/subagents-status` and `/subagents` manager evidence for extension `0.24.0`.
+- `command-surface.md` exists and `scripts/check-command-surface.py` validates current native/extension command surfaces and launch flags.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

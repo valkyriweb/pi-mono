@@ -44,6 +44,13 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `findings_alignment_exceptions`
 - `findings_alignment_conflicts`
 - `findings_alignment_verified`
+- `command_surface_rows`
+- `command_surface_native_expected_present`
+- `command_surface_extension_expected_present`
+- `command_surface_extension_removed_absent`
+- `command_surface_launch_isolation`
+- `command_surface_removed_changelog_verified`
+- `command_surface_verified`
 
 ## How to run
 
@@ -70,6 +77,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `scorecard.md` — filled 9×2 scenario scorecard.
 - `findings.md` — final comparison summary.
 - `evidence-manifest.md` — scorecard-to-evidence map and integrity guard.
+- `command-surface.md` — native vs extension command-surface verification and drift guard.
 - `token-evidence.md` — live footer token/cost evidence for native registered commands vs removed extension commands.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
@@ -104,3 +112,4 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - Next iteration added `token-evidence.md` and scorer checks for native `$0.000` registered-command captures, two removed-command fallthrough token/cost captures, and aggregate $0.111 extension fallthrough cost.
 - Next iteration added `scripts/check-scorecard-consistency.py`, `score-analysis.md`, and scorer checks that scorecard summary averages match computed values; this caught and fixed a stale `pi-subagents` UX average (3.2 -> 3.3).
 - Next iteration added `scripts/check-findings-alignment.py`, `findings-alignment.md`, and scorer checks that prose winners align with numeric winners or have documented judgment-call exceptions (5 aligned, 4 intentional exceptions, 0 conflicts).
+- Next iteration added `scripts/check-command-surface.py`, `command-surface.md`, and scorer checks that native `/agents*` commands, extension `/run`/`/chain`/`/parallel`/`/run-chain`/`/subagents-doctor`, removed extension surfaces, launch flags, and 0.24.0 changelog claims remain in sync.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md token-evidence.md score-analysis.md findings-alignment.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md score-analysis.md findings-alignment.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -12,7 +12,7 @@ for script in scripts/capture-startup.sh scripts/run-tmux-scenario.sh scripts/ca
   bash -n "$script" || bash_syntax_ok=0
 done
 python_syntax_ok=1
-python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py || python_syntax_ok=0
+python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py scripts/check-command-surface.py || python_syntax_ok=0
 
 startup_captures=0
 [[ -s captures/native-startup.txt ]] && ((startup_captures+=1))
@@ -156,6 +156,19 @@ findings_alignment_exceptions=$(get_alignment_metric findings_alignment_exceptio
 findings_alignment_conflicts=$(get_alignment_metric findings_alignment_conflicts)
 findings_alignment_verified=$(get_alignment_metric findings_alignment_verified)
 
+command_surface_output=$(python3 scripts/check-command-surface.py)
+get_command_surface_metric() {
+  local name="$1"
+  printf '%s\n' "$command_surface_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+command_surface_native_expected_present=$(get_command_surface_metric command_surface_native_expected_present)
+command_surface_extension_expected_present=$(get_command_surface_metric command_surface_extension_expected_present)
+command_surface_extension_removed_absent=$(get_command_surface_metric command_surface_extension_removed_absent)
+command_surface_launch_isolation=$(get_command_surface_metric command_surface_launch_isolation)
+command_surface_removed_changelog_verified=$(get_command_surface_metric command_surface_removed_changelog_verified)
+command_surface_verified=$(get_command_surface_metric command_surface_verified)
+command_surface_rows=$(grep -Ec '^\| `/[^`]+` \|' command-surface.md || true)
+
 # Composite score rewards evidence completeness and isolation, capped to avoid padding.
 cap() {
   local value="$1"
@@ -191,6 +204,13 @@ score=$((score + $(cap "$findings_alignment_rows" 9) * 2))
 score=$((score + findings_alignment_aligned * 2))
 score=$((score + findings_alignment_exceptions))
 score=$((score + findings_alignment_verified * 10))
+score=$((score + $(cap "$command_surface_rows" 11) * 2))
+score=$((score + command_surface_native_expected_present * 2))
+score=$((score + command_surface_extension_expected_present * 2))
+score=$((score + command_surface_extension_removed_absent * 3))
+score=$((score + command_surface_launch_isolation * 3))
+score=$((score + command_surface_removed_changelog_verified * 6))
+score=$((score + command_surface_verified * 10))
 
 missing=0
 (( required_file_count == ${#required_files[@]} )) || missing=1
@@ -223,10 +243,17 @@ missing=0
 (( findings_alignment_exceptions == 4 )) || missing=1
 (( findings_alignment_conflicts == 0 )) || missing=1
 (( findings_alignment_verified == 1 )) || missing=1
+(( command_surface_rows == 11 )) || missing=1
+(( command_surface_native_expected_present == 3 )) || missing=1
+(( command_surface_extension_expected_present == 5 )) || missing=1
+(( command_surface_extension_removed_absent == 3 )) || missing=1
+(( command_surface_launch_isolation == 2 )) || missing=1
+(( command_surface_removed_changelog_verified == 1 )) || missing=1
+(( command_surface_verified == 1 )) || missing=1
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_native_expected_present=$command_surface_native_expected_present command_surface_extension_expected_present=$command_surface_extension_expected_present command_surface_extension_removed_absent=$command_surface_extension_removed_absent command_surface_launch_isolation=$command_surface_launch_isolation command_surface_verified=$command_surface_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -265,3 +292,10 @@ echo "METRIC findings_alignment_aligned=$findings_alignment_aligned"
 echo "METRIC findings_alignment_exceptions=$findings_alignment_exceptions"
 echo "METRIC findings_alignment_conflicts=$findings_alignment_conflicts"
 echo "METRIC findings_alignment_verified=$findings_alignment_verified"
+echo "METRIC command_surface_rows=$command_surface_rows"
+echo "METRIC command_surface_native_expected_present=$command_surface_native_expected_present"
+echo "METRIC command_surface_extension_expected_present=$command_surface_extension_expected_present"
+echo "METRIC command_surface_extension_removed_absent=$command_surface_extension_removed_absent"
+echo "METRIC command_surface_launch_isolation=$command_surface_launch_isolation"
+echo "METRIC command_surface_removed_changelog_verified=$command_surface_removed_changelog_verified"
+echo "METRIC command_surface_verified=$command_surface_verified"

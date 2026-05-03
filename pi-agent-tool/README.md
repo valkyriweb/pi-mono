@@ -16,6 +16,7 @@ Current source reality matters: installed `pi-subagents` is `0.24.0`, where `/su
 - `scorecard.md` — filled scorecard for all 9 scenarios × 2 arms.
 - `findings.md` — concise result report.
 - `evidence-manifest.md` — scorecard-to-evidence map and file integrity guard.
+- `command-surface.md` — native vs extension command-surface verification and drift guard.
 - `token-evidence.md` — live footer token/cost evidence for registered native commands vs removed extension commands.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
