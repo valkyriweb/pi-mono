@@ -1,4 +1,4 @@
 - If the current `pi-subagents` module-format extension load failure is fixed, rerun the S01 live child-output probe plus cheap `/run`/`/chain`/`/parallel` usage captures and rescore the extension rows instead of preserving the failure verdict.
 - If production-source changes become allowed, add a focused Pi extension-loader regression for ESM TypeScript packages that default-export an extension factory and declare `type: module`.
 - If a branch lands native non-spawn task lifecycle actions, rerun S09 source probes and add a focused task lifecycle live/tool-schema capture.
-- Before finalizing, consider a concise "known stale evidence" checklist that references `capture-timeline.md` so reviewers do not use prior loaded-extension captures as current-runtime proof.
+- Before final handoff, run a concise reviewer pass over `findings.md`, `scorecard.md`, `evidence-manifest.md`, `capture-timeline.md`, and `stale-evidence-policy.md` to remove any remaining ambiguity between source capability, historical captures, and current runtime availability.

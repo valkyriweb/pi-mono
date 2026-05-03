@@ -80,6 +80,14 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `capture_timeline_temporal_order_verified`
 - `capture_timeline_mixed_state_documented`
 - `capture_timeline_verified`
+- `stale_policy_rows`
+- `stale_policy_manifest_prior_rows`
+- `stale_policy_scorecard_prior_rows`
+- `stale_policy_current_failure_linked`
+- `stale_policy_timeline_linked`
+- `stale_policy_token_caveat`
+- `stale_policy_rerun_trigger`
+- `stale_policy_verified`
 - `task_lifecycle_acceptance_rows`
 - `task_lifecycle_native_fields_present`
 - `task_lifecycle_native_actions_present`
@@ -125,6 +133,7 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - `live-child-output.md` — one tiny S01 live child-output probe: native success vs current extension load failure.
 - `extension-load-audit.md` — source/capture diagnosis for the current `pi-subagents` module-format load failure.
 - `capture-timeline.md` — timestamp audit separating prior extension-loaded captures from current load-failure captures.
+- `stale-evidence-policy.md` — reviewer checklist for current vs prior `pi-subagents` evidence.
 - `task-lifecycle-audit.md` — S09 native task lifecycle acceptance probe and extension closest-equivalent audit.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
@@ -162,3 +171,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration ran one tiny symmetric S01 live child-output probe and added `scripts/check-live-child-output.py` plus `live-child-output.md`; native completed a live scout child with one read tool, while the current `pi-subagents` fresh launch failed before `/run scout` because the extension did not load.
 - Next iteration added `scripts/check-extension-load-audit.py` plus `extension-load-audit.md` to diagnose the current `pi-subagents` module-format load failure from package manifest, extension entry, Pi jiti loader, and runtime captures without changing production source.
 - Next iteration added `scripts/check-capture-timeline.py` plus `capture-timeline.md` to document that seven older extension-loaded captures predate the two current load-failure captures, preventing stale/live evidence from being treated as simultaneous.
+- Next iteration added `scripts/check-stale-evidence-policy.py` plus `stale-evidence-policy.md` to enforce the reviewer rule that older loaded-extension captures are historical/source-supported only until rerun after the loader issue is fixed.

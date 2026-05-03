@@ -82,13 +82,14 @@
 - `live-child-output.md` records one tiny symmetric S01 run: native child output verified; current `pi-subagents` fresh runtime fails before child output.
 - `extension-load-audit.md` explains that failure from captures plus source: `pi-subagents` 0.24.0 declares an ESM TypeScript entry, Pi loads it through jiti, and the module-format error happens before slash commands register.
 - `capture-timeline.md` makes the mixed capture state explicit: seven older extension-loaded captures predate the two current load-failure captures, so historical/source capability and current runtime availability are not conflated.
+- `stale-evidence-policy.md` gives reviewers the rule of use: cite load-failure captures for current runtime, cite older loaded-extension captures only as historical/source-supported behavior unless they are rerun.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.
 - Scenario captures for S02-S04, S08, and S09 are source-backed to avoid paid child-agent runs.
 - S01 now includes one tiny live child-output probe plus an extension load audit.
-- `pi-subagents` live-command captures are timestamp-audited because older loaded-extension captures coexist with newer load-failure captures.
-- S05-S07 include cheap command/UI captures plus source evidence.
+- `pi-subagents` live-command captures are timestamp-audited and governed by `stale-evidence-policy.md` because older loaded-extension captures coexist with newer load-failure captures.
+- S05-S07 include cheap command/UI captures plus source evidence, marked as prior where the extension arm is affected by the current load failure.
 - Two extension removed-command probes (`/subagents`, `/subagents-status`) were not recognized as commands and fell through to model turns; this is real UX/token evidence and is recorded instead of hidden.
 - `token-evidence.md` records footer token/cost readings: native registered command probes show `$0.000`, while removed `/subagents-status` + `/subagents` fallthrough probes show about ↑22k prompt, ↓187 completion tokens, and $0.111 total cost.
 - Token/cache fields are mostly `n/a`; exact cache details are unavailable, but the fallthrough captures show footer token/cost summaries.

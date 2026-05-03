@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md command-surface.md token-evidence.md score-analysis.md findings-alignment.md live-child-output.md extension-load-audit.md capture-timeline.md stale-evidence-policy.md task-lifecycle-audit.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -12,7 +12,7 @@ for script in scripts/capture-startup.sh scripts/run-tmux-scenario.sh scripts/ca
   bash -n "$script" || bash_syntax_ok=0
 done
 python_syntax_ok=1
-python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py scripts/check-command-surface.py scripts/check-live-child-output.py scripts/check-extension-load-audit.py scripts/check-capture-timeline.py scripts/check-task-lifecycle.py || python_syntax_ok=0
+python3 -m py_compile scripts/check-scorecard-consistency.py scripts/check-findings-alignment.py scripts/check-command-surface.py scripts/check-live-child-output.py scripts/check-extension-load-audit.py scripts/check-capture-timeline.py scripts/check-stale-evidence-policy.py scripts/check-task-lifecycle.py || python_syntax_ok=0
 
 startup_captures=0
 [[ -s captures/native-startup.txt ]] && ((startup_captures+=1))
@@ -216,6 +216,20 @@ capture_timeline_temporal_order_verified=$(get_capture_timeline_metric capture_t
 capture_timeline_mixed_state_documented=$(get_capture_timeline_metric capture_timeline_mixed_state_documented)
 capture_timeline_verified=$(get_capture_timeline_metric capture_timeline_verified)
 
+stale_policy_output=$(python3 scripts/check-stale-evidence-policy.py)
+get_stale_policy_metric() {
+  local name="$1"
+  printf '%s\n' "$stale_policy_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+stale_policy_rows=$(get_stale_policy_metric stale_policy_rows)
+stale_policy_manifest_prior_rows=$(get_stale_policy_metric stale_policy_manifest_prior_rows)
+stale_policy_scorecard_prior_rows=$(get_stale_policy_metric stale_policy_scorecard_prior_rows)
+stale_policy_current_failure_linked=$(get_stale_policy_metric stale_policy_current_failure_linked)
+stale_policy_timeline_linked=$(get_stale_policy_metric stale_policy_timeline_linked)
+stale_policy_token_caveat=$(get_stale_policy_metric stale_policy_token_caveat)
+stale_policy_rerun_trigger=$(get_stale_policy_metric stale_policy_rerun_trigger)
+stale_policy_verified=$(get_stale_policy_metric stale_policy_verified)
+
 task_lifecycle_output=$(python3 scripts/check-task-lifecycle.py)
 get_task_lifecycle_metric() {
   local name="$1"
@@ -300,6 +314,14 @@ score=$((score + capture_timeline_current_subagents_failures * 4))
 score=$((score + capture_timeline_temporal_order_verified * 8))
 score=$((score + capture_timeline_mixed_state_documented * 8))
 score=$((score + capture_timeline_verified * 10))
+score=$((score + stale_policy_rows * 3))
+score=$((score + stale_policy_manifest_prior_rows * 3))
+score=$((score + stale_policy_scorecard_prior_rows * 3))
+score=$((score + stale_policy_current_failure_linked * 8))
+score=$((score + stale_policy_timeline_linked * 6))
+score=$((score + stale_policy_token_caveat * 5))
+score=$((score + stale_policy_rerun_trigger * 5))
+score=$((score + stale_policy_verified * 10))
 score=$((score + $(cap "$task_lifecycle_acceptance_rows" 16)))
 score=$((score + $(cap "$task_lifecycle_extension_rows" 12)))
 score=$((score + task_lifecycle_native_absent * 10))
@@ -373,6 +395,14 @@ missing=0
 (( capture_timeline_temporal_order_verified == 1 )) || missing=1
 (( capture_timeline_mixed_state_documented == 1 )) || missing=1
 (( capture_timeline_verified == 1 )) || missing=1
+(( stale_policy_rows == 6 )) || missing=1
+(( stale_policy_manifest_prior_rows == 3 )) || missing=1
+(( stale_policy_scorecard_prior_rows == 3 )) || missing=1
+(( stale_policy_current_failure_linked == 1 )) || missing=1
+(( stale_policy_timeline_linked == 1 )) || missing=1
+(( stale_policy_token_caveat == 1 )) || missing=1
+(( stale_policy_rerun_trigger == 1 )) || missing=1
+(( stale_policy_verified == 1 )) || missing=1
 (( task_lifecycle_acceptance_rows == 16 )) || missing=1
 (( task_lifecycle_native_fields_present == 0 )) || missing=1
 (( task_lifecycle_native_actions_present == 0 )) || missing=1
@@ -386,7 +416,7 @@ missing=0
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified findings_alignment_rows=$findings_alignment_rows findings_alignment_aligned=$findings_alignment_aligned findings_alignment_exceptions=$findings_alignment_exceptions findings_alignment_conflicts=$findings_alignment_conflicts findings_alignment_verified=$findings_alignment_verified command_surface_rows=$command_surface_rows command_surface_verified=$command_surface_verified command_surface_subagents_runtime_loaded=$command_surface_subagents_runtime_loaded command_surface_subagents_runtime_load_failed=$command_surface_subagents_runtime_load_failed live_child_output_verified=$live_child_output_verified extension_load_diagnosis_verified=$extension_load_diagnosis_verified capture_timeline_verified=$capture_timeline_verified stale_policy_verified=$stale_policy_verified task_lifecycle_audit_verified=$task_lifecycle_audit_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -461,6 +491,14 @@ echo "METRIC capture_timeline_current_subagents_failures=$capture_timeline_curre
 echo "METRIC capture_timeline_temporal_order_verified=$capture_timeline_temporal_order_verified"
 echo "METRIC capture_timeline_mixed_state_documented=$capture_timeline_mixed_state_documented"
 echo "METRIC capture_timeline_verified=$capture_timeline_verified"
+echo "METRIC stale_policy_rows=$stale_policy_rows"
+echo "METRIC stale_policy_manifest_prior_rows=$stale_policy_manifest_prior_rows"
+echo "METRIC stale_policy_scorecard_prior_rows=$stale_policy_scorecard_prior_rows"
+echo "METRIC stale_policy_current_failure_linked=$stale_policy_current_failure_linked"
+echo "METRIC stale_policy_timeline_linked=$stale_policy_timeline_linked"
+echo "METRIC stale_policy_token_caveat=$stale_policy_token_caveat"
+echo "METRIC stale_policy_rerun_trigger=$stale_policy_rerun_trigger"
+echo "METRIC stale_policy_verified=$stale_policy_verified"
 echo "METRIC task_lifecycle_acceptance_rows=$task_lifecycle_acceptance_rows"
 echo "METRIC task_lifecycle_native_fields_present=$task_lifecycle_native_fields_present"
 echo "METRIC task_lifecycle_native_actions_present=$task_lifecycle_native_actions_present"

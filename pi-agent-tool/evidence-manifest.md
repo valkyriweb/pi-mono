@@ -13,6 +13,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Live child output | `live-child-output.md` | present | One tiny S01 live run: native child success vs current `pi-subagents` extension load failure. |
 | Extension load audit | `extension-load-audit.md` | present | Source/capture diagnosis for the current `pi-subagents` module-format load failure before slash-command registration. |
 | Capture timeline | `capture-timeline.md` | present | Timestamp audit showing older extension-loaded captures predate newer current load-failure captures. |
+| Stale evidence policy | `stale-evidence-policy.md` | present | Reviewer checklist preventing prior loaded-extension captures from being cited as current runtime proof. |
 | Token evidence | `token-evidence.md` | present | Records native `$0.000` registered command captures and `pi-subagents` removed-command fallthrough token/cost readings. |
 | Score analysis | `score-analysis.md` | present | Computed from `scorecard.md`; validates summary averages and numeric scenario winners. |
 | Findings alignment | `findings-alignment.md` | present | Compares prose winners to numeric winners and documents intentional exceptions. |
@@ -24,7 +25,7 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 | Scenario | Arm | Scorecard evidence file | Evidence mode | Supporting live/source evidence | Status |
 |---|---|---|---|---|---|
 | S01 single recon | native | `captures/native-s01-live-child-output.txt` | live child output | `live-child-output.md`; native child completed, used read tool, returned exactly three files | present |
-| S01 single recon | pi-subagents | `captures/subagents-s01-live-child-output.txt` | live runtime failure | `live-child-output.md`; `extension-load-audit.md`; `capture-timeline.md`; current fresh extension load fails before `/run scout` can execute | present |
+| S01 single recon | pi-subagents | `captures/subagents-s01-live-child-output.txt` | live runtime failure | `live-child-output.md`; `extension-load-audit.md`; `capture-timeline.md`; `stale-evidence-policy.md`; current fresh extension load fails before `/run scout` can execute | present |
 | S02 parallel review | native | `captures/native-s02-parallel-review.txt` | source-backed | `source-probes.md` native `tasks[]` schema | present |
 | S02 parallel review | pi-subagents | `captures/subagents-s02-parallel-review.txt` | source-backed | `source-probes.md` `/parallel`, `tasks[]`, `--bg`, `--fork` | present |
 | S03 chain handoff | native | `captures/native-s03-chain-handoff.txt` | source-backed | `source-probes.md` native `chain[]` and `/agents run-chain` | present |
@@ -48,5 +49,6 @@ Purpose: make the scorecard reproducible by tying each scored row to an existing
 - `0.24.0` removed the old `/agents` manager overlay; no `/subagents` replacement is registered in current `src/slash/slash-commands.ts`.
 - `0.24.0` removed `/subagents-status`; async runs remain inspectable through `subagent({ action: "status" })`, notifications, logs, and widgets.
 - `capture-timeline.md` records that the older extension-loaded captures predate the newer current load-failure captures; rerun them before using them as current-runtime proof after loader changes.
+- `stale-evidence-policy.md` is the reviewer checklist for applying that distinction consistently across scorecard, token evidence, and findings.
 - The two removed-command probes are preserved because they reveal a real UX/token tradeoff from the earlier loaded-extension state: unregistered slash strings fell through into parent model turns and invoked `subagent list` rather than opening slash UIs.
 - `token-evidence.md` aggregates those footer readings as roughly ↑22k prompt, ↓187 completion tokens, and $0.111 total cost, while comparable native registered command probes remained `$0.000`.

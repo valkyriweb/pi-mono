@@ -103,7 +103,17 @@ When current failure captures coexist with older successful extension captures, 
 python3 scripts/check-capture-timeline.py
 ```
 
-Current verdict: seven older `pi-subagents` command/fallthrough captures predate the two current load-failure captures, so source/historical capability evidence and current-runtime availability are intentionally separated.
+Current verdict: seven older `pi-subagents` command/fallthrough captures predate the two current load-failure captures, so source/historical capability evidence and current-runtime availability are intentionally separated. If the loader issue is fixed, rerun S01 plus the cheap extension command probes before treating prior captures as current proof.
+
+## 2.8. Stale evidence policy
+
+Before review/finalization, check the current-vs-prior evidence policy:
+
+```bash
+python3 scripts/check-stale-evidence-policy.py
+```
+
+Current verdict: current runtime availability comes from the load-failure captures; older loaded-extension captures are historical/source-supported evidence only.
 
 ## 3. Task-agent lifecycle probe
 
@@ -138,6 +148,7 @@ Before any `keep`, verify:
 - `live-child-output.md` exists and `scripts/check-live-child-output.py` validates the tiny S01 live probe.
 - `extension-load-audit.md` exists and `scripts/check-extension-load-audit.py` validates the current module-format load-failure diagnosis without patching production source.
 - `capture-timeline.md` exists and `scripts/check-capture-timeline.py` validates timestamp ordering between prior extension-loaded captures and current load-failure captures.
+- `stale-evidence-policy.md` exists and `scripts/check-stale-evidence-policy.py` validates current-vs-prior evidence wording.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

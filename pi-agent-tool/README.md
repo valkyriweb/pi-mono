@@ -23,6 +23,7 @@ Current source/runtime reality matters: installed `pi-subagents` is `0.24.0`, wh
 - `live-child-output.md` — one tiny S01 live child-output probe: native success vs current extension load failure.
 - `extension-load-audit.md` — source/capture diagnosis for the current `pi-subagents` module-format load failure.
 - `capture-timeline.md` — timestamp audit separating prior extension-loaded captures from current load-failure captures.
+- `stale-evidence-policy.md` — reviewer checklist for current vs prior `pi-subagents` evidence.
 - `task-lifecycle-audit.md` — S09 native task lifecycle acceptance probe and extension closest-equivalent audit.
 - `isolation-proof.md` — proof of active surface isolation.
 - `source-probes.md` — source-backed evidence snippets.
@@ -45,7 +46,8 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh native native-s01-
 PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagents-s01-live-child-output '/run scout Read pi-agent-tool/README.md and list exactly three artifact filenames from Fresh artifacts with one phrase each. Keep under 60 words. Do not modify files.'
 python3 scripts/check-extension-load-audit.py
 python3 scripts/check-capture-timeline.py
+python3 scripts/check-stale-evidence-policy.py
 ./autoresearch.sh
 ```
 
-Broad live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. One tiny S01 live probe was added because source-only evidence was exhausted: native completed, while the extension failed to load before `/run scout`. `extension-load-audit.md` ties that failure to the current package manifest, ESM entry shape, Pi jiti loader, and captured module-format error. `capture-timeline.md` makes clear that older extension-loaded captures predate the newer load-failure captures. Two earlier removed-command probes in the extension arm did fall through to parent model turns; `token-evidence.md` records the observed ↑22k/↓187 token, $0.111 cost. `evidence-manifest.md` ties each scorecard row to an existing evidence file so stale paths fail the scorer.
+Broad live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. One tiny S01 live probe was added because source-only evidence was exhausted: native completed, while the extension failed to load before `/run scout`. `extension-load-audit.md` ties that failure to the current package manifest, ESM entry shape, Pi jiti loader, and captured module-format error. `capture-timeline.md` makes clear that older extension-loaded captures predate the newer load-failure captures. Two earlier removed-command probes in the extension arm did fall through to parent model turns; `token-evidence.md` records the observed ↑22k/↓187 token, $0.111 cost. If the extension loader issue is fixed, rerun S01 plus the cheap extension command probes before treating older captures as current proof. `evidence-manifest.md` ties each scorecard row to an existing evidence file so stale paths fail the scorer.
