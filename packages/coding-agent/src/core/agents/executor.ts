@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Api, AssistantMessage, Model, TextContent, Usage } from "@mariozechner/pi-ai";
+import type { AgentSession } from "../agent-session.js";
 import { createAgentSessionFromServices, createAgentSessionServices } from "../agent-session-services.js";
 import type { AuthStorage } from "../auth-storage.js";
 import { DEFAULT_THINKING_LEVEL } from "../defaults.js";
@@ -17,7 +18,15 @@ import {
 } from "./context.js";
 import { writeAgentOutput } from "./output.js";
 import { findAgentDefinition, formatAvailableAgents, loadAgentRegistry } from "./registry.js";
-import { failAgentRecentRun, finishAgentRecentRun, startAgentRecentRun } from "./status.js";
+import type { AgentRecentRun } from "./status.js";
+import {
+	attachAgentRecentRunController,
+	failAgentRecentRun,
+	finishAgentRecentRun,
+	restartAgentRecentRun,
+	startAgentRecentRun,
+	updateAgentRecentRunProgress,
+} from "./status.js";
 import type {
 	AgentDefinition,
 	AgentExecutionProgress,
@@ -28,6 +37,7 @@ import type {
 	AgentTaskConfig,
 	AgentToolDetails,
 	AgentToolMode,
+	AgentToolStatus,
 	ContextMode,
 	NormalizedAgentTaskConfig,
 } from "./types.js";
@@ -53,6 +63,9 @@ export interface AgentExecutorOptions {
 	parentThinkingLevel: ThinkingLevel;
 	onProgress?: (progress: AgentExecutionProgress) => void;
 	signal?: AbortSignal;
+	abortStatus?: () => AgentToolStatus | undefined;
+	onChildSessionStart?: (session: AgentSession, details: AgentRunDetails) => void;
+	onChildSessionEnd?: (session: AgentSession, details: AgentRunDetails) => void;
 }
 
 export interface AgentToolExecutionInput {
@@ -68,6 +81,7 @@ export interface AgentToolExecutionInput {
 	outputMode?: AgentOutputMode;
 	chainDir?: string;
 	agentScope?: AgentScope;
+	background?: boolean;
 }
 
 interface RunChildOptions extends AgentExecutorOptions {
@@ -281,6 +295,100 @@ function refreshRunDetailsFromSession(
 	details.usage = getLastAssistantUsage(session.messages as AssistantMessage[]);
 }
 
+interface DriveChildSessionOptions extends AgentExecutorOptions {
+	task: NormalizedAgentTaskConfig;
+	chainDir?: string;
+	progressInput: AgentToolExecutionInput;
+	progressRuns: AgentRunDetails[];
+	details: AgentRunDetails;
+	startedAt: number;
+	prompt: string;
+}
+
+function getAbortedRunStatus(options: AgentExecutorOptions): "cancelled" | "interrupted" {
+	return options.abortStatus?.() === "interrupted" ? "interrupted" : "cancelled";
+}
+
+async function driveChildSession(session: AgentSession, options: DriveChildSessionOptions): Promise<AgentRunDetails> {
+	const { details, startedAt } = options;
+	options.onChildSessionStart?.(session, details);
+	const abortChild = () => {
+		session.abortBash();
+		void session.abort().catch(() => {});
+	};
+	if (options.signal && !options.signal.aborted) {
+		options.signal.addEventListener("abort", abortChild, { once: true });
+	}
+
+	const unsubscribe = session.subscribe((event) => {
+		if (!options.progressRuns.includes(details)) options.progressRuns.push(details);
+		refreshRunDetailsFromSession(details, session, startedAt);
+		if (event.type === "message_update" && event.message.role === "assistant") {
+			const snippet = extractTextPreview(event.message.content, 200);
+			if (snippet && snippet !== details.recentOutputSnippets[details.recentOutputSnippets.length - 1]) {
+				details.recentOutputSnippets.push(snippet);
+				details.recentOutputSnippets = details.recentOutputSnippets.slice(-5);
+			}
+		}
+		if (event.type === "message_end" && event.message.role === "assistant") {
+			details.usage = event.message.usage;
+		}
+		if (event.type === "tool_execution_start") {
+			details.toolCallCount += 1;
+			details.currentToolName = event.toolName;
+			details.currentToolArgsPreview = previewValue(event.args);
+			details.recentToolCalls.push({
+				name: event.toolName,
+				argsPreview: details.currentToolArgsPreview,
+				startedAt: Date.now(),
+			});
+			details.recentToolCalls = details.recentToolCalls.slice(-8);
+			recordSkillInvocation(details, event.toolName, event.args);
+		}
+		if (event.type === "tool_execution_end") {
+			const active = details.recentToolCalls.find((tool) => !tool.endedAt && tool.name === event.toolName);
+			if (active) {
+				active.endedAt = Date.now();
+				active.isError = event.isError;
+				active.resultPreview = extractTextPreview(event.result.content, 200);
+			}
+			details.currentToolName = undefined;
+			details.currentToolArgsPreview = undefined;
+		}
+		emitProgress(options.progressInput, options.progressRuns, options.onProgress);
+	});
+
+	try {
+		if (options.signal?.aborted) throw new Error(`Agent run ${getAbortedRunStatus(options)}`);
+		await session.prompt(options.prompt, { expandPromptTemplates: false, source: "extension" });
+		if (options.signal?.aborted) throw new Error(`Agent run ${getAbortedRunStatus(options)}`);
+		const finalOutput = extractFinalAssistantText(session.messages);
+		const output = await writeAgentOutput({
+			cwd: options.parentServices.cwd,
+			output: options.task.output,
+			outputMode: options.task.outputMode,
+			content: finalOutput,
+			chainDir: options.chainDir,
+		});
+		details.status = "completed";
+		refreshRunDetailsFromSession(details, session, startedAt);
+		details.outputPath = output.outputPath;
+		details.finalOutput = output.displayText;
+		details.rawOutput = output.rawContent;
+		return details;
+	} catch (error) {
+		details.status = options.signal?.aborted ? getAbortedRunStatus(options) : "failed";
+		refreshRunDetailsFromSession(details, session, startedAt);
+		details.error = error instanceof Error ? error.message : String(error);
+		throw Object.assign(new Error(details.error), { details });
+	} finally {
+		if (options.signal) options.signal.removeEventListener("abort", abortChild);
+		unsubscribe();
+		options.onChildSessionEnd?.(session, details);
+		session.dispose();
+	}
+}
+
 async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 	if (options.signal?.aborted) throw new Error("Agent tool aborted");
 	const agent = findAgentDefinition(options.registry, options.task.agent);
@@ -346,69 +454,12 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 
 	details.loadedSkills = childServices.resourceLoader.getSkills().skills.map((skill) => skill.name);
 
-	const unsubscribe = session.subscribe((event) => {
-		if (!options.progressRuns.includes(details)) options.progressRuns.push(details);
-		refreshRunDetailsFromSession(details, session, startedAt);
-		if (event.type === "message_update" && event.message.role === "assistant") {
-			const snippet = extractTextPreview(event.message.content, 200);
-			if (snippet && snippet !== details.recentOutputSnippets[details.recentOutputSnippets.length - 1]) {
-				details.recentOutputSnippets.push(snippet);
-				details.recentOutputSnippets = details.recentOutputSnippets.slice(-5);
-			}
-		}
-		if (event.type === "message_end" && event.message.role === "assistant") {
-			details.usage = event.message.usage;
-		}
-		if (event.type === "tool_execution_start") {
-			details.toolCallCount += 1;
-			details.currentToolName = event.toolName;
-			details.currentToolArgsPreview = previewValue(event.args);
-			details.recentToolCalls.push({
-				name: event.toolName,
-				argsPreview: details.currentToolArgsPreview,
-				startedAt: Date.now(),
-			});
-			details.recentToolCalls = details.recentToolCalls.slice(-8);
-			recordSkillInvocation(details, event.toolName, event.args);
-		}
-		if (event.type === "tool_execution_end") {
-			const active = details.recentToolCalls.find((tool) => !tool.endedAt && tool.name === event.toolName);
-			if (active) {
-				active.endedAt = Date.now();
-				active.isError = event.isError;
-				active.resultPreview = extractTextPreview(event.result.content, 200);
-			}
-			details.currentToolName = undefined;
-			details.currentToolArgsPreview = undefined;
-		}
-		emitProgress(options.progressInput, options.progressRuns, options.onProgress);
+	return driveChildSession(session, {
+		...options,
+		details,
+		startedAt,
+		prompt: buildChildTaskPrompt(options.task),
 	});
-
-	try {
-		await session.prompt(buildChildTaskPrompt(options.task), { expandPromptTemplates: false, source: "extension" });
-		const finalOutput = extractFinalAssistantText(session.messages);
-		const output = await writeAgentOutput({
-			cwd: options.parentServices.cwd,
-			output: options.task.output,
-			outputMode: options.task.outputMode,
-			content: finalOutput,
-			chainDir: options.chainDir,
-		});
-		details.status = "completed";
-		refreshRunDetailsFromSession(details, session, startedAt);
-		details.outputPath = output.outputPath;
-		details.finalOutput = output.displayText;
-		details.rawOutput = output.rawContent;
-		return details;
-	} catch (error) {
-		details.status = options.signal?.aborted ? "cancelled" : "failed";
-		refreshRunDetailsFromSession(details, session, startedAt);
-		details.error = error instanceof Error ? error.message : String(error);
-		throw Object.assign(new Error(details.error), { details });
-	} finally {
-		unsubscribe();
-		session.dispose();
-	}
 }
 
 function emitProgress(
@@ -420,9 +471,13 @@ function emitProgress(
 		mode: input.mode,
 		status: runs.some((run) => run.status === "failed")
 			? "failed"
-			: runs.every((run) => run.status === "completed")
-				? "completed"
-				: "running",
+			: runs.some((run) => run.status === "cancelled")
+				? "cancelled"
+				: runs.some((run) => run.status === "interrupted")
+					? "interrupted"
+					: runs.every((run) => run.status === "completed")
+						? "completed"
+						: "running",
 		runs: [...runs],
 		concurrency: input.concurrency,
 		chainDir: input.chainDir,
@@ -455,12 +510,131 @@ function getErrorDetails(error: unknown): AgentRunDetails | undefined {
 	return undefined;
 }
 
-export async function executeAgentTool(
+async function resumeSingleBackgroundRun(
 	input: AgentToolExecutionInput,
 	options: AgentExecutorOptions,
+	recentRun: AgentRecentRun,
+	prompt?: string,
+): Promise<AgentToolDetails> {
+	if (input.mode !== "single") throw new Error("Only single background agent runs can be resumed");
+	const previousRun = recentRun.runs[0];
+	if (!previousRun?.sessionPath) throw new Error(`${recentRun.id} has no child session path to resume`);
+
+	const registry = await loadAgentRegistry({ cwd: options.parentServices.cwd, agentScope: input.agentScope });
+	const originalTask = input.tasks[0];
+	const definition = findAgentDefinition(registry, originalTask.agent);
+	const task = normalizeTask(originalTask, input, definition);
+	const agent = findAgentDefinition(registry, task.agent);
+	if (!agent) {
+		throw new Error(`Unknown agent "${task.agent}". Available agents: ${formatAvailableAgents(registry)}`);
+	}
+
+	const model = resolveAgentModel({
+		modelReference: task.model,
+		agent,
+		parentModel: options.parentModel,
+		modelRegistry: options.parentServices.modelRegistry,
+	});
+	const thinking = resolveAgentThinking({
+		taskThinking: task.thinking,
+		toolThinking: input.thinking,
+		agent,
+		parentThinkingLevel: options.parentThinkingLevel,
+		model,
+	});
+	const { effectiveTools, deniedTools } = resolveEffectiveTools({
+		parentActiveTools: options.parentActiveTools,
+		agent,
+		requestedTools: task.tools,
+	});
+	const startedAt = Date.now();
+	const details = createInitialRunDetails({
+		agent,
+		task,
+		effectiveTools,
+		deniedTools,
+		model,
+		thinking,
+		startedAt,
+	});
+	const policy = details.context;
+	const childServices = await createAgentSessionServices({
+		cwd: options.parentServices.cwd,
+		agentDir: options.parentServices.agentDir,
+		authStorage: options.parentServices.authStorage,
+		settingsManager: options.parentServices.settingsManager,
+		modelRegistry: options.parentServices.modelRegistry,
+		resourceLoaderOptions: getChildResourceLoaderOptions(policy, agent),
+	});
+	const childSessionManager = SessionManager.open(previousRun.sessionPath);
+	details.sessionId = childSessionManager.getSessionId();
+	details.sessionPath = childSessionManager.getSessionFile();
+	const { session } = await createAgentSessionFromServices({
+		services: childServices,
+		sessionManager: childSessionManager,
+		model,
+		thinkingLevel: thinking,
+		tools: effectiveTools,
+		sessionStartEvent: {
+			type: "session_start",
+			reason: "resume",
+			previousSessionFile: options.parentSessionManager.getSessionFile(),
+		},
+	});
+	details.loadedSkills = childServices.resourceLoader.getSkills().skills.map((skill) => skill.name);
+
+	const runs: AgentRunDetails[] = [details];
+	const resumePrompt =
+		prompt?.trim() ||
+		"Continue the interrupted delegated task from where you left off. Return the final report when done.";
+
+	try {
+		await driveChildSession(session, {
+			...options,
+			task,
+			chainDir: input.chainDir,
+			progressInput: input,
+			progressRuns: runs,
+			details,
+			startedAt,
+			prompt: resumePrompt,
+		});
+	} catch (error) {
+		const failed = getErrorDetails(error);
+		if (!failed) {
+			failAgentRecentRun(recentRun, error);
+			throw error;
+		}
+		const failedDetails: AgentToolDetails = {
+			mode: input.mode,
+			status: failed.status === "cancelled" || failed.status === "interrupted" ? failed.status : "failed",
+			runs,
+			runId: recentRun.id,
+			background: true,
+			chainDir: input.chainDir,
+		};
+		finishAgentRecentRun(recentRun, failedDetails);
+		return failedDetails;
+	}
+
+	const completedDetails: AgentToolDetails = {
+		mode: input.mode,
+		status: "completed",
+		runs,
+		runId: recentRun.id,
+		background: true,
+		chainDir: input.chainDir,
+	};
+	finishAgentRecentRun(recentRun, completedDetails);
+	return completedDetails;
+}
+
+async function executeAgentToolToCompletion(
+	input: AgentToolExecutionInput,
+	options: AgentExecutorOptions,
+	recentRun: AgentRecentRun,
 ): Promise<AgentToolDetails> {
 	const registry = await loadAgentRegistry({ cwd: options.parentServices.cwd, agentScope: input.agentScope });
-	const recentRun = startAgentRecentRun(input.mode, input.tasks);
 	const runs: AgentRunDetails[] = [];
 	const concurrency = Math.max(1, Math.min(input.concurrency ?? DEFAULT_CONCURRENCY, MAX_CONCURRENCY));
 	if (input.mode === "parallel" && input.tasks.length > MAX_PARALLEL_TASKS) {
@@ -529,8 +703,10 @@ export async function executeAgentTool(
 		if (!runs.includes(details)) runs.push(details);
 		const failedDetails: AgentToolDetails = {
 			mode: input.mode,
-			status: details.status === "cancelled" ? "cancelled" : "failed",
+			status: details.status === "cancelled" || details.status === "interrupted" ? details.status : "failed",
 			runs,
+			runId: recentRun.id,
+			background: input.background === true,
 			concurrency,
 			chainDir: input.chainDir,
 		};
@@ -542,9 +718,82 @@ export async function executeAgentTool(
 		mode: input.mode,
 		status: "completed",
 		runs,
+		runId: recentRun.id,
+		background: input.background === true,
 		concurrency: input.mode === "parallel" ? concurrency : undefined,
 		chainDir: input.chainDir,
 	};
 	finishAgentRecentRun(recentRun, completedDetails);
 	return completedDetails;
+}
+
+export async function executeAgentTool(
+	input: AgentToolExecutionInput,
+	options: AgentExecutorOptions,
+): Promise<AgentToolDetails> {
+	const recentRun = startAgentRecentRun(input.mode, input.tasks, { background: input.background });
+	if (!input.background) return executeAgentToolToCompletion(input, options, recentRun);
+
+	let abortController = new AbortController();
+	let abortStatus: AgentToolStatus | undefined;
+	const activeSessions = new Set<AgentSession>();
+	const makeBackgroundOptions = (): AgentExecutorOptions => ({
+		...options,
+		signal: abortController.signal,
+		abortStatus: () => abortStatus,
+		onProgress: (progress) => updateAgentRecentRunProgress(recentRun, progress),
+		onChildSessionStart: (session, details) => {
+			activeSessions.add(session);
+			options.onChildSessionStart?.(session, details);
+		},
+		onChildSessionEnd: (session, details) => {
+			activeSessions.delete(session);
+			options.onChildSessionEnd?.(session, details);
+		},
+	});
+	const abortActiveSessions = () => {
+		for (const session of activeSessions) {
+			session.abortBash();
+			void session.abort().catch(() => {});
+		}
+	};
+	const launch = () => {
+		void executeAgentToolToCompletion(input, makeBackgroundOptions(), recentRun).catch(() => {});
+	};
+
+	attachAgentRecentRunController(recentRun.id, {
+		interrupt: () => {
+			abortStatus = "interrupted";
+			abortActiveSessions();
+			abortController.abort();
+		},
+		cancel: () => {
+			abortStatus = "cancelled";
+			abortActiveSessions();
+			abortController.abort();
+		},
+		resume: (prompt) => {
+			abortController = new AbortController();
+			abortStatus = undefined;
+			restartAgentRecentRun(recentRun);
+			void resumeSingleBackgroundRun(input, makeBackgroundOptions(), recentRun, prompt).catch((error) => {
+				failAgentRecentRun(recentRun, error);
+			});
+		},
+	});
+
+	launch();
+	return {
+		mode: input.mode,
+		status: "running",
+		runs: [],
+		runId: recentRun.id,
+		background: true,
+		message: `Background agent run ${recentRun.id} started. Use /agents-status ${recentRun.id} for details.`,
+		concurrency:
+			input.mode === "parallel"
+				? Math.max(1, Math.min(input.concurrency ?? DEFAULT_CONCURRENCY, MAX_CONCURRENCY))
+				: undefined,
+		chainDir: input.chainDir,
+	};
 }

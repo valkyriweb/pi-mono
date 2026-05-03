@@ -348,6 +348,8 @@ Pi includes a built-in `agent` tool for child-agent delegation. It supports:
 - single: `{ agent, task }`
 - parallel: `{ tasks: [{ agent, task }, ...], concurrency }`
 - chain: `{ chain: [{ agent, task: "Use {previous}" }, ...] }`
+- background: `{ agent, task, background: true }`
+- control: `{ action: "status" | "detail" | "interrupt" | "cancel" | "resume", runId, message? }`
 
 Built-in agents: `general`, `worker`, `explore`, `plan`, `scout`, `reviewer`, and `statusline-setup`. User agents can be added as Markdown files in `~/.pi/agent/agents/*.md`; project agents in `.pi/agents/*.md` require explicit `agentScope: "project"` or `"both"` and confirmation.
 
@@ -361,10 +363,12 @@ Use `/agents` to list agents and insert a prompt scaffold. Native slash ergonomi
 - `/agents list-chains` - list saved chains from `~/.pi/agent/chains/*.json` and `.pi/chains/*.json`
 - `/agents doctor` or `/agents-doctor` - diagnose native agent definitions, tools, models, chains, and runtime services
 - `/agents status` or `/agents-status` - show recent native child-agent runs; pass a run id (for example `/agents-status agent-1`) for per-child details
+- `/agents runs` - open a selectable recent-runs panel with detail, interrupt, cancel, and resume controls
+- `/agents interrupt <run-id>`, `/agents cancel <run-id>`, `/agents resume <run-id> [-- prompt]` - control native background runs
 
 Saved chains are JSON files with `name`, optional `description`, and a native `chain` array of `{ "agent": "...", "task": "..." }` steps. Project chains override user chains with the same name.
 
-Migration note: native Pi now covers the core `pi-subagents` affordances used for single/parallel/chain delegation, diagnostics, recent-run status, and saved reusable chains. You can disable or remove `pi-subagents` if you do not need its intentionally unported background async/resume/control UI or manager-specific editing screens.
+Migration note: native Pi now covers the core `pi-subagents` affordances used for single/parallel/chain delegation, diagnostics, recent-run status, saved reusable chains, footer visibility, selectable recent-run controls, and basic background lifecycle control. You can disable or remove `pi-subagents` if you do not need its manager-specific editing screens.
 
 ### Extensions
 
@@ -497,7 +501,7 @@ Pi is aggressively extensible so it doesn't have to dictate your workflow. Featu
 
 **No MCP.** Build CLI tools with READMEs (see [Skills](#skills)), or build an extension that adds MCP support. [Why?](https://mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/)
 
-**Native agents, not background sub-process orchestration.** Pi includes an in-process `agent` tool for bounded child sessions, parallel runs, chains, diagnostics, recent-run status, saved chains, live child progress (current tool, tool counts, duration, usage when available, skills, session/output refs), and durable child session refs. Use `/agents-status <run-id>` to inspect child details. Use extensions or tmux for background async/resume/control workflows.
+**Native agents, not background sub-process orchestration.** Pi includes an in-process `agent` tool for bounded child sessions, parallel runs, chains, diagnostics, recent-run status, saved chains, live child progress (current tool, tool counts, duration, usage when available, skills, session/output refs), durable child session refs, footer visibility, selectable recent-run controls, and native background lifecycle control for child-agent runs. Use `/agents runs` for the selector, `/agents-status <run-id>` to inspect details, or `/agents interrupt|cancel|resume <run-id>` for direct background control.
 
 **No permission popups.** Run in a container, or build your own confirmation flow with [extensions](#extensions) inline with your environment and security requirements.
 

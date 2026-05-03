@@ -10,11 +10,13 @@ Native `/agents` subcommands add operator ergonomics without replacing the selec
 - `/agents parallel <agent-a>,<agent-b> -- <task>` inserts a parallel-agent scaffold.
 - `/agents run-chain <name> -- <task>` inserts a saved-chain scaffold.
 - `/agents list-chains`, `/agents doctor`, and `/agents status` show chain, diagnostic, and recent-run status text.
+- `/agents runs` opens a selectable recent-runs panel with detail, interrupt, cancel, and resume controls.
+- `/agents interrupt <run-id>`, `/agents cancel <run-id>`, and `/agents resume <run-id> [-- prompt]` control native background runs.
 - `/agents-doctor` and `/agents-status` are direct aliases for the reports.
 
 When the native `agent` tool runs, collapsed tool rendering shows the execution mode (`single`, `parallel`, or `chain`), child agent names, per-child status, current tool, tool count, token usage when available, duration, and session/output refs. Expanded rendering adds recent tools, recent output snippets, invoked/loaded skills, model/thinking, errors, and output paths.
 
-Child agent sessions are persisted as normal Pi session files and linked back to the parent session. Recent completed/failed foreground runs are visible through `/agents-status`; pass a run id (for example `/agents-status agent-1` or `/agents status agent-1`) for a read-only detail view with tool calls, skills, usage, session refs, and output refs. Resume/fork from the printed child session path using the normal session commands. Native background pause/resume/kill control is not supported.
+Child agent sessions are persisted as normal Pi session files and linked back to the parent session. Recent foreground and background runs are visible through `/agents-status`; pass a run id (for example `/agents-status agent-1` or `/agents status agent-1`) for a detail view with tool calls, skills, usage, session refs, output refs, and resumability. Background runs also add a footer status line with a `/agents runs` hint. Native background runs can be interrupted, cancelled, and resumed for single-child interrupted sessions while the owning Pi process is alive.
 
 Extensions and custom tools can render custom TUI components for interactive user interfaces. This page covers the component system and available building blocks.
 

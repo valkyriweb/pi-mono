@@ -1,6 +1,7 @@
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.js";
+import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.js";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.js";
 import { FooterComponent } from "../src/modes/interactive/components/footer.js";
 import { initTheme } from "../src/modes/interactive/theme/theme.js";
@@ -78,6 +79,8 @@ describe("FooterComponent width handling", () => {
 		initTheme(undefined, false);
 	});
 
+	beforeEach(() => clearAgentRecentRunsForTests());
+
 	it("keeps all lines within width for wide session names", () => {
 		const width = 93;
 		const session = createSession({ sessionName: "한글".repeat(30) });
@@ -111,5 +114,14 @@ describe("FooterComponent width handling", () => {
 		for (const line of lines) {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
+	});
+
+	it("shows active background agent runs in the footer", () => {
+		startAgentRecentRun("single", [{ agent: "worker", task: "Sleep" }], { background: true });
+		const footer = new FooterComponent(createSession({ sessionName: "" }), createFooterData(1));
+		const rendered = footer.render(100).join("\n");
+
+		expect(rendered).toContain("Agents: 1 running");
+		expect(rendered).toContain("/agents runs");
 	});
 });

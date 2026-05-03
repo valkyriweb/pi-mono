@@ -1,8 +1,14 @@
-import type { AgentTool, ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { AgentTool, AgentToolResult, ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { Container, Spacer, Text } from "@mariozechner/pi-tui";
 import { type Static, Type } from "typebox";
 import { type AgentToolParentServices, executeAgentTool } from "../agents/executor.js";
+import {
+	cancelAgentRecentRun,
+	formatAgentStatus,
+	interruptAgentRecentRun,
+	resumeAgentRecentRun,
+} from "../agents/status.js";
 import type { AgentExecutionProgress, AgentRunDetails, AgentToolDetails, AgentToolMode } from "../agents/types.js";
 import type { ToolDefinition } from "../extensions/types.js";
 import type { ReadonlySessionManager } from "../session-manager.js";
@@ -25,6 +31,13 @@ const thinkingSchema = Type.Union([
 ]);
 
 const outputModeSchema = Type.Union([Type.Literal("inline"), Type.Literal("file"), Type.Literal("both")]);
+const controlActionSchema = Type.Union([
+	Type.Literal("status"),
+	Type.Literal("detail"),
+	Type.Literal("interrupt"),
+	Type.Literal("cancel"),
+	Type.Literal("resume"),
+]);
 
 const taskSchema = Type.Object({
 	agent: Type.String({ description: "Agent id/name to run" }),
@@ -40,6 +53,9 @@ const taskSchema = Type.Object({
 });
 
 export const agentToolSchema = Type.Object({
+	action: Type.Optional(controlActionSchema),
+	runId: Type.Optional(Type.String({ description: "Background run id for control actions" })),
+	message: Type.Optional(Type.String({ description: "Optional resume/continue prompt for control actions" })),
 	agent: Type.Optional(Type.String()),
 	task: Type.Optional(Type.String()),
 	description: Type.Optional(Type.String()),
@@ -54,6 +70,9 @@ export const agentToolSchema = Type.Object({
 	output: Type.Optional(Type.String()),
 	outputMode: Type.Optional(outputModeSchema),
 	chainDir: Type.Optional(Type.String({ description: "Base directory for relative chain outputs" })),
+	background: Type.Optional(
+		Type.Boolean({ description: "Run in the background and return immediately with a run id" }),
+	),
 	agentScope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project"), Type.Literal("both")])),
 });
 
@@ -67,14 +86,21 @@ export interface AgentToolOptions {
 	getParentThinkingLevel?: () => ThinkingLevel;
 }
 
+function countExecutionModes(params: AgentToolInput): number {
+	return [
+		Boolean(params.agent && params.task),
+		Boolean(params.tasks && params.tasks.length > 0),
+		Boolean(params.chain && params.chain.length > 0),
+	].filter(Boolean).length;
+}
+
 export function normalizeAgentToolMode(params: AgentToolInput): {
 	mode: AgentToolMode;
 	tasks: NonNullable<AgentToolInput["tasks"]>;
 } {
 	const hasSingle = Boolean(params.agent && params.task);
 	const hasParallel = Boolean(params.tasks && params.tasks.length > 0);
-	const hasChain = Boolean(params.chain && params.chain.length > 0);
-	const count = [hasSingle, hasParallel, hasChain].filter(Boolean).length;
+	const count = countExecutionModes(params);
 	if (count !== 1) {
 		throw new Error("agent tool requires exactly one mode: {agent, task}, {tasks}, or {chain}");
 	}
@@ -192,6 +218,12 @@ function formatExpandedRun(run: AgentRunDetails, index: number): string {
 	return lines.join("\n");
 }
 
+function runControlHint(runId?: string): string | undefined {
+	return runId
+		? `Control: /agents-status ${runId}, /agents interrupt ${runId}, /agents cancel ${runId}, /agents resume ${runId} [-- prompt]`
+		: undefined;
+}
+
 function formatProgress(progress: AgentExecutionProgress): string {
 	const completed = progress.runs.filter((run) => run.status === "completed").length;
 	const running = progress.runs.filter((run) => run.status === "running").length;
@@ -205,6 +237,15 @@ function formatProgress(progress: AgentExecutionProgress): string {
 }
 
 function formatFinalResult(details: AgentToolDetails): string {
+	if (details.background && details.status === "running") {
+		return [
+			`agent ${details.mode}: background running${details.runId ? ` · ${details.runId}` : ""}`,
+			details.message,
+			runControlHint(details.runId),
+		]
+			.filter((line): line is string => Boolean(line))
+			.join("\n");
+	}
 	const failed = details.runs.filter((run) => run.status === "failed").length;
 	const completed = details.runs.filter((run) => run.status === "completed").length;
 	const total = details.runs.length;
@@ -223,6 +264,44 @@ function formatFinalResult(details: AgentToolDetails): string {
 		.map((run) => `\n### ${run.agent}\n\n${run.finalOutput}`);
 	if (outputs.length > 0) lines.push(outputs.join("\n"));
 	return lines.join("\n");
+}
+
+function detailsFromControlResult(
+	result: Awaited<ReturnType<typeof interruptAgentRecentRun>>,
+): AgentToolDetails | undefined {
+	if (!result.run) return undefined;
+	return {
+		mode: result.run.mode,
+		status: result.run.status,
+		runs: result.run.runs,
+		runId: result.run.id,
+		background: result.run.execution === "background",
+		resumable: result.run.resumable,
+		message: result.message,
+	};
+}
+
+async function executeAgentControlAction(params: AgentToolInput): Promise<AgentToolResult<AgentToolDetails>> {
+	if (countExecutionModes(params) > 0) {
+		throw new Error("agent tool control actions cannot be combined with {agent, task}, {tasks}, or {chain}");
+	}
+	const action = params.action;
+	if (!action) throw new Error("Missing agent control action");
+	if (action === "status" || action === "detail") {
+		return { content: [{ type: "text", text: formatAgentStatus(undefined, params.runId) }] };
+	}
+	if (!params.runId) throw new Error(`agent control action ${action} requires runId`);
+	const result =
+		action === "interrupt"
+			? await interruptAgentRecentRun(params.runId)
+			: action === "cancel"
+				? await cancelAgentRecentRun(params.runId)
+				: await resumeAgentRecentRun(params.runId, params.message);
+	const detailText = formatAgentStatus(undefined, params.runId);
+	return {
+		content: [{ type: "text", text: `${result.message}\n\n${detailText}` }],
+		details: detailsFromControlResult(result),
+	};
 }
 
 async function confirmProjectAgentsIfNeeded(
@@ -251,16 +330,18 @@ export function createAgentToolDefinition(
 		name: "agent",
 		label: "agent",
 		description:
-			"Launch a built-in or configured Pi child agent. Supports single {agent, task}, parallel {tasks}, and sequential chain {chain} modes.",
+			"Launch a built-in or configured Pi child agent. Supports single {agent, task}, parallel {tasks}, sequential chain {chain}, background execution, and background run control actions.",
 		promptSnippet: "Delegate a task to a child agent with bounded tools",
 		promptGuidelines: [
 			"Use agent for delegated work that benefits from an isolated child context.",
 			"When parallel exploration or review is needed, send multiple agent tool-use blocks in one assistant message; Pi runs those calls concurrently. Use tasks[] only for explicit batched fan-out inside one agent call.",
+			"Use background:true for long-running delegated work that should continue while the parent reports back; control it with action/status/interrupt/cancel/resume and runId.",
 			"Do not use agent recursively; child agents cannot call agent.",
 		],
 		parameters: agentToolSchema,
 		executionMode: "parallel",
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			if (params.action) return executeAgentControlAction(params);
 			if (!options?.parentServices || !options.getParentActiveTools || !options.getParentSessionManager) {
 				throw new Error("agent tool is unavailable in this runtime");
 			}
@@ -279,6 +360,7 @@ export function createAgentToolDefinition(
 					output: params.output,
 					outputMode: params.outputMode,
 					chainDir: params.chainDir,
+					background: params.background,
 					agentScope: params.agentScope,
 				},
 				{
@@ -299,9 +381,13 @@ export function createAgentToolDefinition(
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
 			let label = "agent";
 			try {
-				const mode = normalizeAgentToolMode(args);
-				const names = mode.tasks.map((task) => task.agent).join(", ");
-				label = `${mode.mode}: ${names}`;
+				if (args.action) {
+					label = `${args.action}${args.runId ? `: ${args.runId}` : ""}`;
+				} else {
+					const mode = normalizeAgentToolMode(args);
+					const names = mode.tasks.map((task) => task.agent).join(", ");
+					label = `${mode.mode}${args.background ? " background" : ""}: ${names}`;
+				}
 			} catch {
 				label = "agent: invalid mode";
 			}

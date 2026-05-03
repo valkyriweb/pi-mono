@@ -42,6 +42,7 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/agents` | List native child agents, run native agent subcommands, or insert an agent prompt scaffold |
 | `/agents-doctor` | Diagnose native agent definitions, chains, tools, models, and runtime services |
 | `/agents-status [run-id]` | Show recent native child-agent runs, or inspect one run in detail |
+| `/agents runs` | Open a selectable recent-runs panel with background controls |
 | `/resume` | Pick from previous sessions |
 | `/new` | Start a new session |
 | `/name <name>` | Set session display name |
@@ -194,9 +195,12 @@ Modes:
 { "agent": "scout", "task": "Find auth-related files" }
 { "tasks": [{ "agent": "scout", "task": "Find models" }, { "agent": "reviewer", "task": "Review API code" }], "concurrency": 2 }
 { "chain": [{ "agent": "scout", "task": "Map the flow" }, { "agent": "plan", "task": "Plan from: {previous}" }] }
+{ "agent": "worker", "task": "Run the long migration audit", "background": true }
+{ "action": "interrupt", "runId": "agent-1" }
+{ "action": "resume", "runId": "agent-1", "message": "Continue from the interrupted audit." }
 ```
 
-Options include `context` (`default`, `fork`, `slim`, `none`), `model`, `thinking`, `tools`, `output`, `outputMode` (`inline`, `file`, `both`), `chainDir`, and `agentScope` (`user`, `project`, `both`). Built-ins and user agents are available by default; project agents require explicit scope and confirmation.
+Options include `context` (`default`, `fork`, `slim`, `none`), `model`, `thinking`, `tools`, `output`, `outputMode` (`inline`, `file`, `both`), `chainDir`, `background`, and `agentScope` (`user`, `project`, `both`). Built-ins and user agents are available by default; project agents require explicit scope and confirmation.
 
 Interactive slash helpers:
 
@@ -208,7 +212,11 @@ Interactive slash helpers:
 /agents list-chains
 /agents doctor                  # same report as /agents-doctor
 /agents status                  # same report as /agents-status
+/agents runs                    # selectable recent-runs panel
 /agents-status agent-1           # detail view for one native agent run
+/agents interrupt agent-1        # interrupt a running background run; leaves it resumable when possible
+/agents cancel agent-1           # cancel a running/interrupted background run
+/agents resume agent-1 -- continue the audit
 ```
 
 Saved chains live in `~/.pi/agent/chains/*.json` or project `.pi/chains/*.json`:
@@ -224,11 +232,11 @@ Saved chains live in `~/.pi/agent/chains/*.json` or project `.pi/chains/*.json`:
 }
 ```
 
-Project chains override user chains with the same name. `/agents-status` tracks recent native foreground child-agent runs; background async/resume/control is intentionally not native in this pass. Detail mode shows the child session ref/path, status timeline summary, recent tool calls, invoked skills, usage, errors, and output refs.
+Project chains override user chains with the same name. `/agents-status` tracks recent native foreground and background child-agent runs. Detail mode shows the child session ref/path, status timeline summary, recent tool calls, invoked skills, usage, errors, output refs, and whether an interrupted background run can be resumed. Background runs also appear in the footer with a `/agents runs` shortcut to the selectable control panel.
 
 During a native `agent` tool call, collapsed rendering shows mode, agents, per-child status, current tool, tool count, token usage when known, duration, and session/output refs. Expanded rendering adds recent tools, recent output snippets, invoked/loaded skills, model/thinking, errors, and output paths.
 
-Child sessions are persisted as normal Pi sessions with the parent session recorded as their parent reference. Resume or inspect them via the printed session path; native read-only step-in is `/agents-status <run-id>` for now.
+Child sessions are persisted as normal Pi sessions with the parent session recorded as their parent reference. Inspect them via `/agents-status <run-id>` or the printed session path. Native background resume continues single-child interrupted runs from the persisted child session when the original Pi process still owns the run controller.
 
 Child tools are computed from the parent active tools, requested tools, agent allow/deny lists, and a global recursive `agent` denial. `--tools`, `--no-builtin-tools`, and `--no-tools` continue to set the parent ceiling; children cannot gain tools the parent does not have active.
 
@@ -329,6 +337,6 @@ pi --tools read,grep,find,ls -p "Review the code"
 
 Pi keeps the core small and pushes workflow-specific behavior into extensions, skills, prompt templates, and packages.
 
-It intentionally does not include built-in MCP, permission popups, plan mode, to-dos, or background bash. Native `agent` covers bounded in-process child sessions, single/parallel/chain delegation, diagnostics, recent status, and saved chains. Background async/resume/control and manager editing screens remain extension territory.
+It intentionally does not include built-in MCP, permission popups, plan mode, to-dos, or background bash. Native `agent` covers bounded in-process child sessions, single/parallel/chain delegation, diagnostics, recent status, saved chains, and background lifecycle control for native child-agent runs. Manager editing screens remain extension territory.
 
 For the full rationale, read the [blog post](https://mariozechner.at/posts/2025-11-30-pi-coding-agent/).
