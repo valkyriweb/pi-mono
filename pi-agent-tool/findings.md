@@ -88,6 +88,7 @@
 - `repro-hygiene.md` keeps repeated scorer runs from generating Python bytecode-cache noise, so eval artifacts remain reproducible.
 - `recommendation-consistency.md` gates any `pi-subagents` async/control recommendation on fixing the current load failure and rerunning the relevant probes.
 - `rerun-commands.md` verifies the README/runbook reproduction commands include the preserved `/subagents` removed-command probe, live-child checker, generated-artifact checks, and final scorer.
+- `artifact-index.md` keeps README, evidence manifest, and scorer-required artifact lists synchronized as the eval grows.
 - `task-lifecycle-audit.md` makes S09 reproducible: native lifecycle fields/actions/status literals are absent in current `agent.ts`, existing delegation modes remain present, and `pi-subagents` management/status controls are closest-equivalent only.
 - `evidence-manifest.md` maps every scorecard row to a concrete evidence file, links live/source supporting captures, and protects against stale scorecard paths.
 - Startup captures are real tmux captures where cheap.

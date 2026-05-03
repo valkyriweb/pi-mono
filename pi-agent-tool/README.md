@@ -9,6 +9,7 @@ Current source/runtime reality matters: installed `pi-subagents` is `0.24.0`, wh
 
 ## Fresh artifacts
 
+- `README.md` — overview, artifact index, and quick rerun commands.
 - `autoresearch.md` — session objective, constraints, and loop notes.
 - `autoresearch.sh` — scorer; emits `METRIC actual_eval_score=...` plus secondary metrics.
 - `eval-plan.md` — scenarios, metrics, and fairness rules.
@@ -22,6 +23,7 @@ Current source/runtime reality matters: installed `pi-subagents` is `0.24.0`, wh
 - `repro-hygiene.md` — runner hygiene check ensuring scorer syntax checks do not dirty Python bytecode caches.
 - `recommendation-consistency.md` — final-recommendation check that current `pi-subagents` runtime failure is not glossed over.
 - `rerun-commands.md` — audit that README/runbook reproduction commands cover the scored captures and generated checks.
+- `artifact-index.md` — audit that README, evidence manifest, and scorer-required artifact indexes stay synchronized.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
 - `live-child-output.md` — one tiny S01 live child-output probe: native success vs current extension load failure.
@@ -60,10 +62,11 @@ python3 scripts/check-token-accounting.py
 python3 scripts/check-repro-hygiene.py
 python3 scripts/check-recommendation-consistency.py
 python3 scripts/check-rerun-commands.py
+python3 scripts/check-artifact-index.py
 python3 scripts/check-scorecard-consistency.py --write score-analysis.md
 python3 scripts/check-findings-alignment.py
 python3 scripts/check-task-lifecycle.py
 ./autoresearch.sh
 ```
 
-Broad live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. One tiny S01 live probe was added because source-only evidence was exhausted: native completed, while the extension failed to load before `/run scout`. `extension-load-audit.md` ties that failure to the current package manifest, ESM entry shape, Pi jiti loader, and captured module-format error. `capture-timeline.md` makes clear that older extension-loaded captures predate the newer load-failure captures. Two earlier removed-command probes in the extension arm did fall through to parent model turns; `token-evidence.md` records the observed ↑22k/↓187 token, $0.111 cost. If the extension loader issue is fixed, rerun S01 plus the cheap extension command probes before treating older captures as current proof. `scenario-verdict-audit.md` classifies every scored row by evidence type, `token-accounting-audit.md` keeps model-call/cost wording aligned, `repro-hygiene.md` keeps the scorer from dirtying Python bytecode caches, `recommendation-consistency.md` prevents the final recommendation from implying the extension is currently usable, `rerun-commands.md` keeps reproduction commands aligned, and `evidence-manifest.md` ties each row to an existing evidence file so stale paths fail the scorer.
+Broad live child-agent calls are intentionally not part of the baseline; source-backed evidence is used where running children would spend model tokens. One tiny S01 live probe was added because source-only evidence was exhausted: native completed, while the extension failed to load before `/run scout`. `extension-load-audit.md` ties that failure to the current package manifest, ESM entry shape, Pi jiti loader, and captured module-format error. `capture-timeline.md` makes clear that older extension-loaded captures predate the newer load-failure captures. Two earlier removed-command probes in the extension arm did fall through to parent model turns; `token-evidence.md` records the observed ↑22k/↓187 token, $0.111 cost. If the extension loader issue is fixed, rerun S01 plus the cheap extension command probes before treating older captures as current proof. `scenario-verdict-audit.md` classifies every scored row by evidence type, `token-accounting-audit.md` keeps model-call/cost wording aligned, `repro-hygiene.md` keeps the scorer from dirtying Python bytecode caches, `recommendation-consistency.md` prevents the final recommendation from implying the extension is currently usable, `rerun-commands.md` keeps reproduction commands aligned, `artifact-index.md` keeps artifact indexes synchronized, and `evidence-manifest.md` ties each row to an existing evidence file so stale paths fail the scorer.

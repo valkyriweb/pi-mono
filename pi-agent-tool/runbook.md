@@ -165,6 +165,16 @@ python3 scripts/check-rerun-commands.py
 
 Current verdict: README and runbook include the preserved `/subagents` removed-command probe, live-child checker, generated-artifact checks, and final scorer.
 
+## 2.14. Artifact index audit
+
+After adding/removing artifact files, keep README, evidence manifest, and scorer-required files synchronized:
+
+```bash
+python3 scripts/check-artifact-index.py
+```
+
+Current verdict: README Fresh artifacts names every `autoresearch.sh` required file plus `captures/` and `scripts/`; evidence manifest indexes every audited evidence artifact.
+
 ## 3. Task-agent lifecycle probe
 
 Native expected request shape from the task brief:
@@ -204,6 +214,7 @@ Before any `keep`, verify:
 - `repro-hygiene.md` exists and `scripts/check-repro-hygiene.py` validates the scorer's Python syntax checks do not dirty `scripts/__pycache__`.
 - `recommendation-consistency.md` exists and `scripts/check-recommendation-consistency.py` validates the final recommendation gates `pi-subagents` runtime use on fixing/rerunning the loader failure.
 - `rerun-commands.md` exists and `scripts/check-rerun-commands.py` validates README/runbook command coverage for scored captures and generated checks.
+- `artifact-index.md` exists and `scripts/check-artifact-index.py` validates README, evidence manifest, and scorer-required artifact indexes stay synchronized.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
 - `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.

@@ -120,6 +120,13 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `rerun_readme_live_child_checker`
 - `rerun_readme_write_generators`
 - `rerun_commands_verified`
+- `artifact_index_required_files`
+- `artifact_index_readme_required_present`
+- `artifact_index_readme_directory_entries`
+- `artifact_index_manifest_audited_expected`
+- `artifact_index_manifest_audited_present`
+- `artifact_index_required_files_exist`
+- `artifact_index_verified`
 - `scenario_verdict_rows`
 - `scenario_verdict_current_live_rows`
 - `scenario_verdict_current_failure_rows`
@@ -177,6 +184,7 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - `repro-hygiene.md` — runner hygiene check ensuring scorer syntax checks do not dirty Python bytecode caches.
 - `recommendation-consistency.md` — final-recommendation check that current `pi-subagents` runtime failure is not glossed over.
 - `rerun-commands.md` — audit that README/runbook reproduction commands cover the scored captures and generated checks.
+- `artifact-index.md` — audit that README, evidence manifest, and scorer-required artifact indexes stay synchronized.
 - `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `findings-alignment.md` — qualitative findings vs numeric scorecard alignment, including documented exceptions.
 - `live-child-output.md` — one tiny S01 live child-output probe: native success vs current extension load failure.
@@ -227,3 +235,4 @@ PI_AGENT_EVAL_SCENARIO_WAIT=75 ./scripts/run-tmux-scenario.sh subagents subagent
 - Next iteration replaced `python -m py_compile` in `autoresearch.sh` with in-memory `compile(...)` over `scripts/check-*.py` and added `scripts/check-repro-hygiene.py` plus `repro-hygiene.md` so repeated scorer runs do not dirty `scripts/__pycache__`.
 - Next iteration added `scripts/check-recommendation-consistency.py` plus `recommendation-consistency.md` and revised findings so `pi-subagents` async/control is framed as source/tool-schema value only after the current module-format load failure is fixed and rerun.
 - Next iteration added `scripts/check-rerun-commands.py` plus `rerun-commands.md`, and updated README's quick-run block to include the preserved `/subagents` removed-command probe, live-child checker, write-mode generators, and final audit checks.
+- Next iteration added `scripts/check-artifact-index.py` plus `artifact-index.md` and updated README/evidence-manifest/runbook so artifact indexes stay synchronized with `autoresearch.sh` required files.
