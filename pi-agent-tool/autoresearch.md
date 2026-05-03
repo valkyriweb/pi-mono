@@ -30,6 +30,15 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `removed_command_token_captures`
 - `fallthrough_cost_cents`
 - `token_evidence_verified`
+- `python_syntax_ok`
+- `scorecard_numeric_rows`
+- `scorecard_numeric_cells`
+- `scorecard_average_consistency`
+- `scorecard_numeric_native_wins`
+- `scorecard_numeric_subagents_wins`
+- `scorecard_numeric_ties`
+- `scorecard_analysis_rows`
+- `scorecard_analysis_verified`
 
 ## How to run
 
@@ -57,6 +66,7 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - `findings.md` — final comparison summary.
 - `evidence-manifest.md` — scorecard-to-evidence map and integrity guard.
 - `token-evidence.md` — live footer token/cost evidence for native registered commands vs removed extension commands.
+- `score-analysis.md` — computed scorecard averages and numeric scenario winners.
 - `isolation-proof.md` — proof that each arm avoided the other tool surface.
 - `source-probes.md` — generated source evidence.
 - `captures/` — tmux and source-backed capture files.
@@ -86,3 +96,4 @@ The eval must not overfit the scorer. It should prefer real tmux captures where 
 - Removed `/subagents` and `/subagents-status` probes fell through to parent model turns; this is useful UX/token evidence but should not be repeated unless intentionally measuring fallback behavior.
 - Next iteration added `evidence-manifest.md` plus scorer checks that every scorecard evidence path exists, every scenario has a manifest row, live captures are linked, and the `pi-subagents 0.24.0` removed-surface guard is preserved.
 - Next iteration added `token-evidence.md` and scorer checks for native `$0.000` registered-command captures, two removed-command fallthrough token/cost captures, and aggregate $0.111 extension fallthrough cost.
+- Next iteration added `scripts/check-scorecard-consistency.py`, `score-analysis.md`, and scorer checks that scorecard summary averages match computed values; this caught and fixed a stale `pi-subagents` UX average (3.2 -> 3.3).

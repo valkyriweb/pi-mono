@@ -103,6 +103,7 @@ Before any `keep`, verify:
 - `source-probes.md` includes removed `/subagents-status` and `/subagents` manager evidence for extension `0.24.0`.
 - `evidence-manifest.md` maps every scorecard row to an existing evidence file and links live captures.
 - `token-evidence.md` records `$0.000` native registered-command captures and the removed-command extension fallthrough cost.
+- `score-analysis.md` exists and `scripts/check-scorecard-consistency.py` validates scorecard summary averages.
 - `./autoresearch.sh` exits 0 and emits `METRIC actual_eval_score=...`.
 
 Then use `run_experiment` and `log_experiment` with ASI including hypothesis, evidence, isolation proof, and next action hint.

@@ -28,4 +28,4 @@ Filled baseline for current local checkout and installed extension. Token fields
 | Arm | Avg correctness | Avg coverage | Avg UX | Avg robustness | Avg flexibility | Avg evidence | Overall value/token |
 |---|---:|---:|---:|---:|---:|---:|---|
 | native | 4.1 | 4.1 | 3.7 | 4.4 | 3.9 | 4.6 | High for core delegation, diagnostics, saved chains, and context control; weak for requested task lifecycle and background control. |
-| pi-subagents | 3.2 | 3.7 | 3.2 | 3.7 | 3.9 | 4.6 | High for async/control and extension workflows; current 0.24.0 loses requested `/subagents` manager and `/subagents-status`, and removed commands can fall through into token-spending model turns. |
+| pi-subagents | 3.2 | 3.7 | 3.3 | 3.7 | 3.9 | 4.6 | High for async/control and extension workflows; current 0.24.0 loses requested `/subagents` manager and `/subagents-status`, and removed commands can fall through into token-spending model turns. |

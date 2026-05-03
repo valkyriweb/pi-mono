@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md token-evidence.md isolation-proof.md source-probes.md)
+required_files=(README.md eval-plan.md runbook.md scorecard.md findings.md evidence-manifest.md token-evidence.md score-analysis.md isolation-proof.md source-probes.md)
 required_file_count=0
 for file in "${required_files[@]}"; do
   [[ -s "$file" ]] && ((required_file_count+=1))
@@ -11,6 +11,8 @@ bash_syntax_ok=1
 for script in scripts/capture-startup.sh scripts/run-tmux-scenario.sh scripts/capture-source-probes.sh autoresearch.sh; do
   bash -n "$script" || bash_syntax_ok=0
 done
+python_syntax_ok=1
+python3 -m py_compile scripts/check-scorecard-consistency.py || python_syntax_ok=0
 
 startup_captures=0
 [[ -s captures/native-startup.txt ]] && ((startup_captures+=1))
@@ -119,6 +121,30 @@ if (( token_evidence_rows >= 5 )) \
   token_evidence_verified=1
 fi
 
+scorecard_consistency_output=$(python3 scripts/check-scorecard-consistency.py)
+get_consistency_metric() {
+  local name="$1"
+  printf '%s\n' "$scorecard_consistency_output" | awk -F= -v key="$name" '$1 == key { print $2 }'
+}
+scorecard_numeric_rows=$(get_consistency_metric scorecard_numeric_rows)
+scorecard_numeric_cells=$(get_consistency_metric scorecard_numeric_cells)
+scorecard_average_consistency=$(get_consistency_metric scorecard_average_consistency)
+scorecard_numeric_native_wins=$(get_consistency_metric scorecard_numeric_native_wins)
+scorecard_numeric_subagents_wins=$(get_consistency_metric scorecard_numeric_subagents_wins)
+scorecard_numeric_ties=$(get_consistency_metric scorecard_numeric_ties)
+scorecard_analysis_rows=$(grep -Ec '^\| S[0-9][0-9] ' score-analysis.md || true)
+scorecard_analysis_verified=0
+if (( scorecard_numeric_rows == 18 )) \
+  && (( scorecard_numeric_cells == 108 )) \
+  && (( scorecard_average_consistency == 1 )) \
+  && (( scorecard_numeric_native_wins == 7 )) \
+  && (( scorecard_numeric_subagents_wins == 2 )) \
+  && (( scorecard_numeric_ties == 0 )) \
+  && (( scorecard_analysis_rows == 9 )) \
+  && grep -Fq 'Numeric scenario wins: native=7, pi-subagents=2, tie=0.' score-analysis.md; then
+  scorecard_analysis_verified=1
+fi
+
 # Composite score rewards evidence completeness and isolation, capped to avoid padding.
 cap() {
   local value="$1"
@@ -129,6 +155,7 @@ cap() {
 score=0
 score=$((score + required_file_count * 4))
 score=$((score + bash_syntax_ok * 8))
+score=$((score + python_syntax_ok * 4))
 score=$((score + startup_captures * 6))
 score=$((score + $(cap "$scenario_captures" 18) * 3))
 score=$((score + isolation_verified * 30))
@@ -145,10 +172,15 @@ score=$((score + $(cap "$token_evidence_rows" 5) * 2))
 score=$((score + native_zero_cost_captures * 2))
 score=$((score + removed_command_token_captures * 4))
 score=$((score + token_evidence_verified * 10))
+score=$((score + $(cap "$scorecard_numeric_rows" 18)))
+score=$((score + $(cap "$scorecard_analysis_rows" 9) * 2))
+score=$((score + scorecard_average_consistency * 10))
+score=$((score + scorecard_analysis_verified * 10))
 
 missing=0
 (( required_file_count == ${#required_files[@]} )) || missing=1
 (( bash_syntax_ok == 1 )) || missing=1
+(( python_syntax_ok == 1 )) || missing=1
 (( startup_captures == 2 )) || missing=1
 (( scenario_captures >= 18 )) || missing=1
 (( isolation_verified == 1 )) || missing=1
@@ -164,10 +196,17 @@ missing=0
 (( native_zero_cost_captures == 3 )) || missing=1
 (( removed_command_token_captures == 2 )) || missing=1
 (( token_evidence_verified == 1 )) || missing=1
+(( scorecard_numeric_rows == 18 )) || missing=1
+(( scorecard_numeric_cells == 108 )) || missing=1
+(( scorecard_average_consistency == 1 )) || missing=1
+(( scorecard_numeric_native_wins == 7 )) || missing=1
+(( scorecard_numeric_subagents_wins == 2 )) || missing=1
+(( scorecard_analysis_rows == 9 )) || missing=1
+(( scorecard_analysis_verified == 1 )) || missing=1
 
 if (( missing != 0 )); then
   echo "ERROR: required evidence incomplete" >&2
-  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
+  echo "required_file_count=$required_file_count startup_captures=$startup_captures scenario_captures=$scenario_captures isolation_verified=$isolation_verified scorecard_rows_touched=$scorecard_rows_touched findings_sections_touched=$findings_sections_touched source_probe_coverage=$source_probe_coverage scorecard_evidence_rows=$scorecard_evidence_rows evidence_file_coverage=$evidence_file_coverage evidence_manifest_rows=$evidence_manifest_rows live_capture_links=$live_capture_links version_guard_verified=$version_guard_verified token_evidence_rows=$token_evidence_rows native_zero_cost_captures=$native_zero_cost_captures removed_command_token_captures=$removed_command_token_captures token_evidence_verified=$token_evidence_verified scorecard_numeric_rows=$scorecard_numeric_rows scorecard_numeric_cells=$scorecard_numeric_cells scorecard_average_consistency=$scorecard_average_consistency scorecard_numeric_native_wins=$scorecard_numeric_native_wins scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins scorecard_analysis_rows=$scorecard_analysis_rows scorecard_analysis_verified=$scorecard_analysis_verified missing_evidence_paths=${missing_evidence_paths[*]-}" >&2
   exit 1
 fi
 
@@ -182,6 +221,7 @@ echo "METRIC source_probe_coverage=$source_probe_coverage"
 echo "METRIC honest_limitations=$honest_limitations"
 echo "METRIC required_file_count=$required_file_count"
 echo "METRIC bash_syntax_ok=$bash_syntax_ok"
+echo "METRIC python_syntax_ok=$python_syntax_ok"
 echo "METRIC scorecard_evidence_rows=$scorecard_evidence_rows"
 echo "METRIC evidence_file_coverage=$evidence_file_coverage"
 echo "METRIC evidence_manifest_rows=$evidence_manifest_rows"
@@ -192,3 +232,11 @@ echo "METRIC native_zero_cost_captures=$native_zero_cost_captures"
 echo "METRIC removed_command_token_captures=$removed_command_token_captures"
 echo "METRIC fallthrough_cost_cents=$fallthrough_cost_cents"
 echo "METRIC token_evidence_verified=$token_evidence_verified"
+echo "METRIC scorecard_numeric_rows=$scorecard_numeric_rows"
+echo "METRIC scorecard_numeric_cells=$scorecard_numeric_cells"
+echo "METRIC scorecard_average_consistency=$scorecard_average_consistency"
+echo "METRIC scorecard_numeric_native_wins=$scorecard_numeric_native_wins"
+echo "METRIC scorecard_numeric_subagents_wins=$scorecard_numeric_subagents_wins"
+echo "METRIC scorecard_numeric_ties=$scorecard_numeric_ties"
+echo "METRIC scorecard_analysis_rows=$scorecard_analysis_rows"
+echo "METRIC scorecard_analysis_verified=$scorecard_analysis_verified"
