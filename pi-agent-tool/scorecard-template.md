@@ -20,6 +20,8 @@ Copy one row per arm per scenario.
 | S07 UI manager | pi-subagents | 1 | 2 | 1 | 2 | 1 | 1 | n/a | n/a | n/a | n/a | n/a | Capture shows `/subagents` sent but no manager rendered; likely captured before UI response or command not submitted in ready state. | ~10s | inconclusive/failed capture | low | captures/subagents-s07-ui-manager.txt |
 | S08 context discipline | native | 5 | 5 | 4 | 5 | 5 | 5 | n/a | n/a | n/a | n/a | n/a | Explicit `context` modes (`default`/`fork`/`slim`/`none`) plus tests for inheritance/filtering. | n/a | source-backed, strongest controls | high | captures/native-s08-context-discipline.txt |
 | S08 context discipline | pi-subagents | 3 | 3 | 4 | 4 | 3 | 4 | n/a | n/a | n/a | n/a | n/a | `--fork` and no recursive `subagent` in children, but less granular than native context enum. | n/a | source-backed, less granular | medium | captures/subagents-s08-context-discipline.txt |
+| S09 task agent tool | native | 2 | 2 | 3 | 3 | 4 | 4 | n/a | n/a | n/a | n/a | n/a | Scenario added for updated non-spawn task actions; current `agent.ts` checkout does not yet expose `action`/`taskId` task lifecycle schema. | n/a | source-backed pending implementation evidence | medium | captures/native-s09-task-agent-tool.txt |
+| S09 task agent tool | pi-subagents | 2 | 2 | 3 | 3 | 3 | 4 | n/a | n/a | n/a | n/a | n/a | Extension has manager/status/saved-chain controls, but no general Claude-style task-list action surface found. | n/a | source-backed no-equivalent comparison | medium | captures/subagents-s09-task-agent-tool.txt |
 
 ## Summary math
 

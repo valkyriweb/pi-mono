@@ -34,7 +34,7 @@ Goal: exercise only built-in `/agents` and native `agent`.
    - `agent` is available as a tool.
    - `subagent` is not activated.
    - Extension commands do not influence the run.
-4. Run scenarios 1-8 from `eval-plan.md`.
+4. Run scenarios 1-9 from `eval-plan.md`.
 5. Fill one Native row per scenario in `scorecard-template.md`.
 
 ## `pi-subagents` mode
@@ -57,7 +57,7 @@ Goal: exercise the extension surface.
    - `/subagents` opens the extension manager.
    - `/run`, `/chain`, `/parallel`, `/run-chain`, `/subagents-status`, and `/subagents-doctor` are available.
    - Activate `subagent` only if testing tool mode.
-4. Run scenarios 1-8 from `eval-plan.md`.
+4. Run scenarios 1-9 from `eval-plan.md`.
 5. Fill one `pi-subagents` row per scenario in `scorecard-template.md`.
 
 ## Scenario prompts
@@ -139,6 +139,31 @@ Ask the child to answer using only `eval-design-prompt.md` and `eval-plan.md`. P
 Native: test `context: "none"`, `"slim"`, and/or `"fork"` if accessible in tool call.
 
 Extension: test `--fork` and default mode; note if no exact equivalent exists.
+
+### 9. Updated task agent tool
+
+Native: verify whether the updated non-spawn task action surface is available on the native `agent` tool:
+
+```json
+{"action":"create","subject":"Map task API","description":"Verify create/list/get/update semantics","activeForm":"Mapping task API"}
+{"action":"list"}
+{"action":"get","taskId":"1"}
+{"action":"update","taskId":"1","status":"in_progress"}
+{"action":"update","taskId":"1","metadata":{"evidence":"source-backed"}}
+{"action":"update","taskId":"1","status":"completed"}
+{"action":"update","taskId":"1","status":"deleted"}
+```
+
+Expected semantics: create/list/get/update task records without spawning a child agent; preserve existing single/parallel/chain delegation modes; support dependencies, metadata, and delete semantics where implemented.
+
+Before scoring, record the source probes so the verdict is reproducible:
+
+```bash
+grep -E "action|taskId|create|list|get|update" packages/coding-agent/src/core/tools/agent.ts
+grep -R -E "taskId|TaskList|TaskCreate|metadata|blockedBy|status.*completed" ~/.pi/agent/git/github.com/nicobailon/pi-subagents/src
+```
+
+Extension: record the closest `pi-subagents` equivalent, usually manager/status/saved-chain workflow controls. Mark as no equivalent if the extension lacks general task-list records.
 
 ## Evidence capture
 

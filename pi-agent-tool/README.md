@@ -1,6 +1,6 @@
 # Pi Agent Tool A/B Eval
 
-Compact A/B evaluation for native Pi delegation (`/agents` + `agent`) versus the `pi-subagents` extension (`/subagents`, `/run`, `/chain`, `/parallel`, `/run-chain`, status/doctor, and `subagent`).
+Compact A/B evaluation for native Pi delegation (`/agents` + `agent`) versus the `pi-subagents` extension (`/subagents`, `/run`, `/chain`, `/parallel`, `/run-chain`, status/doctor, and `subagent`). The eval also includes S09 for the updated native task-agent tool: non-spawn `agent` actions for create/list/get/update task lifecycle semantics.
 
 ## Files
 
@@ -28,7 +28,7 @@ PI_AGENT_EVAL_DRY_RUN=1 ./scripts/capture-startup.sh native
 PI_AGENT_EVAL_DRY_RUN=1 ./scripts/run-tmux-scenario.sh native-ui '/agents'
 ```
 
-Then follow `runbook.md` and fill `scorecard-template.md` for each arm.
+Then follow `runbook.md` and fill `scorecard-template.md` for each arm. Include S09 when checking the updated task-agent tool; if the local checkout does not expose `action`/`taskId` yet, mark that evidence pending rather than assuming parity.
 
 ## Scope
 

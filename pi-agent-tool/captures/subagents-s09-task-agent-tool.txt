@@ -1,0 +1,15 @@
+# Scenario capture: subagents-s09-task-agent-tool
+# Prompt: Compare pi-subagents against native agent task-management actions
+# Evidence mode: source-backed comparison
+
+Expected native task-agent comparison point:
+- Native `agent` task actions should create/list/get/update session tasks without spawning child agents.
+- This is closer to Claude Code TaskCreate/TaskList/TaskGet/TaskUpdate semantics than to child-agent delegation.
+
+`pi-subagents` extension comparison surface:
+- Probe command: `grep -R -E "taskId|TaskList|TaskCreate|metadata|blockedBy|status.*completed" ~/.pi/agent/git/github.com/nicobailon/pi-subagents/src`.
+- Source evidence supports delegation, background/status, doctor, saved chains, and manager workflows.
+- No equivalent general task-list action surface was identified in the extension evidence used by this eval.
+- Closest equivalents are manager/status/saved-chain controls, not structured todo/task records.
+
+Verdict for current comparison: `pi-subagents` remains stronger for interactive workflow management, but does not replace a native Claude-style task-management action surface.

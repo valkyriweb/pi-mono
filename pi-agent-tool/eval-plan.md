@@ -9,6 +9,7 @@ Measure practical return on token spend for Pi's native delegation against the i
 ### Native Pi delegation
 
 - Native tool schema lives in `packages/coding-agent/src/core/tools/agent.ts`; it supports single `{agent, task}`, `tasks[]`, `chain[]`, `concurrency`, `context`, `model`, `tools`, `thinking`, `output`, `outputMode`, `chainDir`, and `agentScope`.
+- Updated native task-agent scope to include in this eval: Claude-style non-spawn task actions on `agent` (`create`, `list`, `get`, `update`) with `subject`, `description`, `activeForm`, `status`, owner/dependency fields, and metadata; current checkout evidence should distinguish landed behavior from pending/absent schema.
 - Execution lives in `packages/coding-agent/src/core/agents/executor.ts`; it implements single, parallel, and chain modes, child `AgentSession` creation, model/thinking overrides, max parallel/concurrency of 8, and parent-bounded tools.
 - Context policies live in `packages/coding-agent/src/core/agents/context.ts`; supported modes are `default`, `fork`, `slim`, and `none`; fork filtering strips native `agent` and legacy `subagent` artifacts.
 - Built-ins live in `packages/coding-agent/src/core/agents/definitions.ts`: `general-purpose`, `worker`, `explore`, `plan`, `scout`, `reviewer`; read-only agents restrict tools and recursive `agent` is denied.
@@ -44,7 +45,7 @@ Measure practical return on token spend for Pi's native delegation against the i
 
 - Launch Pi with `pi-subagents` disabled or ignored.
 - Verify active slash command `/agents` is native and no `/subagents`, `/run`, `/chain`, `/parallel`, `/run-chain`, `/subagents-status`, or `/subagents-doctor` commands appear.
-- Exercise native `/agents` and the native `agent` tool in single, parallel, and chain modes.
+- Exercise native `/agents` and the native `agent` tool in single, parallel, chain, and task-management action modes when the updated task-agent surface is present.
 - Do not activate `subagent` with `tool_search`.
 
 ### B. `pi-subagents`
@@ -77,6 +78,18 @@ For every scenario record:
 - 2: partially works or requires workaround
 - 1: fails, unavailable, or too costly for the result
 
+### S09 task-agent pass criteria
+
+Native `agent` earns a passing S09 score only if evidence shows:
+
+- non-spawn action discriminator distinct from child delegation;
+- create/list/get/update task lifecycle actions;
+- status transitions for `pending`, `in_progress`, `completed`, and delete semantics via `deleted` or equivalent;
+- task fields for `subject`, `description`, `activeForm`, dependencies, owner, and metadata where implemented;
+- existing single/parallel/chain delegation still works unchanged.
+
+`pi-subagents` earns equivalence only if evidence shows a general structured task-list action surface, not just manager/status/saved-chain controls.
+
 ## Scenario matrix
 
 | # | Scenario | Native arm | `pi-subagents` arm | Evidence to capture |
@@ -89,6 +102,7 @@ For every scenario record:
 | 6 | Doctor/diagnostics | native startup/tool visibility checks; mark no direct doctor if absent | `/subagents-doctor` | actionable diagnostics |
 | 7 | UI manager pass | `/agents` selector via tmux capture | `/subagents` manager via tmux capture | discoverability, preview/edit affordances |
 | 8 | Context discipline stress | child answers using only named files with `context: "none"/"slim"/"fork"` | `/run --fork` or tool context controls if available | over-inheritance, over-search, token footprint |
+| 9 | Updated task agent tool | `agent({ action: "create"/"list"/"get"/"update", ... })` if landed; otherwise source-backed pending gap | closest extension workflow/status/manager equivalent, noting no general task-list replacement if absent | task lifecycle semantics, non-spawn behavior, dependency/metadata support, backward compatibility with delegation |
 
 ## Constraints
 
@@ -96,4 +110,4 @@ For every scenario record:
 - Fresh session per arm.
 - Read-only repo tasks except harmless temp files under `pi-agent-tool/tmp/`.
 - Avoid full builds/tests/network research.
-- Prefer 6-10 narrow scenarios; do not expand beyond this matrix unless a result is ambiguous.
+- Prefer 6-10 narrow scenarios; this eval intentionally includes S09 for the updated task-agent tool because it changes native `agent` scope beyond delegation.
