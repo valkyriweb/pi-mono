@@ -33,20 +33,6 @@ interface CompactReadClassification {
 	label: string;
 }
 
-interface ReadRenderState {
-	hideCall?: boolean;
-}
-
-class ReadCallText extends Text {
-	constructor(private state: ReadRenderState) {
-		super("", 0, 0);
-	}
-
-	override render(width: number): string[] {
-		return this.state.hideCall ? [] : super.render(width);
-	}
-}
-
 const COMPACT_RESOURCE_FILE_NAMES = new Set(["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]);
 
 /**
@@ -75,22 +61,21 @@ export interface ReadToolOptions {
 	operations?: ReadOperations;
 }
 
-function formatReadCall(
-	args: { path?: string; file_path?: string; offset?: number; limit?: number } | undefined,
-	theme: Theme,
-): string {
+type ReadRenderArgs = { path?: string; file_path?: string; offset?: number; limit?: number };
+
+function formatReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): string {
+	if (args?.offset === undefined && args?.limit === undefined) return "";
+	const startLine = args.offset ?? 1;
+	const endLine = args.limit !== undefined ? startLine + args.limit - 1 : "";
+	return theme.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
+}
+
+function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme): string {
 	const rawPath = str(args?.file_path ?? args?.path);
 	const path = rawPath !== null ? shortenPath(rawPath) : null;
-	const offset = args?.offset;
-	const limit = args?.limit;
 	const invalidArg = invalidArgText(theme);
-	let pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
-	if (offset !== undefined || limit !== undefined) {
-		const startLine = offset ?? 1;
-		const endLine = limit !== undefined ? startLine + limit - 1 : "";
-		pathDisplay += theme.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
-	}
-	return `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}`;
+	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
+	return `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
 }
 
 function trimTrailingEmptyLines(lines: string[]): string[] {
@@ -132,7 +117,7 @@ function getPiDocsClassification(absolutePath: string): CompactReadClassificatio
 }
 
 function getCompactReadClassification(
-	args: { path?: string; file_path?: string } | undefined,
+	args: ReadRenderArgs | undefined,
 	cwd: string,
 ): CompactReadClassification | undefined {
 	const rawPath = str(args?.file_path ?? args?.path);
@@ -154,12 +139,18 @@ function getCompactReadClassification(
 	return undefined;
 }
 
-function formatCompactReadResult(classification: CompactReadClassification, theme: Theme): string {
+function formatCompactReadCall(
+	classification: CompactReadClassification,
+	args: ReadRenderArgs | undefined,
+	theme: Theme,
+): string {
+	const expandHint = theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
 	if (classification.kind === "skill") {
 		return (
 			theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
 			theme.fg("customMessageText", classification.label) +
-			theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`)
+			formatReadLineRange(args, theme) +
+			expandHint
 		);
 	}
 
@@ -167,12 +158,13 @@ function formatCompactReadResult(classification: CompactReadClassification, them
 		theme.fg("toolTitle", theme.bold(`read ${classification.kind}`)) +
 		" " +
 		theme.fg("accent", classification.label) +
-		theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`)
+		formatReadLineRange(args, theme) +
+		expandHint
 	);
 }
 
 function formatReadResult(
-	args: { path?: string; file_path?: string; offset?: number; limit?: number } | undefined,
+	args: ReadRenderArgs | undefined,
 	result: { content: (TextContent | ImageContent | ToolReferenceContent)[]; details?: ReadToolDetails },
 	options: ToolRenderResultOptions,
 	theme: Theme,
@@ -180,11 +172,8 @@ function formatReadResult(
 	cwd: string,
 	isError: boolean,
 ): string {
-	if (!options.expanded && !isError) {
-		const classification = getCompactReadClassification(args, cwd);
-		if (classification) {
-			return formatCompactReadResult(classification, theme);
-		}
+	if (!options.expanded && !isError && getCompactReadClassification(args, cwd)) {
+		return "";
 	}
 
 	const rawPath = str(args?.file_path ?? args?.path);
@@ -216,7 +205,7 @@ function formatReadResult(
 export function createReadToolDefinition(
 	cwd: string,
 	options?: ReadToolOptions,
-): ToolDefinition<typeof readSchema, ReadToolDetails | undefined, ReadRenderState> {
+): ToolDefinition<typeof readSchema, ReadToolDetails | undefined> {
 	const autoResizeImages = options?.autoResizeImages ?? true;
 	const ops = options?.operations ?? defaultReadOperations;
 	return {
@@ -351,22 +340,18 @@ export function createReadToolDefinition(
 			);
 		},
 		renderCall(args, theme, context) {
-			const text =
-				context.lastComponent instanceof ReadCallText ? context.lastComponent : new ReadCallText(context.state);
-			context.state.hideCall = false;
-			text.setText(formatReadCall(args, theme));
+			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+			const classification = !context.expanded ? getCompactReadClassification(args, context.cwd) : undefined;
+			text.setText(
+				classification ? formatCompactReadCall(classification, args, theme) : formatReadCall(args, theme),
+			);
 			return text;
 		},
 		renderResult(result, options, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			const hideCall =
-				!options.expanded &&
-				!context.isError &&
-				getCompactReadClassification(context.args, context.cwd) !== undefined;
 			text.setText(
 				formatReadResult(context.args, result, options, theme, context.showImages, context.cwd, context.isError),
 			);
-			context.state.hideCall = hideCall;
 			return text;
 		},
 	};

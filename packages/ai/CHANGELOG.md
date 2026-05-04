@@ -2,13 +2,22 @@
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-05-04
+
 ### Breaking Changes
 
-- Switched the built-in `xiaomi` provider endpoint from Token Plan AMS (`https://token-plan-ams.xiaomimimo.com/anthropic`) to API billing (`https://api.xiaomimimo.com/anthropic`). `XIAOMI_API_KEY` now refers to the API billing key from [platform.xiaomimimo.com](https://platform.xiaomimimo.com). Users still on Token Plan must move to the appropriate `xiaomi-token-plan-*` provider and set the corresponding env var.
+- Switched the built-in `xiaomi` provider endpoint from Token Plan AMS (`https://token-plan-ams.xiaomimimo.com/anthropic`) to API billing (`https://api.xiaomimimo.com/anthropic`). `XIAOMI_API_KEY` now refers to the API billing key from [platform.xiaomimimo.com](https://platform.xiaomimimo.com). Users still on Token Plan must move to the appropriate `xiaomi-token-plan-*` provider and set the corresponding env var ([#4112](https://github.com/badlogic/pi-mono/pull/4112) by [@Phoen1xCode](https://github.com/Phoen1xCode)).
 
 ### Added
 
-- Added Xiaomi MiMo Token Plan regional providers with per-region env vars: `xiaomi-token-plan-cn` (`XIAOMI_TOKEN_PLAN_CN_API_KEY`), `xiaomi-token-plan-ams` (`XIAOMI_TOKEN_PLAN_AMS_API_KEY`), and `xiaomi-token-plan-sgp` (`XIAOMI_TOKEN_PLAN_SGP_API_KEY`).
+- Added Xiaomi MiMo Token Plan regional providers with per-region env vars: `xiaomi-token-plan-cn` (`XIAOMI_TOKEN_PLAN_CN_API_KEY`), `xiaomi-token-plan-ams` (`XIAOMI_TOKEN_PLAN_AMS_API_KEY`), and `xiaomi-token-plan-sgp` (`XIAOMI_TOKEN_PLAN_SGP_API_KEY`) ([#4112](https://github.com/badlogic/pi-mono/pull/4112) by [@Phoen1xCode](https://github.com/Phoen1xCode)).
+- Added `registerSessionResourceCleanup()` and `cleanupSessionResources()` so providers can register cleanup hooks for session-scoped resources.
+
+### Fixed
+
+- Fixed generated OpenAI-compatible model metadata for Qwen 3.5/3.6 and MiniMax M2.7 to match models.dev and OpenCode Go ([#4110](https://github.com/badlogic/pi-mono/pull/4110) by [@jsynowiec](https://github.com/jsynowiec)).
+- Fixed Bedrock Converse thinking effort mapping to preserve native `xhigh` for Claude Opus 4.7.
+- Fixed OpenAI Codex Responses WebSocket transport to fall back to SSE when setup fails before streaming starts, and attach transport diagnostics to the assistant message ([#4133](https://github.com/badlogic/pi-mono/issues/4133)).
 
 ## [0.72.1] - 2026-05-02
 
