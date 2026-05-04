@@ -1,5 +1,7 @@
 # Prompt: Design a Token-Efficient Native `agent` vs `pi-subagents` A/B Eval
 
+Historical seed prompt — not current evidence. Use `eval-plan.md`, `scorecard.md`, `findings.md`, `command-surface.md`, and `source-runtime-boundary.md` for the current verdict. This prompt is kept as reusable scaffolding, but it must carry the current command-surface caveats: installed `pi-subagents` is `0.24.0`, `/subagents` and `/subagents-status` are removed, and the current fresh eval launch fails to load the extension with a module-format error until fixed and rerun.
+
 You are designing a compact but evidence-backed evaluation for Pi's native `agent` tool and native `/agents` implementation versus the `pi-subagents` extension.
 
 ## Goal
@@ -10,14 +12,14 @@ Create an eval plan and runnable evaluation harness that compares:
   - built-in `/agents`
   - built-in `agent` tool with single, parallel, and chain modes
 - `pi-subagents` extension:
-  - `/subagents` manager UI (local alias for the extension's former `/agents` command)
-  - `/run`
-  - `/chain`
-  - `/parallel`
-  - `/run-chain`
-  - `/subagents-status`
-  - `/subagents-doctor`
+  - current source-declared `/run`
+  - current source-declared `/chain`
+  - current source-declared `/parallel`
+  - current source-declared `/run-chain`
+  - current source-declared `/subagents-doctor`
   - `subagent` tool, if available/activated
+  - removed/unavailable `/subagents` manager UI in `0.24.0`
+  - removed/unavailable `/subagents-status` slash overlay in `0.24.0`
 
 The eval must measure practical return on token spend: accuracy, flexibility, context-window usage, UI/UX, robustness, and feature coverage per token.
 
@@ -34,7 +36,9 @@ Before designing the eval, gather evidence from these sources:
 
 2. Installed `pi-subagents` extension
    - Source under `~/.pi/agent/git/github.com/nicobailon/pi-subagents`.
-   - Command handlers for `/run`, `/chain`, `/parallel`, `/run-chain`, `/subagents-status`, `/subagents-doctor`, and `/subagents`.
+   - Current command handlers for `/run`, `/chain`, `/parallel`, `/run-chain`, and `/subagents-doctor`.
+   - Changelog/source proof that `/subagents` and `/subagents-status` were removed in `0.24.0`.
+   - Current runtime load behavior; if the module-format extension load failure persists, mark source-declared commands as source-backed only until fixed and rerun.
    - Tool registration and activation behavior for `subagent`.
    - Release notes, changelog, commit history, or tags. Summarize how the extension evolved and which features might be missing from native Pi.
 
@@ -59,7 +63,9 @@ Design two comparable configurations:
 ### B. `pi-subagents` mode
 
 - Enable `pi-subagents`.
-- Use `/subagents`, `/run`, `/chain`, `/parallel`, `/run-chain`, `/subagents-status`, `/subagents-doctor`, and `subagent` if available.
+- Use current source-declared `/run`, `/chain`, `/parallel`, `/run-chain`, `/subagents-doctor`, and `subagent` if available.
+- Treat removed `/subagents` and `/subagents-status` as unavailable/removed surfaces; if probing them, record fallthrough cost rather than pretending they are commands.
+- If the current module-format load failure persists, mark extension slash-command rows as source-backed only until the loader is fixed and the probes are rerun.
 - Avoid native `agent` tool unless explicitly checking interference.
 
 Document exactly how to launch each mode, including settings/env/extension changes and how to verify active tools and slash commands at startup.
@@ -108,17 +114,17 @@ Include at least these:
 5. Async/status/control
    - Task: launch a deliberately slow but harmless child, inspect status, and recover.
    - Native: native behavior if supported; otherwise mark gap.
-   - pi-subagents: `/subagents-status` and control behavior.
+   - pi-subagents: `subagent` status/interrupt/resume behavior; mark `/subagents-status` as removed/unavailable in `0.24.0`.
 
 6. Doctor/diagnostics
    - Task: diagnose setup and report actionable issues.
-   - Native: equivalent startup diagnostics or mark gap.
-   - pi-subagents: `/subagents-doctor`.
+   - Native: `/agents-doctor` if available; otherwise startup diagnostics or gap.
+   - pi-subagents: `/subagents-doctor` if the extension loads; source-backed only if the module-format load failure persists.
 
 7. UI manager pass
    - Task: inspect manager UI affordances.
    - Native: `/agents`.
-   - pi-subagents: `/subagents`.
+   - pi-subagents: mark `/subagents` as removed/unavailable in `0.24.0`; if probing the removed string, record shell/model fallthrough behavior and cost.
    - Use tmux capture, not screenshots, unless screenshots are necessary.
 
 8. Context discipline stress test
