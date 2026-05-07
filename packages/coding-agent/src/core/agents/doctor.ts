@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ModelRegistry } from "../model-registry.js";
 import { parseModelPattern } from "../model-resolver.js";
 import { loadAgentChainRegistry } from "./chains.js";

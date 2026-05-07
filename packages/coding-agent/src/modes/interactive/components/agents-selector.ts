@@ -1,4 +1,4 @@
-import { Container, getKeybindings, Spacer, Text } from "@mariozechner/pi-tui";
+import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
 import type { AgentDefinition } from "../../../core/agents/types.js";
 import { theme } from "../theme/theme.js";
 import { DynamicBorder } from "./dynamic-border.js";

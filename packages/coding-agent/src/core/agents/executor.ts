@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Api, AssistantMessage, Model, TextContent, Usage } from "@mariozechner/pi-ai";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Api, AssistantMessage, Model, TextContent, Usage } from "@earendil-works/pi-ai";
 import type { AgentSession } from "../agent-session.js";
 import { createAgentSessionFromServices, createAgentSessionServices } from "../agent-session-services.js";
 import type { AuthStorage } from "../auth-storage.js";

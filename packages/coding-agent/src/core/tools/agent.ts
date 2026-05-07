@@ -1,6 +1,6 @@
-import type { AgentTool, AgentToolResult, ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Api, Model } from "@mariozechner/pi-ai";
-import { Container, Spacer, Text } from "@mariozechner/pi-tui";
+import type { AgentTool, AgentToolResult, ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Api, Model } from "@earendil-works/pi-ai";
+import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
 import { type AgentToolParentServices, executeAgentTool } from "../agents/executor.js";
 import {

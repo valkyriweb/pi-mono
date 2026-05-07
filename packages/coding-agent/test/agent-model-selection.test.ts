@@ -1,4 +1,4 @@
-import { registerFauxProvider } from "@mariozechner/pi-ai";
+import { registerFauxProvider } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, test } from "vitest";
 import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.js";
 import { resolveAgentModel, resolveAgentThinking } from "../src/core/agents/executor.js";

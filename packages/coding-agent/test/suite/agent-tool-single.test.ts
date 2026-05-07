@@ -1,4 +1,4 @@
-import { type Context, fauxAssistantMessage } from "@mariozechner/pi-ai";
+import { type Context, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { executeAgentTool } from "../../src/core/agents/executor.js";
 import { createHarness, type Harness } from "./harness.js";

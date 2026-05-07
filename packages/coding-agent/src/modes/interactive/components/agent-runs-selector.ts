@@ -1,4 +1,4 @@
-import { Container, getKeybindings, Spacer, Text } from "@mariozechner/pi-tui";
+import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
 import { type AgentRecentRun, formatAgentDurationMs } from "../../../core/agents/status.js";
 import type { AgentToolStatus } from "../../../core/agents/types.js";
 import { theme } from "../theme/theme.js";

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { type Context, fauxAssistantMessage } from "@mariozechner/pi-ai";
+import { type Context, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { executeAgentTool } from "../../src/core/agents/executor.js";
 import { createHarness, getMessageText, type Harness } from "./harness.js";
