@@ -98,6 +98,10 @@ Fork-only changes go in root `FORK-CHANGELOG.md`. Keep `packages/*/CHANGELOG.md`
 
 For native-agent A/B testing, the installed `pi-subagents` extension manager command is locally aliased from `/agents` to `/subagents` so native `/agents` remains reachable. This patch lives in `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/slash/slash-commands.ts` and may need reapplying after `pi update`.
 
+## Repowise index (fork-only)
+
+This repo has a `.repowise/` codebase intelligence index. For any orientation / diff-review / risk / ownership / hotspot / blast-radius question about this repo, **prefer the `repowise` skill over `ls`/`grep`/README synthesis**. One call: `~/Projects/agent-scripts/scripts/repowise-mcp ~/Projects/personal/pi-mono-fork get_overview`. Re-index after meaningful commits with `repowise update ~/Projects/personal/pi-mono-fork`.
+
 Location: `packages/*/CHANGELOG.md` (each package has its own)
 
 ### Format
