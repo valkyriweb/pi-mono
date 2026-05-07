@@ -684,6 +684,11 @@ export class ExtensionRunner {
 	}
 
 	async emit<TEvent extends RunnerEmitEvent>(event: TEvent): Promise<RunnerEmitResult<TEvent>> {
+		// Stale runners belong to disposed sessions. In-flight async work from the previous
+		// agent loop (pending tool results, provider requests) can race past dispose() and
+		// land here. Short-circuit instead of letting every handler throw and emit noisy
+		// extension errors.
+		if (this.staleMessage) return undefined as RunnerEmitResult<TEvent>;
 		const ctx = this.createContext();
 		let result: SessionBeforeEventResult | undefined;
 
@@ -718,6 +723,7 @@ export class ExtensionRunner {
 	}
 
 	async emitMessageEnd(event: MessageEndEvent): Promise<AgentMessage | undefined> {
+		if (this.staleMessage) return undefined;
 		const ctx = this.createContext();
 		let currentMessage = event.message;
 		let modified = false;
@@ -760,6 +766,7 @@ export class ExtensionRunner {
 	}
 
 	async emitToolResult(event: ToolResultEvent): Promise<ToolResultEventResult | undefined> {
+		if (this.staleMessage) return undefined;
 		const ctx = this.createContext();
 		const currentEvent: ToolResultEvent = { ...event };
 		let modified = false;
@@ -810,6 +817,7 @@ export class ExtensionRunner {
 	}
 
 	async emitToolCall(event: ToolCallEvent): Promise<ToolCallEventResult | undefined> {
+		if (this.staleMessage) return undefined;
 		const ctx = this.createContext();
 		let result: ToolCallEventResult | undefined;
 
@@ -833,6 +841,7 @@ export class ExtensionRunner {
 	}
 
 	async emitUserBash(event: UserBashEvent): Promise<UserBashEventResult | undefined> {
+		if (this.staleMessage) return undefined;
 		const ctx = this.createContext();
 
 		for (const ext of this.extensions) {
@@ -862,6 +871,7 @@ export class ExtensionRunner {
 	}
 
 	async emitContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
+		if (this.staleMessage) return messages;
 		const ctx = this.createContext();
 		let currentMessages = structuredClone(messages);
 
@@ -894,6 +904,7 @@ export class ExtensionRunner {
 	}
 
 	async emitBeforeProviderRequest(payload: unknown): Promise<unknown> {
+		if (this.staleMessage) return payload;
 		const ctx = this.createContext();
 		let currentPayload = payload;
 
@@ -956,6 +967,7 @@ export class ExtensionRunner {
 		systemPromptOptions: BuildSystemPromptOptions,
 		preview: boolean,
 	): Promise<BeforeAgentStartCombinedResult | undefined> {
+		if (this.staleMessage) return undefined;
 		let currentSystemPrompt = systemPrompt;
 		const ctx = Object.defineProperties(
 			{},
@@ -1025,6 +1037,7 @@ export class ExtensionRunner {
 		promptPaths: Array<{ path: string; extensionPath: string }>;
 		themePaths: Array<{ path: string; extensionPath: string }>;
 	}> {
+		if (this.staleMessage) return { skillPaths: [], promptPaths: [], themePaths: [] };
 		const ctx = this.createContext();
 		const skillPaths: Array<{ path: string; extensionPath: string }> = [];
 		const promptPaths: Array<{ path: string; extensionPath: string }> = [];
@@ -1067,6 +1080,7 @@ export class ExtensionRunner {
 
 	/** Emit input event. Transforms chain, "handled" short-circuits. */
 	async emitInput(text: string, images: ImageContent[] | undefined, source: InputSource): Promise<InputEventResult> {
+		if (this.staleMessage) return { action: "continue" };
 		const ctx = this.createContext();
 		let currentText = text;
 		let currentImages = images;
