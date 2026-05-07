@@ -28,18 +28,34 @@ export const isBunRuntime = !!process.versions.bun;
 
 export type InstallMethod = "bun-binary" | "source-checkout" | "npm" | "pnpm" | "yarn" | "bun" | "unknown";
 
-export interface SelfUpdateCommand {
+interface SelfUpdateCommandStep {
 	command: string;
 	args: string[];
 	display: string;
 }
 
-function quoteCommandArg(arg: string): string {
-	return /\s/.test(arg) ? `"${arg}"` : arg;
+export interface SelfUpdateCommand extends SelfUpdateCommandStep {
+	steps?: SelfUpdateCommandStep[];
 }
 
-function commandDisplay(command: string, args: string[]): string {
-	return [command, ...args].map(quoteCommandArg).join(" ");
+function makeSelfUpdateCommand(
+	installStep: SelfUpdateCommandStep,
+	uninstallStep?: SelfUpdateCommandStep,
+): SelfUpdateCommand {
+	if (!uninstallStep) return installStep;
+	return {
+		...installStep,
+		display: `${uninstallStep.display} && ${installStep.display}`,
+		steps: [uninstallStep, installStep],
+	};
+}
+
+function makeSelfUpdateCommandStep(command: string, args: string[]): SelfUpdateCommandStep {
+	return {
+		command,
+		args,
+		display: [command, ...args].map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(" "),
+	};
 }
 
 function findSourceCheckoutRoot(): string | undefined {
@@ -65,7 +81,7 @@ function getSourceUpdateCommand(configuredCommand?: string[]): SelfUpdateCommand
 		return undefined;
 	}
 	const [command, ...args] = configuredCommand;
-	return { command, args, display: commandDisplay(command, args) };
+	return makeSelfUpdateCommandStep(command, args);
 }
 
 export function detectInstallMethod(): InstallMethod {
@@ -120,7 +136,8 @@ function getInferredNpmInstall(packageName: string): { root: string; prefix: str
 
 function getSelfUpdateCommandForMethod(
 	method: InstallMethod,
-	packageName: string,
+	installedPackageName: string,
+	updatePackageName = installedPackageName,
 	npmCommand?: string[],
 	sourceUpdateCommand?: string[],
 ): SelfUpdateCommand | undefined {
@@ -130,17 +147,36 @@ function getSelfUpdateCommandForMethod(
 		case "source-checkout":
 			return getSourceUpdateCommand(sourceUpdateCommand);
 		case "pnpm":
-			return { command: "pnpm", args: ["install", "-g", packageName], display: `pnpm install -g ${packageName}` };
+			return makeSelfUpdateCommand(
+				makeSelfUpdateCommandStep("pnpm", ["install", "-g", updatePackageName]),
+				updatePackageName === installedPackageName
+					? undefined
+					: makeSelfUpdateCommandStep("pnpm", ["remove", "-g", installedPackageName]),
+			);
 		case "yarn":
-			return { command: "yarn", args: ["global", "add", packageName], display: `yarn global add ${packageName}` };
+			return makeSelfUpdateCommand(
+				makeSelfUpdateCommandStep("yarn", ["global", "add", updatePackageName]),
+				updatePackageName === installedPackageName
+					? undefined
+					: makeSelfUpdateCommandStep("yarn", ["global", "remove", installedPackageName]),
+			);
 		case "bun":
-			return { command: "bun", args: ["install", "-g", packageName], display: `bun install -g ${packageName}` };
+			return makeSelfUpdateCommand(
+				makeSelfUpdateCommandStep("bun", ["install", "-g", updatePackageName]),
+				updatePackageName === installedPackageName
+					? undefined
+					: makeSelfUpdateCommandStep("bun", ["uninstall", "-g", installedPackageName]),
+			);
 		case "npm": {
 			const [command = "npm", ...npmArgs] = npmCommand ?? [];
-			const inferred = npmCommand?.length ? undefined : getInferredNpmInstall(packageName);
-			const args = [...npmArgs, ...(inferred ? ["--prefix", inferred.prefix] : []), "install", "-g", packageName];
-			const display = commandDisplay(command, args);
-			return { command, args, display };
+			const inferred = npmCommand?.length ? undefined : getInferredNpmInstall(installedPackageName);
+			const prefixArgs = [...npmArgs, ...(inferred ? ["--prefix", inferred.prefix] : [])];
+			const installStep = makeSelfUpdateCommandStep(command, [...prefixArgs, "install", "-g", updatePackageName]);
+			const uninstallStep =
+				updatePackageName === installedPackageName
+					? undefined
+					: makeSelfUpdateCommandStep(command, [...prefixArgs, "uninstall", "-g", installedPackageName]);
+			return makeSelfUpdateCommand(installStep, uninstallStep);
 		}
 		case "unknown":
 			return undefined;
@@ -254,10 +290,22 @@ function isManagedByGlobalPackageManager(method: InstallMethod, packageName: str
 export function getSelfUpdateCommand(
 	packageName: string,
 	npmCommand?: string[],
+	updatePackageNameOrSourceUpdateCommand: string | string[] = packageName,
 	sourceUpdateCommand?: string[],
 ): SelfUpdateCommand | undefined {
+	const updatePackageName =
+		typeof updatePackageNameOrSourceUpdateCommand === "string" ? updatePackageNameOrSourceUpdateCommand : packageName;
+	const configuredSourceUpdateCommand = Array.isArray(updatePackageNameOrSourceUpdateCommand)
+		? updatePackageNameOrSourceUpdateCommand
+		: sourceUpdateCommand;
 	const method = detectInstallMethod();
-	const command = getSelfUpdateCommandForMethod(method, packageName, npmCommand, sourceUpdateCommand);
+	const command = getSelfUpdateCommandForMethod(
+		method,
+		packageName,
+		updatePackageName,
+		npmCommand,
+		configuredSourceUpdateCommand,
+	);
 	if (method === "source-checkout") {
 		return command;
 	}
@@ -270,8 +318,14 @@ export function getSelfUpdateCommand(
 export function getSelfUpdateUnavailableInstruction(
 	packageName: string,
 	npmCommand?: string[],
+	updatePackageNameOrSourceUpdateCommand: string | string[] = packageName,
 	sourceUpdateCommand?: string[],
 ): string {
+	const updatePackageName =
+		typeof updatePackageNameOrSourceUpdateCommand === "string" ? updatePackageNameOrSourceUpdateCommand : packageName;
+	const configuredSourceUpdateCommand = Array.isArray(updatePackageNameOrSourceUpdateCommand)
+		? updatePackageNameOrSourceUpdateCommand
+		: sourceUpdateCommand;
 	const method = detectInstallMethod();
 	if (method === "bun-binary") {
 		return `Download from: https://github.com/badlogic/pi-mono/releases/latest`;
@@ -279,14 +333,20 @@ export function getSelfUpdateUnavailableInstruction(
 	if (method === "source-checkout") {
 		return `This installation is a source checkout. Configure a source update command with PI_SOURCE_UPDATE_COMMAND or settings.sourceUpdateCommand.`;
 	}
-	const command = getSelfUpdateCommandForMethod(method, packageName, npmCommand, sourceUpdateCommand);
+	const command = getSelfUpdateCommandForMethod(
+		method,
+		packageName,
+		updatePackageName,
+		npmCommand,
+		configuredSourceUpdateCommand,
+	);
 	if (command) {
 		if (isManagedByGlobalPackageManager(method, packageName, npmCommand) && !isSelfUpdatePathWritable()) {
 			return `This installation is managed by a global ${method} install, but the install path is not writable. Update it yourself with: ${command.display}`;
 		}
 		return `This installation is not managed by a global ${method} install. Update it with the package manager, wrapper, or source checkout that provides it.`;
 	}
-	return `Update ${packageName} using the package manager, wrapper, or source checkout that provides this installation.`;
+	return `Update ${updatePackageName} using the package manager, wrapper, or source checkout that provides this installation.`;
 }
 
 export function getUpdateInstruction(packageName: string): string {
