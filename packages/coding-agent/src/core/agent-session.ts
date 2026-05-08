@@ -1336,7 +1336,43 @@ export class AgentSession {
 				this.agent.steer(appMessage);
 			}
 		} else if (options?.triggerTurn) {
-			await this.agent.prompt(appMessage);
+			// Fire before_agent_start so extensions can modify the system prompt for
+			// turns triggered by custom messages — same path as session.prompt()-driven
+			// turns. Without this, e.g. pi-goal's `pendingControlPrompt` (set right
+			// before triggerTurn:true) is never consumed and the model is invoked with
+			// the base system prompt + an opaque custom message it can't see, so it
+			// has no way to know what the goal/objective is.
+			const beforeStart = this._baseSystemPromptOptions
+				? await this._extensionRunner.emitBeforeAgentStart(
+						"",
+						undefined,
+						this._baseSystemPrompt,
+						this._baseSystemPromptOptions,
+					)
+				: undefined;
+			const extraMessages: AgentMessage[] = [];
+			if (beforeStart?.messages) {
+				for (const msg of beforeStart.messages) {
+					extraMessages.push({
+						role: "custom",
+						customType: msg.customType,
+						content: msg.content,
+						display: msg.display,
+						details: msg.details,
+						timestamp: Date.now(),
+					});
+				}
+			}
+			if (beforeStart?.systemPrompt) {
+				this.agent.state.systemPrompt = beforeStart.systemPrompt;
+			} else if (this._baseSystemPrompt) {
+				this.agent.state.systemPrompt = this._baseSystemPrompt;
+			}
+			if (extraMessages.length > 0) {
+				await this.agent.prompt([...extraMessages, appMessage]);
+			} else {
+				await this.agent.prompt(appMessage);
+			}
 		} else {
 			this.agent.state.messages.push(appMessage);
 			this.sessionManager.appendCustomMessageEntry(
