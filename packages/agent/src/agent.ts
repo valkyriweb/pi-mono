@@ -284,6 +284,17 @@ export class Agent {
 		return this.activeRun?.abortController.signal;
 	}
 
+	/**
+	 * True while a run is in flight, i.e. between `prompt()`/`continue()` being
+	 * accepted and `waitForIdle()` resolving. Use this to gate calls into
+	 * `prompt()`/`continue()` from concurrent contexts (e.g. extension callbacks)
+	 * — those throw if `activeRun` is set, but the public flag `isStreaming`
+	 * doesn't cover compaction or the brief setup window before streaming begins.
+	 */
+	get isProcessing(): boolean {
+		return this.activeRun !== undefined;
+	}
+
 	/** Abort the current run, if one is active. */
 	abort(): void {
 		this.activeRun?.abortController.abort();

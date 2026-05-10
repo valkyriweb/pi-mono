@@ -1329,14 +1329,18 @@ export class AgentSession {
 		} satisfies CustomMessage<T>;
 		if (options?.deliverAs === "nextTurn") {
 			this._pendingNextTurnMessages.push(appMessage);
-		} else if (this.isStreaming || this.isCompacting) {
-			// Treat compaction as streaming-equivalent for delivery routing.
-			// Compaction runs its own LLM calls outside agent.runWithLifecycle(), so
-			// state.isStreaming is false even though the agent is busy and a regular
-			// turn cannot be started. Without this, custom messages arriving during
-			// compaction (e.g. monitor exit notifications) fall into the bottom
-			// 'else' branch and get pushed raw onto messages[]. They never enter the
-			// steering/follow-up queues, so the post-compaction recovery in
+		} else if (this.isStreaming || this.isCompacting || this.agent.isProcessing) {
+			// Treat compaction and any in-flight run as streaming-equivalent for delivery
+			// routing. Compaction runs its own LLM calls outside agent.runWithLifecycle(),
+			// so state.isStreaming is false even though the agent is busy and a regular
+			// turn cannot be started. agent.isProcessing also covers the brief setup
+			// window inside prompt() and the agent_end listener phase — windows where
+			// isStreaming may be false but a fresh prompt() would still throw
+			// "Agent is already processing a prompt". Without this, custom messages
+			// arriving during those windows (e.g. monitor exit notifications fired with
+			// triggerTurn:true) either crash the runtime with that throw, or fall into
+			// the bottom 'else' branch and get pushed raw onto messages[]. They never
+			// enter the steering/follow-up queues, so the post-compaction recovery in
 			// _runAutoCompaction (which only resumes on hasQueuedMessages()) never
 			// kicks the loop, and the message rots in the transcript until the next
 			// user prompt. Routing through the queues lets the existing
@@ -1379,10 +1383,24 @@ export class AgentSession {
 			} else if (this._baseSystemPrompt) {
 				this.agent.state.systemPrompt = this._baseSystemPrompt;
 			}
-			if (extraMessages.length > 0) {
-				await this.agent.prompt([...extraMessages, appMessage]);
-			} else {
-				await this.agent.prompt(appMessage);
+			try {
+				if (extraMessages.length > 0) {
+					await this.agent.prompt([...extraMessages, appMessage]);
+				} else {
+					await this.agent.prompt(appMessage);
+				}
+			} catch (err) {
+				// Defense-in-depth for a TOCTOU race: two extension callers can both
+				// pass the streaming/compacting/isProcessing gate above, then race on
+				// agent.prompt() — the first wins, the second throws "already
+				// processing". Falling back to steer keeps the message in the active
+				// run instead of dropping it (or surfacing a confusing
+				// "Extension <runtime> error" to the user).
+				if (err instanceof Error && /already processing( a prompt)?/.test(err.message)) {
+					this.agent.steer(appMessage);
+				} else {
+					throw err;
+				}
 			}
 		} else {
 			this.agent.state.messages.push(appMessage);
