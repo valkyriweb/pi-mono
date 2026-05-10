@@ -86,6 +86,13 @@ export interface AgentToolOptions {
 	getParentSessionManager?: () => ReadonlySessionManager;
 	getParentModel?: () => Model<Api> | undefined;
 	getParentThinkingLevel?: () => ThinkingLevel;
+	/**
+	 * Returns the parent's frozen turn-start system prompt.
+	 * Captured at tool execute() time (after before_agent_start has set it for the turn).
+	 * Injected into context:"fork" children so their API requests share the parent's
+	 * cached prefix (system + tools + messages must all be byte-identical for a hit).
+	 */
+	getParentSystemPrompt?: () => string;
 }
 
 function countExecutionModes(params: AgentToolInput): number {
@@ -366,6 +373,10 @@ export function createAgentToolDefinition(
 					parentSessionManager: options.getParentSessionManager(),
 					parentModel: options.getParentModel?.(),
 					parentThinkingLevel: options.getParentThinkingLevel?.() ?? "off",
+					// Capture frozen turn-start system prompt once at execute() time.
+					// All parallel fork children receive the same bytes — prevents
+					// extension-state divergence between concurrent spawns.
+					parentSystemPrompt: options.getParentSystemPrompt?.(),
 					signal,
 					onProgress: (progress) => {
 						onUpdate?.({ content: [{ type: "text", text: formatProgress(progress) }], details: progress });

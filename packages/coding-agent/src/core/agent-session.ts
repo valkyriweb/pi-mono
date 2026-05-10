@@ -13,7 +13,7 @@
  * Modes use this class and add their own I/O layer on top.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import type {
 	Agent,
@@ -324,6 +324,9 @@ export class AgentSession {
 	// Base system prompt (without extension appends) - used to apply fresh appends each turn
 	private _baseSystemPrompt = "";
 	private _baseSystemPromptOptions!: BuildSystemPromptOptions;
+	// When true, before_agent_start extension handlers must not overwrite agent.state.systemPrompt.
+	// Set by overrideBaseSystemPrompt() for fork children inheriting the parent's frozen prompt.
+	private _systemPromptFrozen = false;
 
 	constructor(config: AgentSessionConfig) {
 		this.agent = config.agent;
@@ -803,6 +806,25 @@ export class AgentSession {
 	}
 
 	/**
+	 * Override the base system prompt with pre-built bytes and freeze it.
+	 *
+	 * Used by fork children to inherit the parent's frozen turn-start system prompt,
+	 * ensuring cache-identical API request prefixes (system + tools + messages must
+	 * all match for a cache hit). Called after session creation, before the first
+	 * agent.prompt() invocation.
+	 *
+	 * Setting the frozen flag prevents before_agent_start extension handlers from
+	 * re-applying goal context / active-recall rewrites on top of a prompt that
+	 * already contains them — which would produce double-injected bytes and a
+	 * guaranteed cache miss on every turn.
+	 */
+	overrideBaseSystemPrompt(prompt: string): void {
+		this._baseSystemPrompt = prompt;
+		this.agent.state.systemPrompt = prompt;
+		this._systemPromptFrozen = true;
+	}
+
+	/**
 	 * Returns the system prompt as it would appear after all `before_agent_start`
 	 * handlers have applied their rewrites in preview mode (no side effects).
 	 * Used by diagnostic UIs (e.g. /context) so the displayed prompt matches
@@ -1132,12 +1154,23 @@ export class AgentSession {
 					});
 				}
 			}
-			// Apply extension-modified system prompt, or reset to base
-			if (result?.systemPrompt) {
-				this.agent.state.systemPrompt = result.systemPrompt;
-			} else {
-				// Ensure we're using the base prompt (in case previous turn had modifications)
-				this.agent.state.systemPrompt = this._baseSystemPrompt;
+			// Apply extension-modified system prompt, or reset to base.
+			// Skip when the prompt is frozen (fork child inheriting parent's bytes) —
+			// extensions would double-inject goal/recall context that is already
+			// present in the parent's prompt, producing different bytes every turn.
+			if (!this._systemPromptFrozen) {
+				if (result?.systemPrompt) {
+					// Promote to _baseSystemPrompt so subsequent turns that return no
+					// systemPrompt reset to this extended prompt, not the pre-injection
+					// base. Without this, turn-1 memory injection is silently stripped
+					// on turn 2, busting cache on every subsequent turn.
+					this._baseSystemPrompt = result.systemPrompt;
+					this.agent.state.systemPrompt = result.systemPrompt;
+				} else {
+					// Reset to stable base (covers pre-modification turns and all
+					// turns after a one-shot extension injection has promoted the base).
+					this.agent.state.systemPrompt = this._baseSystemPrompt;
+				}
 			}
 		} catch (error) {
 			preflightResult?.(false);
@@ -1378,10 +1411,15 @@ export class AgentSession {
 					});
 				}
 			}
-			if (beforeStart?.systemPrompt) {
-				this.agent.state.systemPrompt = beforeStart.systemPrompt;
-			} else if (this._baseSystemPrompt) {
-				this.agent.state.systemPrompt = this._baseSystemPrompt;
+			if (!this._systemPromptFrozen) {
+				if (beforeStart?.systemPrompt) {
+					// Promote to _baseSystemPrompt for the same reason as in prompt():
+					// one-shot extension injections must persist as the stable prefix.
+					this._baseSystemPrompt = beforeStart.systemPrompt;
+					this.agent.state.systemPrompt = beforeStart.systemPrompt;
+				} else if (this._baseSystemPrompt) {
+					this.agent.state.systemPrompt = this._baseSystemPrompt;
+				}
 			}
 			try {
 				if (extraMessages.length > 0) {
@@ -2265,7 +2303,23 @@ export class AgentSession {
 		runner.bindCore(
 			{
 				sendMessage: (message, options) => {
+					// DIAG: capture caller stack at the synchronous call site so we can
+					// attribute async runtime errors to the originating extension.
+					const callerStack = new Error("sendMessage callsite").stack;
 					this.sendCustomMessage(message, options).catch((err) => {
+						try {
+							const diagPath = `${process.env.HOME}/.pi/agent/logs/runtime-errors.log`;
+							mkdirSync(dirname(diagPath), { recursive: true });
+							appendFileSync(
+								diagPath,
+								`\n[${new Date().toISOString()}] send_message error: ${err instanceof Error ? err.message : String(err)}\n` +
+									`customType=${(message as { customType?: string })?.customType ?? "?"} triggerTurn=${(options as { triggerTurn?: boolean })?.triggerTurn ?? false} deliverAs=${(options as { deliverAs?: string })?.deliverAs ?? "-"}\n` +
+									`err.stack:\n${err instanceof Error ? err.stack : "(no stack)"}\n` +
+									`caller.stack:\n${callerStack}\n`,
+							);
+						} catch {
+							/* swallow logging errors */
+						}
 						runner.emitError({
 							extensionPath: "<runtime>",
 							event: "send_message",
@@ -2274,7 +2328,20 @@ export class AgentSession {
 					});
 				},
 				sendUserMessage: (content, options) => {
+					const callerStack = new Error("sendUserMessage callsite").stack;
 					this.sendUserMessage(content, options).catch((err) => {
+						try {
+							const diagPath = `${process.env.HOME}/.pi/agent/logs/runtime-errors.log`;
+							mkdirSync(dirname(diagPath), { recursive: true });
+							appendFileSync(
+								diagPath,
+								`\n[${new Date().toISOString()}] send_user_message error: ${err instanceof Error ? err.message : String(err)}\n` +
+									`err.stack:\n${err instanceof Error ? err.stack : "(no stack)"}\n` +
+									`caller.stack:\n${callerStack}\n`,
+							);
+						} catch {
+							/* swallow logging errors */
+						}
 						runner.emitError({
 							extensionPath: "<runtime>",
 							event: "send_user_message",
@@ -2484,6 +2551,9 @@ export class AgentSession {
 								getParentSessionManager: () => this.sessionManager,
 								getParentModel: () => this.model,
 								getParentThinkingLevel: () => this.thinkingLevel,
+								// Thread the frozen turn-start system prompt so fork children inherit
+								// exact parent bytes — same cache key (system + tools + messages prefix).
+								getParentSystemPrompt: () => this.agent.state.systemPrompt,
 							}
 						: undefined,
 				});

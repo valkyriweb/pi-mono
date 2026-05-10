@@ -67,6 +67,12 @@ export interface AgentExecutorOptions {
 	parentSessionManager: ReadonlySessionManager;
 	parentModel: Model<Api> | undefined;
 	parentThinkingLevel: ThinkingLevel;
+	/**
+	 * Frozen turn-start system prompt captured at agent tool execute() time.
+	 * When provided, context:"fork" children inherit it 1:1 instead of rebuilding —
+	 * ensures system + tools bytes are cache-identical to the parent's API prefix.
+	 */
+	parentSystemPrompt?: string;
 	onProgress?: (progress: AgentExecutionProgress) => void;
 	signal?: AbortSignal;
 	abortStatus?: () => AgentToolStatus | undefined;
@@ -417,11 +423,29 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		parentThinkingLevel: options.parentThinkingLevel,
 		model,
 	});
-	const { effectiveTools, deniedTools } = resolveEffectiveTools({
-		parentActiveTools: options.parentActiveTools,
-		agent,
-		requestedTools: options.task.tools,
-	});
+	// Fork mode: context:"fork" + parentSystemPrompt available.
+	// Use parent's exact tool set — 1:1 inheritance, no GLOBAL_DENY_TOOLS filtering.
+	// Tool schemas must be byte-identical to the parent's API request for a cache hit.
+	// All other modes: standard agent-definition-based tool resolution.
+	const isForkMode =
+		resolveContextPolicy(options.task.context).includeTranscript && Boolean(options.parentSystemPrompt);
+	let effectiveTools: string[];
+	let deniedTools: string[];
+	if (isForkMode) {
+		const parentSet = new Set(options.parentActiveTools);
+		effectiveTools = options.task.tools
+			? options.task.tools.filter((t) => parentSet.has(t))
+			: [...options.parentActiveTools];
+		deniedTools = [];
+	} else {
+		const resolved = resolveEffectiveTools({
+			parentActiveTools: options.parentActiveTools,
+			agent,
+			requestedTools: options.task.tools,
+		});
+		effectiveTools = resolved.effectiveTools;
+		deniedTools = resolved.deniedTools;
+	}
 	const startedAt = Date.now();
 	const details = createInitialRunDetails({
 		agent,
@@ -456,6 +480,14 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 
 	if (policy.includeTranscript) {
 		session.state.messages = getFilteredForkMessages(options.parentSessionManager);
+	}
+
+	// Fork mode: inject parent's frozen system prompt so the child's first API call
+	// matches the parent's cached prefix (system + tools bytes identical).
+	// Must run after session creation (which builds a fresh prompt) and after
+	// message assignment (order doesn't matter for the prompt).
+	if (isForkMode && options.parentSystemPrompt) {
+		session.overrideBaseSystemPrompt(options.parentSystemPrompt);
 	}
 
 	details.loadedSkills = childServices.resourceLoader.getSkills().skills.map((skill) => skill.name);
