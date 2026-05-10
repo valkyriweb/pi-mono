@@ -1329,7 +1329,18 @@ export class AgentSession {
 		} satisfies CustomMessage<T>;
 		if (options?.deliverAs === "nextTurn") {
 			this._pendingNextTurnMessages.push(appMessage);
-		} else if (this.isStreaming) {
+		} else if (this.isStreaming || this.isCompacting) {
+			// Treat compaction as streaming-equivalent for delivery routing.
+			// Compaction runs its own LLM calls outside agent.runWithLifecycle(), so
+			// state.isStreaming is false even though the agent is busy and a regular
+			// turn cannot be started. Without this, custom messages arriving during
+			// compaction (e.g. monitor exit notifications) fall into the bottom
+			// 'else' branch and get pushed raw onto messages[]. They never enter the
+			// steering/follow-up queues, so the post-compaction recovery in
+			// _runAutoCompaction (which only resumes on hasQueuedMessages()) never
+			// kicks the loop, and the message rots in the transcript until the next
+			// user prompt. Routing through the queues lets the existing
+			// post-compaction continue() drain them.
 			if (options?.deliverAs === "followUp") {
 				this.agent.followUp(appMessage);
 			} else {

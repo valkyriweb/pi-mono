@@ -97,6 +97,69 @@ describe("AgentSession auto-compaction queue resume", () => {
 		}
 	});
 
+	it("routes sendCustomMessage through the steering queue while isCompacting (so post-compaction continue() picks it up)", async () => {
+		// Regression: extensions like the monitor extension call pi.sendMessage()
+		// (which routes to AgentSession.sendCustomMessage) to deliver background
+		// process exit notifications. If a notification arrives while compaction
+		// is running, isStreaming is false (compaction does not go through
+		// agent.runWithLifecycle()) but isCompacting is true. Before the fix the
+		// message was pushed straight to messages[], bypassing the steering queue,
+		// so the post-compaction recovery in _runAutoCompaction (which checks
+		// hasQueuedMessages()) would not fire continue() and the agent would sit
+		// idle until the next user prompt — silently dropping monitor failures.
+		const privateSession = session as unknown as {
+			_autoCompactionAbortController: AbortController | undefined;
+			sendCustomMessage: (
+				message: {
+					customType: string;
+					content: { type: "text"; text: string }[];
+					display: boolean;
+					details?: unknown;
+				},
+				options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+			) => Promise<void>;
+		};
+
+		privateSession._autoCompactionAbortController = new AbortController();
+		expect(session.isStreaming).toBe(false);
+		expect(session.isCompacting).toBe(true);
+
+		const steerSpy = vi.spyOn(session.agent, "steer");
+		const followUpSpy = vi.spyOn(session.agent, "followUp");
+		const messagesBefore = session.agent.state.messages.length;
+
+		await privateSession.sendCustomMessage(
+			{
+				customType: "monitor-event",
+				content: [{ type: "text", text: "[monitor build] failed (code 1)" }],
+				display: true,
+			},
+			{ deliverAs: "steer" },
+		);
+
+		expect(steerSpy).toHaveBeenCalledTimes(1);
+		expect(followUpSpy).not.toHaveBeenCalled();
+		expect(session.agent.hasQueuedMessages()).toBe(true);
+		// Critically, the message must NOT have been pushed raw onto messages[].
+		// If it had, hasQueuedMessages() would return false and the post-compaction
+		// continue() would never fire.
+		expect(session.agent.state.messages.length).toBe(messagesBefore);
+
+		// followUp delivery during compaction routes through the followUp queue.
+		await privateSession.sendCustomMessage(
+			{
+				customType: "monitor-event",
+				content: [{ type: "text", text: "[monitor deploy] failed (code 2)" }],
+				display: true,
+			},
+			{ deliverAs: "followUp" },
+		);
+
+		expect(followUpSpy).toHaveBeenCalledTimes(1);
+
+		privateSession._autoCompactionAbortController = undefined;
+	});
+
 	it("should resume after threshold compaction when only agent-level queued messages exist", async () => {
 		session.agent.followUp({
 			role: "custom",
