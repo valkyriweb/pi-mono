@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 started=$(date +%s)
-output=$(cd packages/ai && npx tsx test/codex-cache-affinity-probe.ts --pairs 1 --padding 240 --transport sse)
+output=$(cd packages/ai && npx tsx test/codex-cache-affinity-probe.ts --pairs 1 --padding 240 --transport sse --delay-ms 15000)
 printf '%s
 ' "$output"
 ended=$(date +%s)

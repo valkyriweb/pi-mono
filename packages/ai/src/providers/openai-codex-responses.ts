@@ -53,6 +53,7 @@ const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const CODEX_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 const WEBSOCKET_MESSAGE_TOO_BIG_CLOSE_CODE = 1009;
+const CODEX_PROMPT_CACHE_KEY_PREFIX = "pi-codex";
 
 const CODEX_RESPONSE_STATUSES = new Set<CodexResponseStatus>([
 	"completed",
@@ -163,7 +164,8 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 				body = nextBody as RequestBody;
 			}
 			const websocketRequestId = options?.sessionId || createCodexRequestId();
-			const sseHeaders = buildSSEHeaders(model.headers, options?.headers, accountId, apiKey, options?.sessionId);
+			const promptCacheKey = getCodexPromptCacheKey(model);
+			const sseHeaders = buildSSEHeaders(model.headers, options?.headers, accountId, apiKey, promptCacheKey);
 			const websocketHeaders = buildWebSocketHeaders(
 				model.headers,
 				options?.headers,
@@ -356,7 +358,7 @@ function buildRequestBody(
 		input: messages,
 		text: { verbosity: options?.textVerbosity || "low" },
 		include: ["reasoning.encrypted_content"],
-		prompt_cache_key: options?.sessionId,
+		prompt_cache_key: getCodexPromptCacheKey(model),
 		tool_choice: "auto",
 		parallel_tool_calls: true,
 	};
@@ -387,6 +389,10 @@ function buildRequestBody(
 	}
 
 	return body;
+}
+
+function getCodexPromptCacheKey(model: Pick<Model<"openai-codex-responses">, "id" | "provider">): string {
+	return `${CODEX_PROMPT_CACHE_KEY_PREFIX}:${model.provider}:${model.id}`;
 }
 
 function getServiceTierCostMultiplier(

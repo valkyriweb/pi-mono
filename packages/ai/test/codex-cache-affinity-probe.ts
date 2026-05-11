@@ -15,6 +15,7 @@ interface Args {
 	pairs: number;
 	padding: number;
 	transport: Transport;
+	delayMs: number;
 }
 
 interface ProbeResult {
@@ -31,6 +32,7 @@ function parseArgs(argv: string[]): Args {
 	let pairs = 1;
 	let padding = 240;
 	let transport: Transport = "sse";
+	let delayMs = 0;
 
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
@@ -49,6 +51,9 @@ function parseArgs(argv: string[]): Args {
 				transport = value;
 				break;
 			}
+			case "--delay-ms":
+				delayMs = Number.parseInt(required(argv[++i], arg), 10);
+				break;
 			case "--help":
 				printHelp();
 				process.exit(0);
@@ -64,8 +69,11 @@ function parseArgs(argv: string[]): Args {
 	if (!Number.isInteger(padding) || padding < 80 || padding > 600) {
 		throw new Error("--padding must be an integer between 80 and 600");
 	}
+	if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > 60_000) {
+		throw new Error("--delay-ms must be an integer between 0 and 60000");
+	}
 
-	return { pairs, padding, transport };
+	return { pairs, padding, transport, delayMs };
 }
 
 function required(value: string | undefined, flag: string): string {
@@ -80,7 +88,12 @@ Options:
   --pairs <n>        Number of two-session pairs to run. Default: 1
   --padding <n>      Repeated prompt-padding lines. Default: 240
   --transport <mode> sse | websocket | websocket-cached | auto. Default: sse
+  --delay-ms <n>     Delay between the first and second session in each pair. Default: 0
 `);
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildPrompt(padding: number): string {
@@ -152,6 +165,10 @@ async function main(): Promise<void> {
 	const runId = `codex-cache-affinity-${Date.now()}`;
 	for (let pair = 1; pair <= args.pairs; pair++) {
 		for (let index = 1; index <= 2; index++) {
+			if (index === 2 && args.delayMs > 0) {
+				console.log(`delay ${args.delayMs}ms before second session in pair ${pair}`);
+				await sleep(args.delayMs);
+			}
 			const request = (pair - 1) * 2 + index;
 			const sessionId = `${runId}-pair-${pair}-session-${index}`;
 			const result = await runProbe(model, apiKey, args, request, sessionId);

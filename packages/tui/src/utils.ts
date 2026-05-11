@@ -37,6 +37,58 @@ const rgiEmojiRegex = /^\p{RGI_Emoji}$/v;
 const WIDTH_CACHE_SIZE = 512;
 const widthCache = new Map<string, number>();
 
+const WRAP_CACHE_SIZE = 256;
+const WRAP_CACHE_MIN_TEXT_LENGTH = 80;
+const WRAP_CACHE_MAX_COST = 1_000_000;
+const wrapCache = new Map<string, { lines: string[]; cost: number }>();
+let wrapCacheCost = 0;
+
+function getWrapCacheKey(text: string, width: number): string | undefined {
+	if (text.length < WRAP_CACHE_MIN_TEXT_LENGTH) {
+		return undefined;
+	}
+	return `${width}\0${text}`;
+}
+
+function getCachedWrap(cacheKey: string | undefined): string[] | undefined {
+	if (cacheKey === undefined) {
+		return undefined;
+	}
+	const entry = wrapCache.get(cacheKey);
+	if (entry === undefined) {
+		return undefined;
+	}
+	// Refresh insertion order so frequently rendered conversation lines survive
+	// spinner/status render ticks.
+	wrapCache.delete(cacheKey);
+	wrapCache.set(cacheKey, entry);
+	return entry.lines;
+}
+
+function setCachedWrap(cacheKey: string | undefined, lines: string[]): void {
+	if (cacheKey === undefined) {
+		return;
+	}
+
+	const cost = cacheKey.length + lines.reduce((total, line) => total + line.length, 0);
+	if (cost > WRAP_CACHE_MAX_COST / 2) {
+		return;
+	}
+
+	while (wrapCache.size >= WRAP_CACHE_SIZE || wrapCacheCost + cost > WRAP_CACHE_MAX_COST) {
+		const firstKey = wrapCache.keys().next().value;
+		if (firstKey === undefined) {
+			break;
+		}
+		const firstEntry = wrapCache.get(firstKey);
+		wrapCache.delete(firstKey);
+		wrapCacheCost -= firstEntry?.cost ?? 0;
+	}
+
+	wrapCache.set(cacheKey, { lines, cost });
+	wrapCacheCost += cost;
+}
+
 function isPrintableAscii(str: string): boolean {
 	for (let i = 0; i < str.length; i++) {
 		const code = str.charCodeAt(i);
@@ -653,6 +705,12 @@ export function wrapTextWithAnsi(text: string, width: number): string[] {
 		return [""];
 	}
 
+	const cacheKey = getWrapCacheKey(text, width);
+	const cached = getCachedWrap(cacheKey);
+	if (cached !== undefined) {
+		return cached;
+	}
+
 	// Handle newlines by processing each line separately
 	// Track ANSI state across lines so styles carry over after literal newlines
 	const inputLines = text.split("\n");
@@ -667,7 +725,9 @@ export function wrapTextWithAnsi(text: string, width: number): string[] {
 		updateTrackerFromText(inputLine, tracker);
 	}
 
-	return result.length > 0 ? result : [""];
+	const wrapped = result.length > 0 ? result : [""];
+	setCachedWrap(cacheKey, wrapped);
+	return wrapped;
 }
 
 function wrapSingleLine(line: string, width: number): string[] {

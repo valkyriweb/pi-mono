@@ -18,6 +18,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Fixed
 
+- Cached repeated TUI ANSI text wrapping for long rendered strings to reduce repeated `Intl.Segmenter`/string-flattening work during frequent status/footer render ticks.
 - Improved interactive responsiveness under frequent render/status updates by scheduling TUI renders with `setImmediate` instead of `process.nextTick`, and caching footer cumulative usage totals between session-entry changes.
 - Included the built-in `grep`, `find`, `ls`, and `agent` tools in the default active tool set so the system prompt exposes them when no explicit tool allowlist is configured.
 - Added bounded default timeouts to the built-in `grep` and `find` tools with structured timeout results, partial output when available, AbortSignal preservation, and explicit `timeout` overrides up to 300 seconds.
