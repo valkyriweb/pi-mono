@@ -506,7 +506,7 @@ export class TUI extends Container {
 				this.renderTimer = undefined;
 			}
 			this.renderRequested = true;
-			process.nextTick(() => {
+			setImmediate(() => {
 				if (this.stopped || !this.renderRequested) {
 					return;
 				}
@@ -518,7 +518,7 @@ export class TUI extends Container {
 		}
 		if (this.renderRequested) return;
 		this.renderRequested = true;
-		process.nextTick(() => this.scheduleRender());
+		setImmediate(() => this.scheduleRender());
 	}
 
 	private scheduleRender(): void {

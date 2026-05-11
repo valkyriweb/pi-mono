@@ -18,6 +18,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Fixed
 
+- Improved interactive responsiveness under frequent render/status updates by scheduling TUI renders with `setImmediate` instead of `process.nextTick`, and caching footer cumulative usage totals between session-entry changes.
 - Included the built-in `grep`, `find`, `ls`, and `agent` tools in the default active tool set so the system prompt exposes them when no explicit tool allowlist is configured.
 - Added bounded default timeouts to the built-in `grep` and `find` tools with structured timeout results, partial output when available, AbortSignal preservation, and explicit `timeout` overrides up to 300 seconds.
 - Fixed runtime active-tool changes made during tool execution so the next provider request in the same agent run receives the refreshed tool schema. This makes deferred-tool activators such as `tool_search` able to expose newly activated tools immediately, and deduplicates repeated active tool names.

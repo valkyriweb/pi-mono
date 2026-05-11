@@ -27,12 +27,28 @@ function formatTokens(count: number): string {
 	return `${Math.round(count / 1000000)}M`;
 }
 
+interface UsageTotals {
+	totalInput: number;
+	totalOutput: number;
+	totalCacheRead: number;
+	totalCacheWrite: number;
+	totalCost: number;
+}
+
 /**
  * Footer component that shows pwd, token stats, and context usage.
  * Computes token/context stats from session, gets git branch and extension statuses from provider.
  */
 export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
+	private usageCacheKey = "";
+	private usageCache: UsageTotals = {
+		totalInput: 0,
+		totalOutput: 0,
+		totalCacheRead: 0,
+		totalCacheWrite: 0,
+		totalCost: 0,
+	};
 
 	constructor(
 		private session: AgentSession,
@@ -63,25 +79,57 @@ export class FooterComponent implements Component {
 		// Git watcher cleanup handled by provider
 	}
 
-	render(width: number): string[] {
-		const state = this.session.state;
-
-		// Calculate cumulative usage from ALL session entries (not just post-compaction messages)
-		let totalInput = 0;
-		let totalOutput = 0;
-		let totalCacheRead = 0;
-		let totalCacheWrite = 0;
-		let totalCost = 0;
-
-		for (const entry of this.session.sessionManager.getEntries()) {
-			if (entry.type === "message" && entry.message.role === "assistant") {
-				totalInput += entry.message.usage.input;
-				totalOutput += entry.message.usage.output;
-				totalCacheRead += entry.message.usage.cacheRead;
-				totalCacheWrite += entry.message.usage.cacheWrite;
-				totalCost += entry.message.usage.cost.total;
+	private getUsageTotals(): UsageTotals {
+		const entries = this.session.sessionManager.getEntries();
+		let lastUsage:
+			| { input: number; output: number; cacheRead: number; cacheWrite: number; cost: { total: number } }
+			| undefined;
+		for (let i = entries.length - 1; i >= 0; i--) {
+			const entry = entries[i];
+			if (entry?.type === "message" && entry.message.role === "assistant") {
+				lastUsage = entry.message.usage;
+				break;
 			}
 		}
+		const cacheKey = [
+			entries.length,
+			lastUsage?.input ?? 0,
+			lastUsage?.output ?? 0,
+			lastUsage?.cacheRead ?? 0,
+			lastUsage?.cacheWrite ?? 0,
+			lastUsage?.cost.total ?? 0,
+		].join(":");
+
+		if (cacheKey === this.usageCacheKey) {
+			return this.usageCache;
+		}
+
+		const totals: UsageTotals = {
+			totalInput: 0,
+			totalOutput: 0,
+			totalCacheRead: 0,
+			totalCacheWrite: 0,
+			totalCost: 0,
+		};
+
+		for (const entry of entries) {
+			if (entry.type === "message" && entry.message.role === "assistant") {
+				totals.totalInput += entry.message.usage.input;
+				totals.totalOutput += entry.message.usage.output;
+				totals.totalCacheRead += entry.message.usage.cacheRead;
+				totals.totalCacheWrite += entry.message.usage.cacheWrite;
+				totals.totalCost += entry.message.usage.cost.total;
+			}
+		}
+
+		this.usageCacheKey = cacheKey;
+		this.usageCache = totals;
+		return totals;
+	}
+
+	render(width: number): string[] {
+		const state = this.session.state;
+		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost } = this.getUsageTotals();
 
 		// Calculate context usage from session (handles compaction correctly).
 		// After compaction, tokens are unknown until the next LLM response.
