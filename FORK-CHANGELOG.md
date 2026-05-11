@@ -18,6 +18,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Fixed
 
+- Forwarded `cacheRetention` through `@earendil-works/pi-agent` so child/native agents can explicitly preserve provider prompt-cache TTL settings, and made OpenAI Codex Responses use the Pi session id as its `prompt_cache_key` when available.
 - Cached repeated TUI ANSI text wrapping for long rendered strings to reduce repeated `Intl.Segmenter`/string-flattening work during frequent status/footer render ticks.
 - Improved interactive responsiveness under frequent render/status updates by scheduling TUI renders with `setImmediate` instead of `process.nextTick`, and caching footer cumulative usage totals between session-entry changes.
 - Included the built-in `grep`, `find`, `ls`, and `agent` tools in the default active tool set so the system prompt exposes them when no explicit tool allowlist is configured.

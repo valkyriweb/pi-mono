@@ -491,4 +491,27 @@ describe("Agent", () => {
 		await agent.prompt("hello again");
 		expect(receivedSessionId).toBe("session-def");
 	});
+
+	it("forwards cacheRetention to streamFn options", async () => {
+		let receivedCacheRetention: string | undefined;
+		const agent = new Agent({
+			cacheRetention: "long",
+			streamFn: (_model, _context, options) => {
+				receivedCacheRetention = options?.cacheRetention;
+				const stream = new MockAssistantStream();
+				queueMicrotask(() => {
+					const message = createAssistantMessage("ok");
+					stream.push({ type: "done", reason: "stop", message });
+				});
+				return stream;
+			},
+		});
+
+		await agent.prompt("hello");
+		expect(receivedCacheRetention).toBe("long");
+
+		agent.cacheRetention = "none";
+		await agent.prompt("hello again");
+		expect(receivedCacheRetention).toBe("none");
+	});
 });
