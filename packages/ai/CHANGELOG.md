@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Together AI as a built-in OpenAI-compatible provider with generated model metadata and `TOGETHER_API_KEY` authentication ([#3624](https://github.com/earendil-works/pi-mono/pull/3624) by [@Nutlope](https://github.com/Nutlope)).
+
 ### Fixed
 
+- Fixed GitHub Copilot Claude test coverage to use the current Claude Sonnet 4.6 model ID.
 - Fixed OpenAI Responses requests for models that support disabling reasoning to send `reasoning.effort: "none"` when thinking is off.
 
 ## [0.74.0] - 2026-05-07
