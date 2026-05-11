@@ -1,0 +1,3 @@
+- Add optional debug output for the effective `prompt_cache_key` without logging secrets or full prompts.
+- If stable provider/model key is too broad, derive the key from model id plus a short hash of instructions + tool schemas (stable across sessions with identical prefix, but changes when the prefix changes).
+- Compare SSE stable-key behavior with websocket-cached first request + later delta behavior after the first simple fix lands.
