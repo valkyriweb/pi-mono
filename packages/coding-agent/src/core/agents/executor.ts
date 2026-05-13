@@ -6,9 +6,10 @@ import { createAgentSessionFromServices, createAgentSessionServices } from "../a
 import type { AuthStorage } from "../auth-storage.js";
 import { DEFAULT_THINKING_LEVEL } from "../defaults.js";
 import type { ModelRegistry } from "../model-registry.js";
-import { fastModelPerProvider, parseModelPattern } from "../model-resolver.js";
+import { fastModelPerProvider, mediumModelPerProvider, parseModelPattern } from "../model-resolver.js";
 import { type ReadonlySessionManager, SessionManager } from "../session-manager.js";
 import type { SettingsManager } from "../settings-manager.js";
+import { appendTaskMessage } from "../tasks/messages.js";
 import {
 	buildChildTaskPrompt,
 	clampThinkingForModel,
@@ -114,6 +115,8 @@ interface RunChildOptions extends AgentExecutorOptions {
 	chainDir?: string;
 	progressInput: AgentToolExecutionInput;
 	progressRuns: AgentRunDetails[];
+	/** Recent-run id; sinks live events into core/tasks message buffer. */
+	taskId?: string;
 }
 
 function normalizeOutputMode(mode: AgentOutputMode | undefined): AgentOutputMode {
@@ -176,14 +179,16 @@ export function resolveAgentModel(options: {
 		(options.agent.model && options.agent.model !== "inherit" ? options.agent.model : undefined);
 	if (!reference) return options.parentModel;
 
-	// `"fast"` alias: resolve to the parent provider's mapped cheap model.
-	// Used by the read-only `explore` agent to avoid burning the parent's
-	// expensive model on grep/find/read workloads. Falls back to
-	// the parent model when the provider has no fast mapping or the mapped id
-	// is not available — never throws on `"fast"`.
-	if (reference === "fast") {
+	// `"fast"` / `"medium"` aliases: resolve to the parent provider's mapped tier.
+	// `fast` is used by the read-only `explore` agent to avoid burning the parent's
+	// expensive model on grep/find/read workloads; `medium` is the mid-tier for
+	// extractors and structured workloads that need more than Haiku/Mini. Both
+	// fall back to the parent model when the provider has no mapping or the mapped
+	// id is not available — never throws.
+	if (reference === "fast" || reference === "medium") {
 		const parentProvider = options.parentModel?.provider;
-		const mappedId = parentProvider ? fastModelPerProvider[parentProvider] : undefined;
+		const table = reference === "fast" ? fastModelPerProvider : mediumModelPerProvider;
+		const mappedId = parentProvider ? table[parentProvider] : undefined;
 		if (mappedId) {
 			const available = options.modelRegistry.getAvailable();
 			const hit = available.find((m) => m.provider === parentProvider && m.id === mappedId);
@@ -342,6 +347,8 @@ interface DriveChildSessionOptions extends AgentExecutorOptions {
 	details: AgentRunDetails;
 	startedAt: number;
 	prompt: string;
+	/** Task id (= AgentRecentRun.id) for live message ring buffer in core/tasks. */
+	taskId?: string;
 }
 
 function getAbortedRunStatus(options: AgentExecutorOptions): "cancelled" | "interrupted" {
@@ -359,6 +366,7 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 		options.signal.addEventListener("abort", abortChild, { once: true });
 	}
 
+	const taskId = options.taskId;
 	const unsubscribe = session.subscribe((event) => {
 		if (!options.progressRuns.includes(details)) options.progressRuns.push(details);
 		refreshRunDetailsFromSession(details, session, startedAt);
@@ -367,10 +375,12 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 			if (snippet && snippet !== details.recentOutputSnippets[details.recentOutputSnippets.length - 1]) {
 				details.recentOutputSnippets.push(snippet);
 				details.recentOutputSnippets = details.recentOutputSnippets.slice(-5);
+				if (taskId) appendTaskMessage(taskId, { kind: "assistant_text", ts: Date.now(), text: snippet });
 			}
 		}
 		if (event.type === "message_end" && event.message.role === "assistant") {
 			details.usage = event.message.usage;
+			if (taskId) appendTaskMessage(taskId, { kind: "assistant_end", ts: Date.now() });
 		}
 		if (event.type === "tool_execution_start") {
 			details.toolCallCount += 1;
@@ -383,6 +393,13 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 			});
 			details.recentToolCalls = details.recentToolCalls.slice(-8);
 			recordSkillInvocation(details, event.toolName, event.args);
+			if (taskId)
+				appendTaskMessage(taskId, {
+					kind: "tool_start",
+					ts: Date.now(),
+					toolName: event.toolName,
+					argsPreview: details.currentToolArgsPreview,
+				});
 		}
 		if (event.type === "tool_execution_end") {
 			const active = details.recentToolCalls.find((tool) => !tool.endedAt && tool.name === event.toolName);
@@ -393,6 +410,14 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 			}
 			details.currentToolName = undefined;
 			details.currentToolArgsPreview = undefined;
+			if (taskId)
+				appendTaskMessage(taskId, {
+					kind: "tool_end",
+					ts: Date.now(),
+					toolName: event.toolName,
+					isError: event.isError,
+					resultPreview: extractTextPreview(event.result.content, 200),
+				});
 		}
 		emitProgress(options.progressInput, options.progressRuns, options.onProgress);
 	});
@@ -723,6 +748,7 @@ async function resumeSingleBackgroundRun(
 			details,
 			startedAt,
 			prompt: resumePrompt,
+			taskId: recentRun.id,
 		});
 	} catch (error) {
 		const failed = getErrorDetails(error);
@@ -785,6 +811,7 @@ async function executeAgentToolToCompletion(
 					chainDir: input.chainDir,
 					progressInput: input,
 					progressRuns: runs,
+					taskId: recentRun.id,
 				});
 				if (!runs.includes(result)) runs.push(result);
 				previous = result.rawOutput ?? result.finalOutput ?? "";
@@ -801,6 +828,7 @@ async function executeAgentToolToCompletion(
 					chainDir: input.chainDir,
 					progressInput: input,
 					progressRuns: runs,
+					taskId: recentRun.id,
 				});
 				if (!runs.includes(result)) runs.push(result);
 				emitProgress(input, runs, options.onProgress);
@@ -817,6 +845,7 @@ async function executeAgentToolToCompletion(
 				chainDir: input.chainDir,
 				progressInput: input,
 				progressRuns: runs,
+				taskId: recentRun.id,
 			});
 			if (!runs.includes(result)) runs.push(result);
 			emitProgress(input, runs, options.onProgress);

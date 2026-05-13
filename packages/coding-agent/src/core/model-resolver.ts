@@ -33,6 +33,31 @@ export const fastModelPerProvider: Record<string, string> = {
 	"claude-bridge": "claude-haiku-4-5",
 };
 
+/**
+ * Mid-tier model id per provider, used to resolve the `"medium"` model alias.
+ *
+ * Use for tasks that need more reasoning than a `"fast"` model can offer but
+ * don't justify the parent's flagship cost — e.g. structured extraction,
+ * mid-complexity refactors, multi-step research where Haiku/Mini drift.
+ *
+ * Falls back to the parent model when the provider has no entry. Custom-provider
+ * users can override per-agent via an explicit `model:` value.
+ */
+export const mediumModelPerProvider: Record<string, string> = {
+	anthropic: "claude-sonnet-4-6",
+	"amazon-bedrock": "us.anthropic.claude-sonnet-4-6-20251001-v1:0",
+	openai: "gpt-5.4",
+	"azure-openai-responses": "gpt-5.4",
+	"github-copilot": "gpt-5.4",
+	google: "gemini-3.1-flash",
+	"google-vertex": "gemini-3.1-flash",
+	groq: "openai/gpt-oss-120b",
+	xai: "grok-4.20-0309-reasoning",
+	// Custom proxy provider (Luke's fork). Routes Anthropic models via a local
+	// bridge; sonnet-4-6 is the mid-tier on the other end.
+	"claude-bridge": "claude-sonnet-4-6",
+};
+
 /** Default model IDs for each known provider */
 export const defaultModelPerProvider: Record<KnownProvider, string> = {
 	"amazon-bedrock": "us.anthropic.claude-opus-4-6-v1",
