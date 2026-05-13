@@ -338,6 +338,14 @@ export interface ForkAgentOptions {
 	signal?: AbortSignal;
 	/** Short human label for logs/UI. */
 	description?: string;
+	/**
+	 * When true (default), suppresses the `agent_completion` transcript
+	 * notification for this fork. Extension-initiated forks (e.g. pi-memory
+	 * extraction) should stay silent — the extension owns any transcript
+	 * feedback via `ctx.transcript.append`. Set to false to restore the
+	 * standard background-agent completion message.
+	 */
+	silent?: boolean;
 }
 
 /** Result of `ctx.forkAgent()`. */

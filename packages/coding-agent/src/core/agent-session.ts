@@ -2317,7 +2317,11 @@ export class AgentSession {
 				// the parent's cached prefix (see core/tools/agent.ts for the same
 				// wiring used by the LLM-callable agent tool).
 				parentSystemPrompt: this.agent.state.systemPrompt,
-				onBackgroundTerminal: (notification) => this._emitAgentCompletion(notification),
+				// silent defaults to true — extension forks own their own transcript
+				// feedback via ctx.transcript.append. Set silent:false to restore the
+				// standard agent_completion notification.
+				onBackgroundTerminal:
+					opts.silent !== false ? undefined : (notification) => this._emitAgentCompletion(notification),
 				// Note: executor's background path replaces `signal` with its own
 				// AbortController. We chain the caller's signal below via
 				// cancelAgentRecentRun(runId) so abort still propagates.
@@ -2436,7 +2440,7 @@ export class AgentSession {
 			{
 				customType: "agent_completion",
 				content: lines.join("\n"),
-				display: true,
+				display: false,
 				details: notification,
 			},
 			{ deliverAs: "followUp" },
