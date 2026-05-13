@@ -42,11 +42,17 @@ export interface AgentRunControlResult {
 }
 
 export type AgentRecentRunsListener = () => void;
+export type AgentRecentRunTerminalListener = (run: AgentRecentRun) => void;
 
 const MAX_RECENT_RUNS = 25;
 const recentRuns: AgentRecentRun[] = [];
 const liveRunControllers = new Map<string, AgentRecentRunController>();
 const recentRunListeners = new Set<AgentRecentRunsListener>();
+const terminalListeners = new Map<string, AgentRecentRunTerminalListener>();
+// Atomic dedup: once fired for a run, never fires again. Survives status
+// thrash between e.g. failAgentRecentRun and markRunStopped that may both
+// drive a run to terminal in the same tick.
+const terminalNotified = new WeakSet<AgentRecentRun>();
 const runGenerations = new WeakMap<AgentRecentRun, number>();
 let nextRunId = 1;
 
@@ -109,6 +115,22 @@ function isTerminalStatus(status: AgentToolStatus): boolean {
 	return status !== "running";
 }
 
+// Fire the terminal listener at most once per run. Caller must have already
+// driven `run.status` to a terminal value; we read it here for the snapshot.
+function maybeFireTerminal(run: AgentRecentRun): void {
+	if (!isTerminalStatus(run.status)) return;
+	if (terminalNotified.has(run)) return;
+	terminalNotified.add(run);
+	const listener = terminalListeners.get(run.id);
+	if (!listener) return;
+	try {
+		listener(cloneRecentRun(run));
+	} catch {
+		// Terminal listeners are side-effecting (e.g. inject custom message).
+		// Never let one break the lifecycle.
+	}
+}
+
 function getRunGeneration(run: AgentRecentRun): number {
 	return runGenerations.get(run) ?? 0;
 }
@@ -162,6 +184,7 @@ function applyRunDetails(
 		liveRunControllers.delete(run.id);
 	}
 	notifyAgentRecentRunsChanged();
+	maybeFireTerminal(run);
 }
 
 function markRunStopped(run: AgentRecentRun, status: "interrupted" | "cancelled", message?: string): void {
@@ -176,6 +199,7 @@ function markRunStopped(run: AgentRecentRun, status: "interrupted" | "cancelled"
 		liveRunControllers.delete(run.id);
 	}
 	notifyAgentRecentRunsChanged();
+	maybeFireTerminal(run);
 }
 
 function findMutableRun(runId: string): AgentRecentRun | undefined {
@@ -246,6 +270,7 @@ export function failAgentRecentRun(run: AgentRecentRun, error: unknown, expected
 	run.attentionMessage = undefined;
 	liveRunControllers.delete(run.id);
 	notifyAgentRecentRunsChanged();
+	maybeFireTerminal(run);
 }
 
 export function attachAgentRecentRunController(runId: string, controller: AgentRecentRunController): void {
@@ -254,6 +279,28 @@ export function attachAgentRecentRunController(runId: string, controller: AgentR
 
 export function detachAgentRecentRunController(runId: string): void {
 	liveRunControllers.delete(runId);
+}
+
+/**
+ * Register a one-shot callback that fires when this run reaches a terminal
+ * status (completed | failed | cancelled | interrupted). Atomic dedup: fires
+ * at most once per run even if multiple lifecycle paths drive the run to
+ * terminal in the same tick. Returns an unregister function for explicit cleanup.
+ *
+ * Used by the background-agent path to push a structured task_notification
+ * back to the parent session without polling.
+ */
+export function attachAgentRecentRunTerminalListener(
+	runId: string,
+	listener: AgentRecentRunTerminalListener,
+): () => void {
+	terminalListeners.set(runId, listener);
+	// If the run already terminated before registration (race), fire immediately.
+	const existing = findMutableRun(runId);
+	if (existing && isTerminalStatus(existing.status)) maybeFireTerminal(existing);
+	return () => {
+		if (terminalListeners.get(runId) === listener) terminalListeners.delete(runId);
+	};
 }
 
 export function restartAgentRecentRun(run: AgentRecentRun): void {

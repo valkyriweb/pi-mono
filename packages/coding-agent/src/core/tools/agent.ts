@@ -11,7 +11,13 @@ import {
 	interruptAgentRecentRun,
 	resumeAgentRecentRun,
 } from "../agents/status.js";
-import type { AgentExecutionProgress, AgentRunDetails, AgentToolDetails, AgentToolMode } from "../agents/types.js";
+import type {
+	AgentBackgroundCompletion,
+	AgentExecutionProgress,
+	AgentRunDetails,
+	AgentToolDetails,
+	AgentToolMode,
+} from "../agents/types.js";
 import type { ToolDefinition } from "../extensions/types.js";
 import type { ReadonlySessionManager } from "../session-manager.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
@@ -93,6 +99,12 @@ export interface AgentToolOptions {
 	 * cached prefix (system + tools + messages must all be byte-identical for a hit).
 	 */
 	getParentSystemPrompt?: () => string;
+	/**
+	 * Fired exactly once when a background agent run reaches terminal status.
+	 * Parent sessions wire this to inject a structured `agent_completion`
+	 * custom message so the model is notified on completion instead of polling.
+	 */
+	onBackgroundTerminal?: (notification: AgentBackgroundCompletion) => void;
 }
 
 function countExecutionModes(params: AgentToolInput): number {
@@ -342,6 +354,7 @@ export function createAgentToolDefinition(
 			"For implementation strategy and risk analysis on a known requirement, prefer `plan` (read-only) before delegating to `worker`.",
 			"When parallel exploration or review is needed, send multiple agent tool-use blocks in one assistant message; Pi runs those calls concurrently. Use tasks[] only for explicit batched fan-out inside one agent call.",
 			"Use background:true for long-running delegated work that should continue while the parent reports back; control it with action/status/interrupt/cancel/resume and runId.",
+			"When a background agent finishes you receive an automatic agent_completion message with runId, status, summary, result preview, outputPaths, and sessionPaths. Do NOT poll with `agent` action=status/detail while waiting — work on other things, sleep with goal_wait, or hand back to the user. Read sessionPaths or outputPaths on demand if you need the full transcript.",
 			"Do not use agent recursively; child agents cannot call agent.",
 		],
 		parameters: agentToolSchema,
@@ -379,6 +392,7 @@ export function createAgentToolDefinition(
 					// All parallel fork children receive the same bytes — prevents
 					// extension-state divergence between concurrent spawns.
 					parentSystemPrompt: options.getParentSystemPrompt?.(),
+					onBackgroundTerminal: options.onBackgroundTerminal,
 					signal,
 					onProgress: (progress) => {
 						onUpdate?.({ content: [{ type: "text", text: formatProgress(progress) }], details: progress });

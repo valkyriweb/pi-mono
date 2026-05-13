@@ -22,6 +22,7 @@ import { findAgentDefinition, formatAvailableAgents, loadAgentRegistry } from ".
 import type { AgentRecentRun } from "./status.js";
 import {
 	attachAgentRecentRunController,
+	attachAgentRecentRunTerminalListener,
 	failAgentRecentRun,
 	finishAgentRecentRun,
 	formatAgentDurationMs,
@@ -32,6 +33,7 @@ import {
 	updateAgentRecentRunProgress,
 } from "./status.js";
 import type {
+	AgentBackgroundCompletion,
 	AgentDefinition,
 	AgentExecutionProgress,
 	AgentOutputMode,
@@ -78,6 +80,14 @@ export interface AgentExecutorOptions {
 	abortStatus?: () => AgentToolStatus | undefined;
 	onChildSessionStart?: (session: AgentSession, details: AgentRunDetails) => void;
 	onChildSessionEnd?: (session: AgentSession, details: AgentRunDetails) => void;
+	/**
+	 * Fired exactly once when a background run reaches a terminal status
+	 * (completed | failed | cancelled | interrupted). Only wired by the
+	 * `executeAgentTool` background path — foreground runs return synchronously
+	 * and don't need a push. Parent sessions use this to inject a structured
+	 * `agent_completion` custom message instead of polling status.
+	 */
+	onBackgroundTerminal?: (notification: AgentBackgroundCompletion) => void;
 }
 
 export interface AgentToolExecutionInput {
@@ -517,6 +527,55 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 	});
 }
 
+// Cap result text we inline into the completion notification. The full text is
+// always available on disk via `outputPaths` / `sessionPaths`; the message is a
+// summary, not the full payload.
+const BACKGROUND_RESULT_PREVIEW_CHARS = 4000;
+
+function truncatePreview(text: string | undefined, limit: number): string | undefined {
+	if (!text) return undefined;
+	const trimmed = text.trim();
+	if (!trimmed) return undefined;
+	if (trimmed.length <= limit) return trimmed;
+	return `${trimmed.slice(0, limit - 1)}\u2026`;
+}
+
+function buildBackgroundCompletion(run: AgentRecentRun): AgentBackgroundCompletion {
+	const totalTokens = run.runs.reduce((sum, child) => {
+		const t = (child.usage as { totalTokens?: number } | undefined)?.totalTokens;
+		return typeof t === "number" ? sum + t : sum;
+	}, 0);
+	const toolCallCount = run.runs.reduce((sum, child) => sum + (child.toolCallCount ?? 0), 0);
+	const firstFinal = run.runs.find(
+		(child) => typeof child.finalOutput === "string" && child.finalOutput.length > 0,
+	)?.finalOutput;
+	const summary =
+		run.status === "completed"
+			? `Background agent ${run.id} (${run.agents.join(", ")}) completed`
+			: run.status === "failed"
+				? `Background agent ${run.id} failed: ${run.error || "unknown error"}`
+				: run.status === "cancelled"
+					? `Background agent ${run.id} was cancelled`
+					: run.status === "interrupted"
+						? `Background agent ${run.id} was interrupted`
+						: `Background agent ${run.id} reached status ${run.status}`;
+	return {
+		runId: run.id,
+		status: run.status,
+		mode: run.mode,
+		agents: [...run.agents],
+		tasks: [...run.tasks],
+		summary,
+		result: truncatePreview(firstFinal, BACKGROUND_RESULT_PREVIEW_CHARS),
+		outputPaths: [...run.outputPaths],
+		sessionPaths: run.sessionRefs.map((ref) => ref.sessionPath).filter((path): path is string => Boolean(path)),
+		error: run.error,
+		durationMs: run.durationMs,
+		totalTokens: totalTokens > 0 ? totalTokens : undefined,
+		toolCallCount: toolCallCount > 0 ? toolCallCount : undefined,
+	};
+}
+
 function emitProgress(
 	input: AgentToolExecutionInput,
 	runs: AgentRunDetails[],
@@ -884,6 +943,13 @@ export async function executeAgentTool(
 				if (getAgentRecentRunGeneration(recentRun) === generation) stopMonitor();
 			});
 	};
+
+	if (options.onBackgroundTerminal) {
+		const notify = options.onBackgroundTerminal;
+		attachAgentRecentRunTerminalListener(recentRun.id, (run) => {
+			notify(buildBackgroundCompletion(run));
+		});
+	}
 
 	attachAgentRecentRunController(recentRun.id, {
 		interrupt: async () => {

@@ -37,7 +37,7 @@ import { stripFrontmatter } from "../utils/frontmatter.js";
 import { sleep } from "../utils/sleep.js";
 import { type AgentToolParentServices, executeAgentTool } from "./agents/executor.js";
 import { cancelAgentRecentRun, findAgentRecentRun, waitForAgentRecentRun } from "./agents/status.js";
-import type { AgentToolDetails, AgentToolStatus } from "./agents/types.js";
+import type { AgentBackgroundCompletion, AgentToolDetails, AgentToolStatus } from "./agents/types.js";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.js";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
 import {
@@ -2317,6 +2317,7 @@ export class AgentSession {
 				// the parent's cached prefix (see core/tools/agent.ts for the same
 				// wiring used by the LLM-callable agent tool).
 				parentSystemPrompt: this.agent.state.systemPrompt,
+				onBackgroundTerminal: (notification) => this._emitAgentCompletion(notification),
 				// Note: executor's background path replaces `signal` with its own
 				// AbortController. We chain the caller's signal below via
 				// cancelAgentRecentRun(runId) so abort still propagates.
@@ -2377,6 +2378,71 @@ export class AgentSession {
 		};
 
 		return { handle, sessionId: runId };
+	}
+
+	/**
+	 * Push a structured agent_completion message to the session when a
+	 * background agent reaches a terminal status. Mirrors Claude Code's
+	 * <task_notification> shape: runId, status, summary, result preview,
+	 * outputPaths, sessionPaths, usage.
+	 *
+	 * Delivery strategy (intentionally no triggerTurn:true here):
+	 *   - When the parent is streaming/compacting/processing, sendCustomMessage
+	 *     routes to the followUp queue — the message lands in the next drain,
+	 *     emits message_start when the loop picks it up, and pi-goal's wake
+	 *     hook fires from there.
+	 *   - When the parent is idle, sendCustomMessage takes the "push to
+	 *     messages + emit message_start synchronously" branch. pi-goal sees a
+	 *     non-pi-goal customType in message_start and triggers its own
+	 *     continuation turn (which carries the goal's wake prompt + agent_completion
+	 *     already in conversation). Without a goal, the message sits in history
+	 *     and renders in the TUI; the next user prompt picks it up. Matches
+	 *     Claude Code's task-notification queue semantics.
+	 *
+	 * Auto-starting a turn here would race any user/test prompt arriving in
+	 * the same tick — the goal-wake path is the right place to drive the turn.
+	 */
+	private _emitAgentCompletion(notification: AgentBackgroundCompletion): void {
+		const lines: string[] = [
+			`<agent_completion>`,
+			`<run_id>${notification.runId}</run_id>`,
+			`<status>${notification.status}</status>`,
+			`<mode>${notification.mode}</mode>`,
+			`<agents>${notification.agents.join(", ")}</agents>`,
+			`<summary>${notification.summary}</summary>`,
+		];
+		if (typeof notification.durationMs === "number") {
+			lines.push(`<duration_ms>${notification.durationMs}</duration_ms>`);
+		}
+		if (typeof notification.totalTokens === "number") {
+			lines.push(`<total_tokens>${notification.totalTokens}</total_tokens>`);
+		}
+		if (typeof notification.toolCallCount === "number") {
+			lines.push(`<tool_calls>${notification.toolCallCount}</tool_calls>`);
+		}
+		for (const path of notification.outputPaths) lines.push(`<output_path>${path}</output_path>`);
+		for (const path of notification.sessionPaths) lines.push(`<session_path>${path}</session_path>`);
+		if (notification.error) lines.push(`<error>${notification.error}</error>`);
+		if (notification.result) {
+			lines.push(`<result>`);
+			lines.push(notification.result);
+			lines.push(`</result>`);
+		}
+		lines.push(`</agent_completion>`);
+		lines.push(
+			`\nThe background agent has finished. Do NOT call \`agent\` action=status/detail to verify — the run is terminal. Read output_path or session_path if you need the full transcript.`,
+		);
+		void this.sendCustomMessage(
+			{
+				customType: "agent_completion",
+				content: lines.join("\n"),
+				display: true,
+				details: notification,
+			},
+			{ deliverAs: "followUp" },
+		).catch(() => {
+			/* sendCustomMessage logs its own runtime errors; don't crash the lifecycle listener. */
+		});
 	}
 
 	private _transcriptAppendFromExtension(entry: TranscriptEntry): void {
@@ -2685,6 +2751,7 @@ export class AgentSession {
 								// Thread the frozen turn-start system prompt so fork children inherit
 								// exact parent bytes — same cache key (system + tools + messages prefix).
 								getParentSystemPrompt: () => this.agent.state.systemPrompt,
+								onBackgroundTerminal: (notification) => this._emitAgentCompletion(notification),
 							}
 						: undefined,
 				});

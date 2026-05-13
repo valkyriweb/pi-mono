@@ -128,6 +128,34 @@ export interface AgentExecutionProgress {
 	chainDir?: string;
 }
 
+/**
+ * Structured completion payload for a background agent run. Pushed to the
+ * parent session as a custom message when the run reaches a terminal status,
+ * so the parent doesn't have to poll `agent` action=detail/status.
+ *
+ * Shape parallels Claude Code's <task_notification> block (task_id, status,
+ * summary, result, output_file, usage) — enough for the model to act on
+ * without further lookups.
+ */
+export interface AgentBackgroundCompletion {
+	runId: string;
+	status: AgentToolStatus;
+	mode: AgentToolMode;
+	agents: string[];
+	tasks: string[];
+	summary: string;
+	/** Final assistant text from the child (truncated to a reasonable size by emitter). */
+	result?: string;
+	/** Path(s) the child wrote results to, if any (writeAgentOutput target). */
+	outputPaths: string[];
+	/** Per-child session jsonl paths — for on-demand inspection without polling status. */
+	sessionPaths: string[];
+	error?: string;
+	durationMs?: number;
+	totalTokens?: number;
+	toolCallCount?: number;
+}
+
 export interface AgentModelSelection {
 	model: Model<Api> | undefined;
 	thinkingLevel: ThinkingLevel;
