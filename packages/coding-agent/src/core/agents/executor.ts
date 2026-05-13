@@ -6,7 +6,7 @@ import { createAgentSessionFromServices, createAgentSessionServices } from "../a
 import type { AuthStorage } from "../auth-storage.js";
 import { DEFAULT_THINKING_LEVEL } from "../defaults.js";
 import type { ModelRegistry } from "../model-registry.js";
-import { parseModelPattern } from "../model-resolver.js";
+import { fastModelPerProvider, parseModelPattern } from "../model-resolver.js";
 import { type ReadonlySessionManager, SessionManager } from "../session-manager.js";
 import type { SettingsManager } from "../settings-manager.js";
 import {
@@ -165,6 +165,23 @@ export function resolveAgentModel(options: {
 		options.modelReference ??
 		(options.agent.model && options.agent.model !== "inherit" ? options.agent.model : undefined);
 	if (!reference) return options.parentModel;
+
+	// `"fast"` alias: resolve to the parent provider's mapped cheap model.
+	// Used by the read-only `explore` agent to avoid burning the parent's
+	// expensive model on grep/find/read workloads. Falls back to
+	// the parent model when the provider has no fast mapping or the mapped id
+	// is not available — never throws on `"fast"`.
+	if (reference === "fast") {
+		const parentProvider = options.parentModel?.provider;
+		const mappedId = parentProvider ? fastModelPerProvider[parentProvider] : undefined;
+		if (mappedId) {
+			const available = options.modelRegistry.getAvailable();
+			const hit = available.find((m) => m.provider === parentProvider && m.id === mappedId);
+			if (hit) return hit;
+		}
+		return options.parentModel;
+	}
+
 	const result = parseModelPattern(reference, options.modelRegistry.getAvailable());
 	if (!result.model) {
 		throw new Error(`Unknown or unavailable model: ${reference}`);

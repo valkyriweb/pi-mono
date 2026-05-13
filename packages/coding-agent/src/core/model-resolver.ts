@@ -10,6 +10,29 @@ import { isValidThinkingLevel } from "../cli/args.js";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import type { ModelRegistry } from "./model-registry.js";
 
+/**
+ * Fast/cheap model id per provider, used to resolve the `"fast"` model alias
+ * (e.g. for the read-only `explore` agent).
+ *
+ * Only providers with a clear cheap variant are listed. When the parent's
+ * provider has no entry here, `"fast"` falls back to the parent model.
+ * Custom-provider users can override per-agent via an explicit `model:` value.
+ */
+export const fastModelPerProvider: Record<string, string> = {
+	anthropic: "claude-haiku-4-5",
+	"amazon-bedrock": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+	openai: "gpt-5.4-mini",
+	"azure-openai-responses": "gpt-5.4-mini",
+	"github-copilot": "gpt-5.4-mini",
+	google: "gemini-3.1-flash-lite",
+	"google-vertex": "gemini-3.1-flash-lite",
+	groq: "openai/gpt-oss-20b",
+	xai: "grok-4-fast",
+	// Custom proxy provider (Luke's fork). Routes Anthropic models via a local
+	// bridge; haiku-4-5 is the cheap variant on the other end.
+	"claude-bridge": "claude-haiku-4-5",
+};
+
 /** Default model IDs for each known provider */
 export const defaultModelPerProvider: Record<KnownProvider, string> = {
 	"amazon-bedrock": "us.anthropic.claude-opus-4-6-v1",

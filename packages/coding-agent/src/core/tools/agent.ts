@@ -338,6 +338,8 @@ export function createAgentToolDefinition(
 		promptSnippet: "Delegate a task to a child agent with bounded tools",
 		promptGuidelines: [
 			"Use agent for delegated work that benefits from an isolated child context.",
+			"For codebase research, file/symbol lookups, or 'find me X' / 'how does Y work?' questions, prefer the built-in `explore` agent \u2014 it is read-only, defaults to a fast cheap model (`fast` alias), and runs in a slim context. Use `general` only for delegated work that needs writes or the parent's full tool set.",
+			"For implementation strategy and risk analysis on a known requirement, prefer `plan` (read-only) before delegating to `worker`.",
 			"When parallel exploration or review is needed, send multiple agent tool-use blocks in one assistant message; Pi runs those calls concurrently. Use tasks[] only for explicit batched fan-out inside one agent call.",
 			"Use background:true for long-running delegated work that should continue while the parent reports back; control it with action/status/interrupt/cancel/resume and runId.",
 			"Do not use agent recursively; child agents cannot call agent.",
