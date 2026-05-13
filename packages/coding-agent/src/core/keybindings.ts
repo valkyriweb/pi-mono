@@ -33,6 +33,12 @@ export interface AppKeybindings {
 	"app.agents.interrupt": true;
 	"app.agents.cancel": true;
 	"app.agents.resume": true;
+	"app.agents.zoom.enter": true;
+	"app.agents.zoom.exit": true;
+	"app.agents.zoom.cycleNext": true;
+	"app.agents.zoom.cyclePrev": true;
+	"app.agents.zoom.requestShutdown": true;
+	"app.agents.zoom.kill": true;
 	"app.tree.foldOrUp": true;
 	"app.tree.unfoldOrDown": true;
 	"app.tree.editLabel": true;
@@ -117,6 +123,38 @@ export const KEYBINDINGS = {
 	"app.agents.interrupt": { defaultKeys: "i", description: "Interrupt selected background agent run" },
 	"app.agents.cancel": { defaultKeys: "c", description: "Cancel selected background agent run" },
 	"app.agents.resume": { defaultKeys: "r", description: "Resume selected background agent run" },
+	// Zoom uses alt+<letter> defaults because:
+	//   - ctrl+] is owned by tui.editor.jumpForward
+	//   - ctrl+. / ctrl+, / ctrl+shift+i / ctrl+shift+k all require the
+	//     terminal to emit modifyOtherKeys or kitty CSI-u, which is off by
+	//     default in stock macOS Terminal and tmux without `extended-keys on`.
+	// The legacy alt+<key> path only parses letters and digits (ESC<char>),
+	// so alt+,/alt+. don't work without kitty protocol — use alt+h/alt+l
+	// (vim-ish left/right) for cyclePrev/cycleNext.
+	"app.agents.zoom.enter": {
+		defaultKeys: "alt+z",
+		description: "Zoom into the most recent running background agent",
+	},
+	"app.agents.zoom.exit": {
+		defaultKeys: "escape",
+		description: "Exit the zoomed agent view",
+	},
+	"app.agents.zoom.cycleNext": {
+		defaultKeys: "alt+l",
+		description: "Cycle to the next running background agent while zoomed",
+	},
+	"app.agents.zoom.cyclePrev": {
+		defaultKeys: "alt+h",
+		description: "Cycle to the previous running background agent while zoomed",
+	},
+	"app.agents.zoom.requestShutdown": {
+		defaultKeys: "alt+i",
+		description: "Cooperatively interrupt the zoomed agent",
+	},
+	"app.agents.zoom.kill": {
+		defaultKeys: "alt+k",
+		description: "Hard-stop (kill) the zoomed agent",
+	},
 	"app.tree.foldOrUp": {
 		defaultKeys: ["ctrl+left", "alt+left"],
 		description: "Fold tree branch or move up",

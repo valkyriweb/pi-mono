@@ -16,14 +16,7 @@ export type TaskType = "local_agent" | "local_bash" | "monitor" | "intercom_peer
  * `interrupted` is non-terminal — a soft-stopped task that may resume.
  * `idle` is reserved for future use (in-process teammates awaiting input).
  */
-export type TaskStatus =
-	| "running"
-	| "idle"
-	| "interrupted"
-	| "completed"
-	| "failed"
-	| "cancelled"
-	| "killed";
+export type TaskStatus = "running" | "idle" | "interrupted" | "completed" | "failed" | "cancelled" | "killed";
 
 export function isTerminalTaskStatus(status: TaskStatus): boolean {
 	return status === "completed" || status === "failed" || status === "cancelled" || status === "killed";

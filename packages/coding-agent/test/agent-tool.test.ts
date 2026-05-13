@@ -1,8 +1,14 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { writeAgentOutput } from "../src/core/agents/output.js";
+import {
+	attachAgentRecentRunController,
+	clearAgentRecentRunsForTests,
+	startAgentRecentRun,
+	updateAgentRecentRunProgress,
+} from "../src/core/agents/status.js";
 import type { AgentToolDetails } from "../src/core/agents/types.js";
 import { createAgentToolDefinition, normalizeAgentToolMode } from "../src/core/tools/agent.js";
 import { theme } from "../src/modes/interactive/theme/theme.js";
@@ -111,6 +117,78 @@ describe("agent tool", () => {
 				hasUI: false,
 			} as Parameters<typeof tool.execute>[4]),
 		).rejects.toThrow("Project agents require interactive confirmation");
+	});
+
+	test("action=inject interrupts a running run then resumes with the message", async () => {
+		clearAgentRecentRunsForTests();
+		const dir = await makeTempDir();
+		const sessionPath = join(dir, "child-session.jsonl");
+		await writeFile(sessionPath, "{}\n");
+		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map files" }], { background: true });
+		updateAgentRecentRunProgress(run, {
+			mode: "single",
+			status: "running",
+			runs: [
+				{
+					agent: "scout",
+					source: "builtin",
+					task: "Map files",
+					status: "running",
+					context: {
+						mode: "default",
+						includeTranscript: false,
+						includeProjectContext: true,
+						includeSkills: true,
+						includeAppendSystemPrompt: true,
+					},
+					effectiveTools: [],
+					deniedTools: [],
+					durationMs: 1,
+					toolCallCount: 0,
+					messageCount: 0,
+					recentToolCalls: [],
+					recentOutputSnippets: [],
+					loadedSkills: [],
+					invokedSkills: { count: 0, names: [] },
+					sessionPath,
+				},
+			],
+		});
+		const interrupt = vi.fn();
+		const resume = vi.fn();
+		attachAgentRecentRunController(run.id, { interrupt, resume });
+
+		const tool = createAgentToolDefinition(process.cwd());
+		const result = await tool.execute(
+			"tool-inject",
+			{ action: "inject", runId: run.id, message: "check config.ts" } as Parameters<typeof tool.execute>[1],
+			undefined,
+			undefined,
+			{ hasUI: false } as Parameters<typeof tool.execute>[4],
+		);
+
+		expect(interrupt).toHaveBeenCalledOnce();
+		expect(resume).toHaveBeenCalledWith("check config.ts");
+		expect(result.content[0]).toMatchObject({ type: "text" });
+		expect((result.content[0] as { text: string }).text).toContain(`Resumed ${run.id}`);
+		expect(result.details?.runId).toBe(run.id);
+		clearAgentRecentRunsForTests();
+	});
+
+	test("action=inject without message rejects", async () => {
+		clearAgentRecentRunsForTests();
+		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map" }], { background: true });
+		const tool = createAgentToolDefinition(process.cwd());
+		await expect(
+			tool.execute(
+				"tool-inject",
+				{ action: "inject", runId: run.id } as Parameters<typeof tool.execute>[1],
+				undefined,
+				undefined,
+				{ hasUI: false } as Parameters<typeof tool.execute>[4],
+			),
+		).rejects.toThrow("requires message");
+		clearAgentRecentRunsForTests();
 	});
 
 	test("execute fails clearly when runtime child services are not wired", async () => {

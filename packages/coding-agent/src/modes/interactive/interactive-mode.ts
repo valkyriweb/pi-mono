@@ -94,6 +94,13 @@ import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../cor
 import { type SessionContext, SessionManager } from "../../core/session-manager.js";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.js";
 import type { SourceInfo } from "../../core/source-info.js";
+import {
+	appendTaskMessage,
+	cycleRunningTask,
+	getRunningTasksSorted,
+	isTerminalTaskStatus,
+	LocalAgentTask,
+} from "../../core/tasks/index.js";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.js";
 import type { TruncationResult } from "../../core/tools/truncate.js";
 import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.js";
@@ -136,6 +143,7 @@ import { ToolExecutionComponent } from "./components/tool-execution.js";
 import { TreeSelectorComponent } from "./components/tree-selector.js";
 import { UserMessageComponent } from "./components/user-message.js";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.js";
+import { ZoomedTaskComponent } from "./components/zoomed-task.js";
 import {
 	getAvailableThemes,
 	getAvailableThemesWithPaths,
@@ -326,6 +334,18 @@ export class InteractiveMode {
 
 	// Shutdown state
 	private shutdownRequested = false;
+
+	// Zoom-into-running-agent state.
+	// When zoomed, the main chat pane is replaced by a ZoomedTaskComponent that
+	// renders the live tail from `subscribeTaskMessages(zoomedTaskId,…)`. Editor
+	// Enter routes to `LocalAgentTask.injectMessage` instead of the parent
+	// session. Auto-pop fires `STOPPED_DISPLAY_MS` after a terminal status.
+	private zoomedTaskId: string | undefined = undefined;
+	private zoomedComponent: ZoomedTaskComponent | undefined = undefined;
+	private preZoomChatChildren: Component[] = [];
+	private zoomAutoPopTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+	private unsubscribeZoomStatus?: () => void;
+	private static readonly ZOOM_STOPPED_DISPLAY_MS = 3000;
 
 	// Extension UI state
 	private extensionSelector: ExtensionSelectorComponent | undefined = undefined;
@@ -2429,6 +2449,16 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
 		this.defaultEditor.onAction("app.session.fork", () => this.showUserMessageSelector());
 		this.defaultEditor.onAction("app.session.resume", () => this.showSessionSelector());
+		this.defaultEditor.onAction("app.agents.zoom.enter", () => this.enterZoomFromHotkey());
+		this.defaultEditor.onAction("app.agents.zoom.exit", () => this.exitZoom());
+		this.defaultEditor.onAction("app.agents.zoom.cycleNext", () => this.cycleZoom("next"));
+		this.defaultEditor.onAction("app.agents.zoom.cyclePrev", () => this.cycleZoom("prev"));
+		this.defaultEditor.onAction("app.agents.zoom.requestShutdown", () => {
+			void this.runZoomedTaskVerb("requestShutdown");
+		});
+		this.defaultEditor.onAction("app.agents.zoom.kill", () => {
+			void this.runZoomedTaskVerb("kill");
+		});
 
 		this.defaultEditor.onChange = (text: string) => {
 			const wasBashMode = this.isBashMode;
@@ -2470,6 +2500,18 @@ export class InteractiveMode {
 		this.defaultEditor.onSubmit = async (text: string) => {
 			text = text.trim();
 			if (!text) return;
+
+			// While zoomed, Enter steers the child agent instead of the parent session.
+			// `/exit-zoom` is a safety hatch in case the keybinding is rebound.
+			if (this.zoomedTaskId) {
+				this.editor.setText("");
+				if (text === "/exit-zoom") {
+					this.exitZoom();
+					return;
+				}
+				this.injectIntoZoomedTask(text);
+				return;
+			}
 
 			// Handle commands
 			if (text === "/settings") {
@@ -3275,6 +3317,151 @@ export class InteractiveMode {
 	 * repaint the final frame while the process is exiting.
 	 */
 	private isShuttingDown = false;
+
+	// ──────────────────────────────────────────────────────────────────────
+	// Zoom-into-running-agent view
+	// ──────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Enter zoom view from the global hotkey. Picks the most recently started
+	 * running task (last in sort order). Returns silently with a warning if no
+	 * running task exists.
+	 */
+	private enterZoomFromHotkey(): void {
+		const tasks = getRunningTasksSorted();
+		const target = tasks[tasks.length - 1];
+		if (!target) {
+			this.showWarning("No running background agent to zoom into.");
+			return;
+		}
+		this.enterZoom(target.id);
+	}
+
+	private enterZoom(taskId: string): void {
+		if (this.zoomedTaskId === taskId) return;
+		// If already zoomed into a different task, swap component in place to
+		// avoid restoring + re-clearing the chat container twice.
+		if (this.zoomedTaskId) {
+			this.disposeZoomedComponent();
+			this.zoomedTaskId = taskId;
+			this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui);
+			this.chatContainer.addChild(this.zoomedComponent);
+			this.scheduleZoomTerminalCheck();
+			this.footer.invalidate();
+			this.ui.requestRender();
+			return;
+		}
+		this.zoomedTaskId = taskId;
+		this.preZoomChatChildren = [...this.chatContainer.children];
+		this.chatContainer.clear();
+		this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui);
+		this.chatContainer.addChild(this.zoomedComponent);
+		// Watch for terminal status on this task to auto-pop.
+		this.unsubscribeZoomStatus = subscribeAgentRecentRuns(() => this.scheduleZoomTerminalCheck());
+		this.scheduleZoomTerminalCheck();
+		this.footer.invalidate();
+		this.ui.requestRender();
+	}
+
+	private exitZoom(): void {
+		if (!this.zoomedTaskId) return;
+		this.disposeZoomedComponent();
+		this.unsubscribeZoomStatus?.();
+		this.unsubscribeZoomStatus = undefined;
+		if (this.zoomAutoPopTimer) {
+			clearTimeout(this.zoomAutoPopTimer);
+			this.zoomAutoPopTimer = undefined;
+		}
+		this.zoomedTaskId = undefined;
+		// Restore the chat container's pre-zoom children plus anything that may
+		// have been appended while zoomed (we currently drop those — chat
+		// appends during zoom are rare; if it becomes a problem, capture them
+		// via a separate container).
+		this.chatContainer.clear();
+		for (const child of this.preZoomChatChildren) this.chatContainer.addChild(child);
+		this.preZoomChatChildren = [];
+		this.footer.invalidate();
+		this.ui.requestRender();
+	}
+
+	private disposeZoomedComponent(): void {
+		if (this.zoomedComponent) {
+			this.zoomedComponent.dispose();
+			this.chatContainer.removeChild(this.zoomedComponent);
+			this.zoomedComponent = undefined;
+		}
+	}
+
+	private cycleZoom(direction: "next" | "prev"): void {
+		if (!this.zoomedTaskId) {
+			this.enterZoomFromHotkey();
+			return;
+		}
+		const next = cycleRunningTask(this.zoomedTaskId, direction);
+		if (!next) {
+			this.exitZoom();
+			return;
+		}
+		this.enterZoom(next.id);
+	}
+
+	private injectIntoZoomedTask(text: string): void {
+		const taskId = this.zoomedTaskId;
+		if (!taskId) return;
+		// 1) Render the injected message *immediately* (synchronous append) so
+		//    the user sees the → line before the child agent picks it up.
+		appendTaskMessage(taskId, { kind: "user_injected", ts: Date.now(), text });
+		this.ui.requestRender();
+		// 2) Fire the underlying interrupt+resume in the background. Awaiting it
+		//    here would block Enter for up to a tool boundary (5–30s on a
+		//    streaming LLM turn), which the user perceives as a timeout. The
+		//    pending-message buffer means the inject still lands at the next
+		//    turn boundary; the await would only have given us a synchronous
+		//    failure path, which we surface async via the warning toast.
+		void (async () => {
+			try {
+				const result = await LocalAgentTask.injectMessage?.(taskId, text);
+				if (result && !result.ok) {
+					this.showWarning(`Inject failed: ${result.message}`);
+				}
+			} catch (error) {
+				this.showWarning(`Inject failed: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		})();
+	}
+
+	private async runZoomedTaskVerb(verb: "requestShutdown" | "kill"): Promise<void> {
+		const taskId = this.zoomedTaskId;
+		if (!taskId) return;
+		const fn = verb === "requestShutdown" ? LocalAgentTask.requestShutdown : LocalAgentTask.kill;
+		if (!fn) return;
+		const result = await fn(taskId);
+		if (!result.ok) {
+			this.showWarning(`${verb} failed: ${result.message}`);
+		}
+	}
+
+	/**
+	 * If the currently zoomed task is in a terminal state, schedule an
+	 * auto-pop after `ZOOM_STOPPED_DISPLAY_MS`. Re-entrant: if a timer is
+	 * already armed it stays armed. Mirrors Claude's STOPPED_DISPLAY_MS.
+	 */
+	private scheduleZoomTerminalCheck(): void {
+		const taskId = this.zoomedTaskId;
+		if (!taskId) return;
+		if (this.zoomAutoPopTimer) return;
+		const snapshot = LocalAgentTask.snapshot(taskId);
+		if (!snapshot || !isTerminalTaskStatus(snapshot.status)) return;
+		this.zoomAutoPopTimer = setTimeout(() => {
+			this.zoomAutoPopTimer = undefined;
+			// Only auto-pop if we are still zoomed on the same task and it is
+			// still in a terminal state (defensive against late status thrash).
+			if (this.zoomedTaskId !== taskId) return;
+			const current = LocalAgentTask.snapshot(taskId);
+			if (current && !isTerminalTaskStatus(current.status)) return;
+			this.exitZoom();
+		}, InteractiveMode.ZOOM_STOPPED_DISPLAY_MS);
+	}
 
 	private async shutdown(): Promise<void> {
 		if (this.isShuttingDown) return;

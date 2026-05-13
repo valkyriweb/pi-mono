@@ -20,6 +20,7 @@ import type {
 } from "../agents/types.js";
 import type { ToolDefinition } from "../extensions/types.js";
 import type { ReadonlySessionManager } from "../session-manager.js";
+import { LocalAgentTask } from "../tasks/index.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
 
 const contextModeSchema = Type.Union([
@@ -45,6 +46,7 @@ const controlActionSchema = Type.Union([
 	Type.Literal("interrupt"),
 	Type.Literal("cancel"),
 	Type.Literal("resume"),
+	Type.Literal("inject"),
 ]);
 
 const taskSchema = Type.Object({
@@ -307,6 +309,34 @@ async function executeAgentControlAction(params: AgentToolInput): Promise<AgentT
 		return { content: [{ type: "text", text: formatAgentStatus(undefined, params.runId) }] };
 	}
 	if (!params.runId) throw new Error(`agent control action ${action} requires runId`);
+	if (action === "inject") {
+		if (!params.message) throw new Error("agent control action inject requires message");
+		if (!LocalAgentTask.injectMessage) throw new Error("agent inject is not supported in this runtime");
+		const injected = await LocalAgentTask.injectMessage(params.runId, params.message);
+		const snapshot = injected.snapshot;
+		const detailText = formatAgentStatus(undefined, params.runId);
+		const toolStatus: AgentToolDetails["status"] | undefined = snapshot
+			? snapshot.status === "killed"
+				? "cancelled"
+				: snapshot.status === "idle"
+					? "running"
+					: snapshot.status
+			: undefined;
+		return {
+			content: [{ type: "text", text: `${injected.message}\n\n${detailText}` }],
+			details:
+				snapshot && toolStatus
+					? {
+							mode: "single",
+							status: toolStatus,
+							runs: [],
+							runId: snapshot.id,
+							background: true,
+							message: injected.message,
+						}
+					: undefined,
+		};
+	}
 	const result =
 		action === "interrupt"
 			? await interruptAgentRecentRun(params.runId)
