@@ -39,6 +39,9 @@ export interface AppKeybindings {
 	"app.agents.zoom.cyclePrev": true;
 	"app.agents.zoom.requestShutdown": true;
 	"app.agents.zoom.kill": true;
+	"app.agents.footer.focusPrev": true;
+	"app.agents.footer.focusNext": true;
+	"app.agents.footer.zoom": true;
 	"app.tree.foldOrUp": true;
 	"app.tree.unfoldOrDown": true;
 	"app.tree.editLabel": true;
@@ -154,6 +157,19 @@ export const KEYBINDINGS = {
 	"app.agents.zoom.kill": {
 		defaultKeys: "alt+k",
 		description: "Hard-stop (kill) the zoomed agent",
+	},
+	// Footer navigation — bare up/down/enter guarded by empty-editor + running-tasks conditions
+	"app.agents.footer.focusPrev": {
+		defaultKeys: "up",
+		description: "On empty editor with running agents, highlight the previous agent pill in the footer",
+	},
+	"app.agents.footer.focusNext": {
+		defaultKeys: "down",
+		description: "On empty editor with running agents, highlight the next agent pill in the footer",
+	},
+	"app.agents.footer.zoom": {
+		defaultKeys: "enter",
+		description: "Zoom into the footer-highlighted agent (only acts when a footer pill is selected)",
 	},
 	"app.tree.foldOrUp": {
 		defaultKeys: ["ctrl+left", "alt+left"],
