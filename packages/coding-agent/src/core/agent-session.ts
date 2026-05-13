@@ -35,7 +35,9 @@ import {
 import { theme } from "../modes/interactive/theme/theme.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
 import { sleep } from "../utils/sleep.js";
-import type { AgentToolParentServices } from "./agents/executor.js";
+import { type AgentToolParentServices, executeAgentTool } from "./agents/executor.js";
+import { cancelAgentRecentRun, findAgentRecentRun, waitForAgentRecentRun } from "./agents/status.js";
+import type { AgentToolDetails, AgentToolStatus } from "./agents/types.js";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.js";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
 import {
@@ -83,6 +85,7 @@ import {
 	wrapRegisteredTools,
 } from "./extensions/index.js";
 import { emitSessionShutdownEvent } from "./extensions/runner.js";
+import type { AgentHandle, ForkAgentOptions, ForkAgentResult, TranscriptEntry } from "./extensions/types.js";
 import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
@@ -2274,6 +2277,132 @@ export class AgentSession {
 		this.agent.state.model = refreshedModel;
 	}
 
+	private async _forkAgentFromExtension(opts: ForkAgentOptions): Promise<ForkAgentResult> {
+		if (!this._agentToolServices) {
+			throw new Error("forkAgent is not available: agent tool services are not bound to this session");
+		}
+		if (typeof opts?.prompt !== "string" || opts.prompt.length === 0) {
+			throw new Error("forkAgent requires a non-empty prompt");
+		}
+		const ctxSignal = this.agent.signal;
+		const signals: AbortSignal[] = [];
+		if (opts.signal) signals.push(opts.signal);
+		if (ctxSignal) signals.push(ctxSignal);
+		const forkSignal =
+			signals.length === 0 ? undefined : signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+
+		const details = await executeAgentTool(
+			{
+				mode: "single",
+				background: true,
+				tasks: [
+					{
+						agent: "general",
+						task: opts.prompt,
+						description: opts.description,
+						context: "fork",
+						tools: opts.allowedTools,
+						model: opts.model,
+					},
+				],
+			},
+			{
+				parentServices: this._agentToolServices,
+				parentActiveTools: this.getActiveToolNames(),
+				parentSessionManager: this.sessionManager,
+				parentModel: this.model,
+				parentThinkingLevel: this.thinkingLevel,
+				// Capture the parent's frozen turn-start system prompt so the child's
+				// first API call inherits byte-identical system + tools bytes and hits
+				// the parent's cached prefix (see core/tools/agent.ts for the same
+				// wiring used by the LLM-callable agent tool).
+				parentSystemPrompt: this.agent.state.systemPrompt,
+				// Note: executor's background path replaces `signal` with its own
+				// AbortController. We chain the caller's signal below via
+				// cancelAgentRecentRun(runId) so abort still propagates.
+			},
+		);
+
+		const runId = details.runId;
+		if (!runId) {
+			throw new Error("forkAgent: background run did not return a runId");
+		}
+
+		// Chain the caller's signal onto the background run. cancelAgentRecentRun
+		// calls the registered controller's cancel(), which aborts every active
+		// child session and drives the run to a terminal status within ~1s.
+		if (forkSignal) {
+			const onAbort = () => {
+				void cancelAgentRecentRun(runId).catch(() => {});
+			};
+			if (forkSignal.aborted) {
+				onAbort();
+			} else {
+				forkSignal.addEventListener("abort", onAbort, { once: true });
+			}
+		}
+
+		const readStatus = (): AgentToolStatus => {
+			const run = findAgentRecentRun(runId);
+			return run?.status ?? details.status;
+		};
+
+		const toDetails = (run: ReturnType<typeof findAgentRecentRun>): AgentToolDetails => {
+			if (run) {
+				return {
+					mode: run.mode,
+					status: run.status,
+					runs: run.runs,
+					runId: run.id,
+					background: run.execution === "background",
+					resumable: run.resumable,
+				};
+			}
+			return details;
+		};
+
+		const handle: AgentHandle = {
+			get status() {
+				return readStatus();
+			},
+			async wait() {
+				const snapshot = findAgentRecentRun(runId);
+				if (snapshot && snapshot.status !== "running") return toDetails(snapshot);
+				const run = await waitForAgentRecentRun(runId);
+				return toDetails(run);
+			},
+			async abort() {
+				await cancelAgentRecentRun(runId);
+			},
+		};
+
+		return { handle, sessionId: runId };
+	}
+
+	private _transcriptAppendFromExtension(entry: TranscriptEntry): void {
+		if (!entry || typeof entry !== "object") {
+			throw new Error("transcript.append requires a TranscriptEntry object");
+		}
+		if (entry.kind === "memory_saved") {
+			const verb: "Saved" | "Improved" = entry.verb === "Improved" ? "Improved" : "Saved";
+			const paths = Array.isArray(entry.paths) ? entry.paths.filter((p): p is string => typeof p === "string") : [];
+			const summary = `${verb} ${paths.length} ${paths.length === 1 ? "memory" : "memories"}`;
+			void this.sendCustomMessage(
+				{
+					customType: "memory_saved",
+					content: paths.length > 0 ? `${summary}\n${paths.join("\n")}` : summary,
+					display: true,
+					details: { verb, paths },
+				},
+				{ triggerTurn: false },
+			).catch(() => {
+				/* sendCustomMessage logs runtime errors via emitError; do not crash the extension hook. */
+			});
+			return;
+		}
+		// Unknown kinds: ignore rather than crash; future kinds will be added as the union grows.
+	}
+
 	private _bindExtensionCore(runner: ExtensionRunner): void {
 		const getCommands = (): SlashCommandInfo[] => {
 			const extensionCommands: SlashCommandInfo[] = runner.getRegisteredCommands().map((command) => ({
@@ -2397,6 +2526,8 @@ export class AgentSession {
 				},
 				getSystemPrompt: () => this.systemPrompt,
 				getEffectiveSystemPrompt: () => this.getEffectiveSystemPrompt(),
+				forkAgent: (opts) => this._forkAgentFromExtension(opts),
+				transcriptAppend: (entry) => this._transcriptAppendFromExtension(entry),
 			},
 			{
 				registerProvider: (name, config) => {

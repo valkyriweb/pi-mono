@@ -52,6 +52,7 @@ export { createEventBus, type EventBus, type EventBusController } from "./core/e
 // Extension system
 export type {
 	AgentEndEvent,
+	AgentHandle,
 	AgentStartEvent,
 	AgentToolResult,
 	AgentToolUpdateCallback,
@@ -88,6 +89,8 @@ export type {
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
 	FindToolCallEvent,
+	ForkAgentOptions,
+	ForkAgentResult,
 	GrepToolCallEvent,
 	InputEvent,
 	InputEventResult,
@@ -122,6 +125,8 @@ export type {
 	ToolInfo,
 	ToolRenderResultOptions,
 	ToolResultEvent,
+	TranscriptApi,
+	TranscriptEntry,
 	TurnEndEvent,
 	TurnStartEvent,
 	UserBashEvent,

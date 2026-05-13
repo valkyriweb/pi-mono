@@ -42,6 +42,7 @@ import type {
 } from "@earendil-works/pi-tui";
 import type { Static, TSchema } from "typebox";
 import type { Theme } from "../../modes/interactive/theme/theme.js";
+import type { AgentToolDetails, AgentToolStatus } from "../agents/types.js";
 import type { BashResult } from "../bash-executor.js";
 import type { CompactionPreparation, CompactionResult } from "../compaction/index.js";
 import type { EventBus } from "../event-bus.js";
@@ -293,6 +294,90 @@ export interface CompactOptions {
 	onError?: (error: Error) => void;
 }
 
+// ============================================================================
+// Fork Agent (ctx.forkAgent)
+// ============================================================================
+
+/**
+ * Handle returned by `ctx.forkAgent()` for cooperative control over a background
+ * child agent run.
+ */
+export interface AgentHandle {
+	/**
+	 * Resolve with the run's terminal details. Resolves for cancelled, failed,
+	 * and interrupted runs too — those are normal terminal states, not errors.
+	 * Rejects only on internal lookup errors (e.g. run id evicted from history).
+	 */
+	wait(): Promise<AgentToolDetails>;
+	/**
+	 * Cooperative abort. Cancels the underlying recent-run controller, which
+	 * aborts every active child session within ~1s. Resolves once the run
+	 * reaches a terminal status.
+	 */
+	abort(): Promise<void>;
+	/** Snapshot of the current run status. */
+	readonly status: AgentToolStatus;
+}
+
+/** Options for `ctx.forkAgent()`. */
+export interface ForkAgentOptions {
+	/** First user message delivered to the forked agent. */
+	prompt: string;
+	/**
+	 * Restrict the child's tool surface to a subset of the parent's active
+	 * tools. Omit to inherit the parent's full active tool list.
+	 */
+	allowedTools?: string[];
+	/**
+	 * Model identifier (e.g. `"anthropic/claude-sonnet-4-5"`). Defaults to the
+	 * parent's current model — required for cache-preserving forks. Passing a
+	 * different model voids the cached prefix and incurs a full reprocess.
+	 */
+	model?: string;
+	/** Abort signal chained with `ctx.signal`. */
+	signal?: AbortSignal;
+	/** Short human label for logs/UI. */
+	description?: string;
+}
+
+/** Result of `ctx.forkAgent()`. */
+export interface ForkAgentResult {
+	/** Control handle for the background run. */
+	handle: AgentHandle;
+	/**
+	 * Stable id for the spawned run. Today this is the parent-side recent-run id
+	 * (e.g. `agent-12`); the child's session id only becomes available after
+	 * `handle.wait()` resolves (read it off the terminal details there).
+	 */
+	sessionId: string;
+}
+
+// ============================================================================
+// Transcript Append (ctx.transcript.append)
+// ============================================================================
+
+/**
+ * Structured transcript entry surfaced inline in the live transcript.
+ *
+ * The union is intentionally open — additional kinds will land here as new
+ * extension-facing transcript message subtypes are introduced.
+ */
+export type TranscriptEntry = {
+	kind: "memory_saved";
+	verb: "Saved" | "Improved";
+	paths: string[];
+};
+
+/** Transcript API surfaced via `ctx.transcript`. */
+export interface TranscriptApi {
+	/**
+	 * Append a structured system-message-style entry to the live transcript.
+	 * Renders inline between user/assistant turns in the interactive TUI, and is
+	 * serialized to the session event stream in print/RPC modes.
+	 */
+	append(entry: TranscriptEntry): void;
+}
+
 /**
  * Context passed to extension event handlers.
  */
@@ -333,6 +418,23 @@ export interface ExtensionContext {
 	 * and must not fire side effects in that branch.
 	 */
 	getEffectiveSystemPrompt(): Promise<string>;
+	/**
+	 * Fork a child agent that inherits the parent's frozen turn-start system
+	 * prompt for cache-preserving subagents. The child runs in the background
+	 * (does not block the calling hook) and is observed via the returned
+	 * `AgentHandle` (`.wait()`, `.abort()`, `.status`).
+	 *
+	 * Caching: the parent's system prompt bytes are re-used 1:1 in the child's
+	 * first request. Override `opts.model` to a non-default value and that
+	 * invariant breaks — the child reprocesses the whole prefix.
+	 */
+	forkAgent(opts: ForkAgentOptions): Promise<ForkAgentResult>;
+	/**
+	 * Structured transcript message API. Use `transcript.append(entry)` to
+	 * inject system-style messages (e.g. memory-saved notices) into the live
+	 * transcript between user/assistant turns.
+	 */
+	readonly transcript: TranscriptApi;
 }
 
 /**
@@ -1524,6 +1626,8 @@ export interface ExtensionContextActions {
 	compact: (options?: CompactOptions) => void;
 	getSystemPrompt: () => string;
 	getEffectiveSystemPrompt: () => Promise<string>;
+	forkAgent: (opts: ForkAgentOptions) => Promise<ForkAgentResult>;
+	transcriptAppend: (entry: TranscriptEntry) => void;
 }
 
 /**

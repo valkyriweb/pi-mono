@@ -31,6 +31,8 @@ import type {
 	ExtensionRuntime,
 	ExtensionShortcut,
 	ExtensionUIContext,
+	ForkAgentOptions,
+	ForkAgentResult,
 	InputEvent,
 	InputEventResult,
 	InputSource,
@@ -53,6 +55,8 @@ import type {
 	ToolCallEventResult,
 	ToolResultEvent,
 	ToolResultEventResult,
+	TranscriptApi,
+	TranscriptEntry,
 	UserBashEvent,
 	UserBashEventResult,
 } from "./types.js";
@@ -239,6 +243,10 @@ export class ExtensionRunner {
 	private compactFn: (options?: CompactOptions) => void = () => {};
 	private getSystemPromptFn: () => string = () => "";
 	private getEffectiveSystemPromptFn: () => Promise<string> = async () => this.getSystemPromptFn();
+	private forkAgentFn: (opts: ForkAgentOptions) => Promise<ForkAgentResult> = async () => {
+		throw new Error("forkAgent is not available in this runtime");
+	};
+	private transcriptAppendFn: (entry: TranscriptEntry) => void = () => {};
 	private newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	private forkHandler: ForkHandler = async () => ({ cancelled: false });
 	private navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });
@@ -299,6 +307,8 @@ export class ExtensionRunner {
 		this.compactFn = contextActions.compact;
 		this.getSystemPromptFn = contextActions.getSystemPrompt;
 		this.getEffectiveSystemPromptFn = contextActions.getEffectiveSystemPrompt;
+		this.forkAgentFn = contextActions.forkAgent;
+		this.transcriptAppendFn = contextActions.transcriptAppend;
 
 		// Flush provider registrations queued during extension loading
 		for (const { name, config, extensionPath } of this.runtime.pendingProviderRegistrations) {
@@ -635,6 +645,19 @@ export class ExtensionRunner {
 			getEffectiveSystemPrompt: async () => {
 				runner.assertActive();
 				return runner.getEffectiveSystemPromptFn();
+			},
+			forkAgent: (opts) => {
+				runner.assertActive();
+				return runner.forkAgentFn(opts);
+			},
+			get transcript(): TranscriptApi {
+				runner.assertActive();
+				return {
+					append(entry) {
+						runner.assertActive();
+						runner.transcriptAppendFn(entry);
+					},
+				};
 			},
 		};
 	}

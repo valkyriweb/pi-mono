@@ -19,6 +19,10 @@ function createContext(tokens: number | null, compact = vi.fn()): ExtensionConte
 		compact,
 		getSystemPrompt: () => "",
 		getEffectiveSystemPrompt: async () => "",
+		forkAgent: vi.fn(async () => {
+			throw new Error("forkAgent not implemented in test stub");
+		}),
+		transcript: { append: vi.fn() },
 	};
 }
 

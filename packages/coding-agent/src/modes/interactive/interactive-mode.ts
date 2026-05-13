@@ -125,6 +125,7 @@ import { ExtensionSelectorComponent } from "./components/extension-selector.js";
 import { FooterComponent } from "./components/footer.js";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.js";
 import { LoginDialogComponent } from "./components/login-dialog.js";
+import { memorySavedMessageRenderer } from "./components/memory-saved-message.js";
 import { ModelSelectorComponent } from "./components/model-selector.js";
 import { type AuthSelectorProvider, OAuthSelectorComponent } from "./components/oauth-selector.js";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.js";
@@ -1623,36 +1624,45 @@ export class InteractiveMode {
 		const shortcuts = extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
 		if (shortcuts.size === 0) return;
 
-		// Create a context for shortcut handlers
-		const createContext = (): ExtensionContext => ({
-			ui: this.createExtensionUIContext(),
-			hasUI: true,
-			cwd: this.sessionManager.getCwd(),
-			sessionManager: this.sessionManager,
-			modelRegistry: this.session.modelRegistry,
-			model: this.session.model,
-			isIdle: () => !this.session.isStreaming,
-			signal: this.session.agent.signal,
-			abort: () => this.session.abort(),
-			hasPendingMessages: () => this.session.pendingMessageCount > 0,
-			shutdown: () => {
-				this.shutdownRequested = true;
-			},
-			getContextUsage: () => this.session.getContextUsage(),
-			compact: (options) => {
-				void (async () => {
-					try {
-						const result = await this.session.compact(options?.customInstructions);
-						options?.onComplete?.(result);
-					} catch (error) {
-						const err = error instanceof Error ? error : new Error(String(error));
-						options?.onError?.(err);
-					}
-				})();
-			},
-			getSystemPrompt: () => this.session.systemPrompt,
-			getEffectiveSystemPrompt: () => this.session.getEffectiveSystemPrompt(),
-		});
+		// Create a context for shortcut handlers.
+		// The runner already owns canonical wiring for forkAgent / transcript so we
+		// delegate to a runner-built context for those two slots; the rest mirrors
+		// the live interactive bindings (UI, cwd, etc.) used by shortcut handlers.
+		const session = this.session;
+		const createContext = (): ExtensionContext => {
+			const runnerCtx = extensionRunner.createContext();
+			return {
+				ui: this.createExtensionUIContext(),
+				hasUI: true,
+				cwd: this.sessionManager.getCwd(),
+				sessionManager: this.sessionManager,
+				modelRegistry: session.modelRegistry,
+				model: session.model,
+				isIdle: () => !session.isStreaming,
+				signal: session.agent.signal,
+				abort: () => session.abort(),
+				hasPendingMessages: () => session.pendingMessageCount > 0,
+				shutdown: () => {
+					this.shutdownRequested = true;
+				},
+				getContextUsage: () => session.getContextUsage(),
+				compact: (options) => {
+					void (async () => {
+						try {
+							const result = await session.compact(options?.customInstructions);
+							options?.onComplete?.(result);
+						} catch (error) {
+							const err = error instanceof Error ? error : new Error(String(error));
+							options?.onError?.(err);
+						}
+					})();
+				},
+				getSystemPrompt: () => session.systemPrompt,
+				getEffectiveSystemPrompt: () => session.getEffectiveSystemPrompt(),
+				forkAgent: (opts) => runnerCtx.forkAgent(opts),
+				transcript: runnerCtx.transcript,
+			};
+		};
 
 		// Set up the extension shortcut handler on the default editor
 		this.defaultEditor.onExtensionShortcut = (data: string) => {
@@ -3052,7 +3062,13 @@ export class InteractiveMode {
 			}
 			case "custom": {
 				if (message.display) {
-					const renderer = this.session.extensionRunner.getMessageRenderer(message.customType);
+					// Extension-registered renderers win; fall back to built-in renderers for
+					// pi's own structured customTypes (e.g. `memory_saved` from
+					// `ctx.transcript.append`) so the TUI styles them without needing an
+					// extension to register a renderer.
+					const extensionRenderer = this.session.extensionRunner.getMessageRenderer(message.customType);
+					const renderer =
+						extensionRenderer ?? (message.customType === "memory_saved" ? memorySavedMessageRenderer : undefined);
 					const component = new CustomMessageComponent(message, renderer, this.getMarkdownThemeWithSettings());
 					component.setExpanded(this.toolOutputExpanded);
 					this.chatContainer.addChild(component);

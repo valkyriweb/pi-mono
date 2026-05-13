@@ -313,6 +313,36 @@ export function listAgentRecentRuns(): AgentRecentRun[] {
 	return recentRuns.map(cloneRecentRun);
 }
 
+/** Return a cloned snapshot of the recent run with the given id, or undefined. */
+export function findAgentRecentRun(runId: string): AgentRecentRun | undefined {
+	const run = findMutableRun(runId);
+	return run ? cloneRecentRun(run) : undefined;
+}
+
+/**
+ * Resolve once the recent run reaches a terminal status (anything other than
+ * "running"). Rejects if the run id is unknown or evicted before terminating.
+ */
+export function waitForAgentRecentRun(runId: string): Promise<AgentRecentRun> {
+	return new Promise((resolve, reject) => {
+		let unsubscribe: (() => void) | undefined;
+		const check = () => {
+			const run = findMutableRun(runId);
+			if (!run) {
+				unsubscribe?.();
+				reject(new Error(`Run not found or evicted: ${runId}`));
+				return;
+			}
+			if (isTerminalStatus(run.status)) {
+				unsubscribe?.();
+				resolve(cloneRecentRun(run));
+			}
+		};
+		unsubscribe = subscribeAgentRecentRuns(check);
+		check();
+	});
+}
+
 export function markAgentRecentRunNeedsAttention(run: AgentRecentRun, message: string): void {
 	if (run.status !== "running") return;
 	if (run.needsAttention && run.attentionMessage === message) return;

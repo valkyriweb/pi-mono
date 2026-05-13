@@ -973,6 +973,59 @@ pi.on("before_agent_start", (event, ctx) => {
 });
 ```
 
+### ctx.forkAgent(opts)
+
+Fork a cache-preserving background child agent. The child runs in `context: "fork"` mode and inherits the parent's frozen turn-start system prompt 1:1 (byte-identical system + tools prefix — same cache key as the parent's last request). The call returns immediately with an `AgentHandle`; the hook does not block on child completion.
+
+```typescript
+interface AgentHandle {
+  wait(): Promise<AgentToolDetails>;  // resolves on terminal status (completed/failed/cancelled/interrupted)
+  abort(): Promise<void>;             // <1s cooperative cancel
+  readonly status: AgentToolStatus;   // "running" | "completed" | "failed" | "cancelled" | "interrupted"
+}
+```
+
+- `opts.prompt` — first user message delivered to the child.
+- `opts.allowedTools` — restrict the child to a subset of the parent's active tools (intersection is enforced). Omit to inherit the full parent tool set.
+- `opts.model` — defaults to the parent's model. Passing a different model voids the cached prefix and incurs a full reprocess.
+- `opts.signal` — chained with `ctx.signal`. Aborting routes through `cancelAgentRecentRun`.
+
+```typescript
+pi.on("before_agent_start", async (event, ctx) => {
+  const { handle } = await ctx.forkAgent({
+    prompt: "Summarise the user's last request in one line.",
+    allowedTools: ["read"],
+    description: "recap",
+  });
+  const details = await handle.wait();
+  console.log(`fork ${details.status}`);
+});
+```
+
+### ctx.transcript.append(entry)
+
+Append a structured system-style entry to the live transcript between user/assistant turns. The entry is delivered through the same custom-message pipeline as `pi.sendMessage`, so it renders inline in the interactive TUI and is serialised to the event stream in print/RPC modes.
+
+```typescript
+type TranscriptEntry =
+  | { kind: "memory_saved"; verb: "Saved" | "Improved"; paths: string[] };
+// (the union is open — more transcript subtypes will land alongside future TUI renderers)
+```
+
+```typescript
+ctx.transcript.append({
+  kind: "memory_saved",
+  verb: "Saved",
+  paths: ["feedback_x99_pod_check.md", "project_v53_externalized_plugins.md"],
+});
+// renders as:
+//   ● Saved 2 memories
+//     feedback_x99_pod_check.md
+//     project_v53_externalized_plugins.md
+```
+
+A built-in renderer ships with pi for `kind: "memory_saved"`; extensions can override it with `pi.registerMessageRenderer("memory_saved", ...)`.
+
 ## ExtensionCommandContext
 
 Command handlers receive `ExtensionCommandContext`, which extends `ExtensionContext` with session control methods. These are only available in commands because they can deadlock if called from event handlers.

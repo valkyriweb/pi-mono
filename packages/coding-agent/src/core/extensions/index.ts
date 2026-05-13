@@ -22,6 +22,7 @@ export { ExtensionRunner } from "./runner.js";
 export type {
 	AfterProviderResponseEvent,
 	AgentEndEvent,
+	AgentHandle,
 	AgentStartEvent,
 	// Re-exports
 	AgentToolResult,
@@ -74,6 +75,8 @@ export type {
 	ExtensionWidgetOptions,
 	FindToolCallEvent,
 	FindToolResultEvent,
+	ForkAgentOptions,
+	ForkAgentResult,
 	GetActiveToolsHandler,
 	GetAllToolsHandler,
 	GetCommandsHandler,
@@ -146,6 +149,8 @@ export type {
 	ToolRenderResultOptions,
 	ToolResultEvent,
 	ToolResultEventResult,
+	TranscriptApi,
+	TranscriptEntry,
 	TreePreparation,
 	TurnEndEvent,
 	TurnStartEvent,

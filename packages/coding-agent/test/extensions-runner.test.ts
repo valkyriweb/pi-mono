@@ -79,6 +79,10 @@ describe("ExtensionRunner", () => {
 		compact: () => {},
 		getSystemPrompt: () => "",
 		getEffectiveSystemPrompt: async () => "",
+		forkAgent: async () => {
+			throw new Error("forkAgent not implemented in test runner");
+		},
+		transcriptAppend: () => {},
 	};
 
 	describe("shortcut conflicts", () => {
