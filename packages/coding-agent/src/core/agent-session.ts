@@ -96,7 +96,7 @@ import type { SettingsManager } from "./settings-manager.js";
 import type { SlashCommandInfo } from "./slash-commands.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.js";
-import { type BashOperations, createLocalBashOperations } from "./tools/bash.js";
+import { type BashOperations, createLocalBashOperations, killAllBashBgJobs } from "./tools/bash.js";
 import { createAllToolDefinitions } from "./tools/index.js";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.js";
 
@@ -777,6 +777,9 @@ export class AgentSession {
 		this._disconnectFromAgent();
 		this._eventListeners = [];
 		cleanupSessionResources(this.sessionId);
+		// Reap any background bash jobs so they don't leak across /clear,
+		// fork, switchSession, reload, or final session shutdown.
+		killAllBashBgJobs();
 	}
 
 	// =========================================================================

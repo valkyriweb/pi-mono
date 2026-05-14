@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Container, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { spawn } from "child_process";
@@ -22,10 +24,168 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult
 
 const bashSchema = Type.Object({
 	command: Type.String({ description: "Bash command to execute" }),
-	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
+	timeout: Type.Optional(
+		Type.Union([
+			Type.Number({ description: "Timeout in seconds. Defaults to 300 seconds." }),
+			Type.Literal(false, { description: "Disable timeout for this command." }),
+		]),
+	),
+	run_in_background: Type.Optional(
+		Type.Boolean({
+			description:
+				"Set to true to spawn the command in the background. Returns immediately with a bgId. Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). Use this for any command likely to exceed ~30s when you do not need its stdout immediately. For continuous log streams that should wake the agent on each batch, prefer the Monitor tool (monitor_start) instead.",
+		}),
+	),
 });
 
+// ---------- Background bash registry ----------
+//
+// Background bash jobs are tracked in-process so siblings bash_output / bash_kill
+// can read or stop them by id. Output is appended to a log file under
+// ~/.pi/agent/bash-bg/<bgId>.log so it survives process exit and can be tailed.
+
+interface BashBgJob {
+	id: string;
+	command: string;
+	cwd: string;
+	pid: number | undefined;
+	startedAt: number;
+	status: "running" | "exited" | "killed" | "failed";
+	exitCode: number | null;
+	signal: NodeJS.Signals | null;
+	logPath: string;
+	endedAt: number | undefined;
+	error: string | undefined;
+}
+
+const bashBgJobs = new Map<string, BashBgJob>();
+
+function bashBgLogDir(): string {
+	const dir = join(homedir(), ".pi", "agent", "bash-bg");
+	mkdirSync(dir, { recursive: true });
+	return dir;
+}
+
+function nextBashBgId(): string {
+	return `bg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getBashBgJob(id: string): BashBgJob | undefined {
+	return bashBgJobs.get(id);
+}
+
+export function listBashBgJobs(): BashBgJob[] {
+	return [...bashBgJobs.values()];
+}
+
+/**
+ * Terminate every running background bash job and clear the registry.
+ * Called from AgentSession.dispose() so bg processes don't leak across
+ * /clear, fork, switchSession, reload, or process exit.
+ */
+export function killAllBashBgJobs(): void {
+	for (const job of bashBgJobs.values()) {
+		if (job.status === "running" && job.pid) {
+			try {
+				killProcessTree(job.pid);
+			} catch {
+				// best-effort; process may already be gone
+			}
+			job.status = "killed";
+			job.endedAt = Date.now();
+		}
+	}
+	bashBgJobs.clear();
+}
+
+function spawnBashBackground(command: string, cwd: string, shellPath?: string, commandPrefix?: string): BashBgJob {
+	const id = nextBashBgId();
+	const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
+	const logPath = join(bashBgLogDir(), `${id}.log`);
+	const fd = openSync(logPath, "a");
+	const { shell, args } = getShellConfig(shellPath);
+	if (!existsSync(cwd)) {
+		closeSync(fd);
+		throw new Error(`Working directory does not exist: ${cwd}`);
+	}
+	const child = spawn(shell, [...args, resolvedCommand], {
+		cwd,
+		detached: process.platform !== "win32",
+		env: getShellEnv(),
+		stdio: ["ignore", fd, fd],
+	});
+	closeSync(fd);
+	if (child.pid) trackDetachedChildPid(child.pid);
+	const job: BashBgJob = {
+		id,
+		command: resolvedCommand,
+		cwd,
+		pid: child.pid,
+		startedAt: Date.now(),
+		status: "running",
+		exitCode: null,
+		signal: null,
+		logPath,
+		endedAt: undefined,
+		error: undefined,
+	};
+	bashBgJobs.set(id, job);
+	child.on("error", (err) => {
+		job.status = "failed";
+		job.error = err.message;
+		job.endedAt = Date.now();
+		if (child.pid) untrackDetachedChildPid(child.pid);
+	});
+	child.on("exit", (code, signal) => {
+		job.exitCode = code;
+		job.signal = signal;
+		job.endedAt = Date.now();
+		if (job.status === "running") {
+			job.status = signal ? "killed" : "exited";
+		}
+		if (child.pid) untrackDetachedChildPid(child.pid);
+	});
+	// Don't keep the event loop alive on our behalf — caller decides.
+	child.unref();
+	return job;
+}
+
+function readBashBgLog(
+	job: BashBgJob,
+	opts: { mode: "tail" | "head" | "all"; maxLines: number },
+): { lines: string[]; totalLines: number; truncated: boolean } {
+	let content = "";
+	try {
+		content = readFileSync(job.logPath, "utf8");
+	} catch {
+		return { lines: [], totalLines: 0, truncated: false };
+	}
+	const all = content.split("\n");
+	// Trailing newline produces an empty last element; drop it.
+	if (all.length > 0 && all[all.length - 1] === "") all.pop();
+	const total = all.length;
+	const max = Math.max(1, Math.min(opts.maxLines, 1000));
+	if (opts.mode === "head") {
+		const slice = all.slice(0, max);
+		return { lines: slice, totalLines: total, truncated: total > slice.length };
+	}
+	if (opts.mode === "all") {
+		const slice = all.slice(0, max);
+		return { lines: slice, totalLines: total, truncated: total > slice.length };
+	}
+	const slice = all.slice(Math.max(0, total - max));
+	return { lines: slice, totalLines: total, truncated: total > slice.length };
+}
+
 export type BashToolInput = Static<typeof bashSchema>;
+
+export interface BashBgDetails {
+	bgId: string;
+	pid: number | undefined;
+	logPath: string;
+	command: string;
+	startedAt: number;
+}
 
 export interface BashToolDetails {
 	truncation?: TruncationResult;
@@ -152,6 +312,7 @@ export interface BashToolOptions {
 
 const BASH_PREVIEW_LINES = 5;
 const BASH_UPDATE_THROTTLE_MS = 100;
+const DEFAULT_BASH_TIMEOUT_SECONDS = 300;
 
 type BashRenderState = {
 	startedAt: number | undefined;
@@ -177,10 +338,15 @@ function formatDuration(ms: number): string {
 	return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function formatBashCall(args: { command?: string; timeout?: number } | undefined): string {
+function resolveBashTimeout(timeout: number | false | undefined): number | undefined {
+	if (timeout === false) return undefined;
+	return timeout ?? DEFAULT_BASH_TIMEOUT_SECONDS;
+}
+
+function formatBashCall(args: { command?: string; timeout?: number | false } | undefined): string {
 	const command = str(args?.command);
-	const timeout = args?.timeout as number | undefined;
-	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
+	const timeout = resolveBashTimeout(args?.timeout as number | false | undefined);
+	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : theme.fg("muted", " (no timeout)");
 	const commandDisplay = command === null ? invalidArgText(theme) : command ? command : theme.fg("toolOutput", "...");
 	return theme.fg("toolTitle", theme.bold(`$ ${commandDisplay}`)) + timeoutSuffix;
 }
@@ -271,16 +437,46 @@ export function createBashToolDefinition(
 	return {
 		name: "bash",
 		label: "bash",
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
-		promptSnippet: "Execute bash commands in the current working directory",
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
+		promptSnippet:
+			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
+		promptGuidelines: [
+			"Use run_in_background:true for any command likely to exceed ~30s when you don't need the output immediately (builds, installers, kubectl rollouts, long test suites, dev servers).",
+			"Do NOT poll a background bash job with sleep loops. Call bash_output(bgId) when you need its current state, or use monitor_start instead if you want to be woken on every output batch.",
+			"Always stop background jobs you started but no longer need with bash_kill(bgId).",
+		],
 		parameters: bashSchema,
 		async execute(
 			_toolCallId,
-			{ command, timeout }: { command: string; timeout?: number },
+			{
+				command,
+				timeout,
+				run_in_background,
+			}: { command: string; timeout?: number | false; run_in_background?: boolean },
 			signal?: AbortSignal,
 			onUpdate?,
 			_ctx?,
 		) {
+			// Background fast-path: spawn detached, return immediately. No timeout, no output streaming.
+			if (run_in_background) {
+				const job = spawnBashBackground(command, cwd, options?.shellPath, commandPrefix);
+				const text =
+					`Backgrounded bash job ${job.id} (pid=${job.pid ?? "unknown"}).\n` +
+					`Command: ${command}\n` +
+					`Log: ${job.logPath}\n\n` +
+					`Read output with bash_output(bgId="${job.id}"). Stop with bash_kill(bgId="${job.id}").`;
+				return {
+					content: [{ type: "text", text }],
+					details: {
+						bgId: job.id,
+						pid: job.pid,
+						logPath: job.logPath,
+						command,
+						startedAt: job.startedAt,
+					} as BashBgDetails as any,
+				};
+			}
+			const timeoutSeconds = resolveBashTimeout(timeout);
 			const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
 			const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
 			const output = new OutputAccumulator({ tempFilePrefix: "pi-bash" });
@@ -370,7 +566,7 @@ export function createBashToolDefinition(
 					const result = await ops.exec(spawnContext.command, spawnContext.cwd, {
 						onData: handleData,
 						signal,
-						timeout,
+						timeout: timeoutSeconds,
 						env: spawnContext.env,
 					});
 					exitCode = result.exitCode;
@@ -437,4 +633,134 @@ export function createBashToolDefinition(
 
 export function createBashTool(cwd: string, options?: BashToolOptions): AgentTool<typeof bashSchema> {
 	return wrapToolDefinition(createBashToolDefinition(cwd, options));
+}
+
+// ===========================================================================
+// bash_output — read accumulated output from a backgrounded bash job
+// ===========================================================================
+
+const bashOutputSchema = Type.Object({
+	bgId: Type.String({ description: "Background job id returned by bash(run_in_background:true)." }),
+	mode: Type.Optional(
+		Type.Union([Type.Literal("tail"), Type.Literal("head"), Type.Literal("all")], {
+			description: "Which slice of the log to return. Default: tail.",
+		}),
+	),
+	maxLines: Type.Optional(Type.Number({ description: "Maximum lines to return (default 200, hard cap 1000)." })),
+});
+
+export type BashOutputToolInput = Static<typeof bashOutputSchema>;
+
+export function createBashOutputToolDefinition(): ToolDefinition<typeof bashOutputSchema, BashBgJob | undefined> {
+	return {
+		name: "bash_output",
+		label: "bash_output",
+		description:
+			"Read accumulated stdout/stderr from a backgrounded bash job (started via bash with run_in_background:true). Returns a bounded slice of the log plus job status. Does not block or wait \u2014 just shows current state. Use this when you need to peek at progress or grab results after the job has completed. For live streaming with wake-on-output behavior, use monitor_start instead.",
+		promptSnippet: "Read the log of a backgrounded bash job by bgId",
+		parameters: bashOutputSchema,
+		async execute(_id, { bgId, mode, maxLines }) {
+			const job = getBashBgJob(bgId);
+			if (!job) {
+				const known = [...bashBgJobs.keys()].slice(-5).join(", ") || "(none)";
+				return {
+					content: [{ type: "text", text: `No background bash job with bgId=${bgId}. Recent ids: ${known}` }],
+					details: undefined,
+				};
+			}
+			const { lines, totalLines, truncated } = readBashBgLog(job, {
+				mode: mode ?? "tail",
+				maxLines: maxLines ?? 200,
+			});
+			let logSize = 0;
+			try {
+				logSize = statSync(job.logPath).size;
+			} catch {}
+			const elapsed = ((job.endedAt ?? Date.now()) - job.startedAt) / 1000;
+			const header =
+				`bgId: ${job.id}\n` +
+				`status: ${job.status}` +
+				(job.status === "exited" ? ` (exit ${job.exitCode})` : "") +
+				(job.status === "killed" && job.signal ? ` (${job.signal})` : "") +
+				(job.status === "failed" && job.error ? ` (${job.error})` : "") +
+				`\nelapsed: ${elapsed.toFixed(1)}s\n` +
+				`log: ${job.logPath} (${(logSize / 1024).toFixed(1)} KB, ${totalLines} lines)` +
+				(truncated ? ` \u2014 showing ${lines.length} of ${totalLines}` : "");
+			const body = lines.length ? lines.join("\n") : "(no output yet)";
+			return {
+				content: [{ type: "text", text: `${header}\n\n${body}` }],
+				details: job,
+			};
+		},
+	};
+}
+
+export function createBashOutputTool(): AgentTool<typeof bashOutputSchema> {
+	return wrapToolDefinition(createBashOutputToolDefinition());
+}
+
+// ===========================================================================
+// bash_kill — stop a backgrounded bash job
+// ===========================================================================
+
+const bashKillSchema = Type.Object({
+	bgId: Type.String({ description: "Background job id returned by bash(run_in_background:true)." }),
+});
+
+export type BashKillToolInput = Static<typeof bashKillSchema>;
+
+export function createBashKillToolDefinition(): ToolDefinition<typeof bashKillSchema, BashBgJob | undefined> {
+	return {
+		name: "bash_kill",
+		label: "bash_kill",
+		description:
+			"Stop a backgrounded bash job (started via bash with run_in_background:true). Sends SIGTERM to the whole process tree; the job moves to status=killed. Idempotent \u2014 calling on an already-finished job is safe and just reports state.",
+		promptSnippet: "Stop a backgrounded bash job by bgId",
+		parameters: bashKillSchema,
+		async execute(_id, { bgId }) {
+			const job = getBashBgJob(bgId);
+			if (!job) {
+				return {
+					content: [{ type: "text", text: `No background bash job with bgId=${bgId}` }],
+					details: undefined,
+				};
+			}
+			if (job.status !== "running") {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `bgId=${bgId} already ${job.status} (exit ${job.exitCode}, signal ${job.signal ?? "none"}).`,
+						},
+					],
+					details: job,
+				};
+			}
+			if (job.pid) {
+				try {
+					killProcessTree(job.pid);
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Failed to kill bgId=${bgId} (pid=${job.pid}): ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						details: job,
+					};
+				}
+			}
+			job.status = "killed";
+			job.endedAt = Date.now();
+			return {
+				content: [{ type: "text", text: `Killed bgId=${bgId} (pid=${job.pid ?? "unknown"}).` }],
+				details: job,
+			};
+		},
+	};
+}
+
+export function createBashKillTool(): AgentTool<typeof bashKillSchema> {
+	return wrapToolDefinition(createBashKillToolDefinition());
 }

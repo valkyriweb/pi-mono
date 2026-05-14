@@ -7,15 +7,23 @@ export {
 	createAgentToolDefinition,
 } from "./agent.js";
 export {
+	type BashBgDetails,
+	type BashKillToolInput,
 	type BashOperations,
+	type BashOutputToolInput,
 	type BashSpawnContext,
 	type BashSpawnHook,
 	type BashToolDetails,
 	type BashToolInput,
 	type BashToolOptions,
+	createBashKillTool,
+	createBashKillToolDefinition,
+	createBashOutputTool,
+	createBashOutputToolDefinition,
 	createBashTool,
 	createBashToolDefinition,
 	createLocalBashOperations,
+	listBashBgJobs,
 } from "./bash.js";
 export {
 	createEditTool,
@@ -79,7 +87,15 @@ export {
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.js";
 import { type AgentToolOptions, createAgentTool, createAgentToolDefinition } from "./agent.js";
-import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.js";
+import {
+	type BashToolOptions,
+	createBashKillTool,
+	createBashKillToolDefinition,
+	createBashOutputTool,
+	createBashOutputToolDefinition,
+	createBashTool,
+	createBashToolDefinition,
+} from "./bash.js";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.js";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.js";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.js";
@@ -91,8 +107,29 @@ import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } fro
 // `any` is unavoidable here because AgentTool/ToolDefinition are intentionally variant in their schema parameter.
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls" | "agent";
-export const allToolNames: Set<ToolName> = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "agent"]);
+export type ToolName =
+	| "read"
+	| "bash"
+	| "bash_output"
+	| "bash_kill"
+	| "edit"
+	| "write"
+	| "grep"
+	| "find"
+	| "ls"
+	| "agent";
+export const allToolNames: Set<ToolName> = new Set([
+	"read",
+	"bash",
+	"bash_output",
+	"bash_kill",
+	"edit",
+	"write",
+	"grep",
+	"find",
+	"ls",
+	"agent",
+]);
 
 export interface ToolsOptions {
 	read?: ReadToolOptions;
@@ -111,6 +148,10 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createReadToolDefinition(cwd, options?.read);
 		case "bash":
 			return createBashToolDefinition(cwd, options?.bash);
+		case "bash_output":
+			return createBashOutputToolDefinition();
+		case "bash_kill":
+			return createBashKillToolDefinition();
 		case "edit":
 			return createEditToolDefinition(cwd, options?.edit);
 		case "write":
@@ -134,6 +175,10 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createReadTool(cwd, options?.read);
 		case "bash":
 			return createBashTool(cwd, options?.bash);
+		case "bash_output":
+			return createBashOutputTool();
+		case "bash_kill":
+			return createBashKillTool();
 		case "edit":
 			return createEditTool(cwd, options?.edit);
 		case "write":
@@ -155,6 +200,8 @@ export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions)
 	return [
 		createReadToolDefinition(cwd, options?.read),
 		createBashToolDefinition(cwd, options?.bash),
+		createBashOutputToolDefinition(),
+		createBashKillToolDefinition(),
 		createEditToolDefinition(cwd, options?.edit),
 		createWriteToolDefinition(cwd, options?.write),
 	];
@@ -173,6 +220,8 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 	return {
 		read: createReadToolDefinition(cwd, options?.read),
 		bash: createBashToolDefinition(cwd, options?.bash),
+		bash_output: createBashOutputToolDefinition(),
+		bash_kill: createBashKillToolDefinition(),
 		edit: createEditToolDefinition(cwd, options?.edit),
 		write: createWriteToolDefinition(cwd, options?.write),
 		grep: createGrepToolDefinition(cwd, options?.grep),
@@ -186,6 +235,8 @@ export function createCodingTools(cwd: string, options?: ToolsOptions): Tool[] {
 	return [
 		createReadTool(cwd, options?.read),
 		createBashTool(cwd, options?.bash),
+		createBashOutputTool(),
+		createBashKillTool(),
 		createEditTool(cwd, options?.edit),
 		createWriteTool(cwd, options?.write),
 	];
@@ -204,6 +255,8 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 	return {
 		read: createReadTool(cwd, options?.read),
 		bash: createBashTool(cwd, options?.bash),
+		bash_output: createBashOutputTool(),
+		bash_kill: createBashKillTool(),
 		edit: createEditTool(cwd, options?.edit),
 		write: createWriteTool(cwd, options?.write),
 		grep: createGrepTool(cwd, options?.grep),
