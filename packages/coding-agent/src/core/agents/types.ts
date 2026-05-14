@@ -58,6 +58,13 @@ export interface AgentTaskConfig {
 	model?: string;
 	tools?: string[];
 	thinking?: ThinkingLevel;
+	/**
+	 * Cap the child session's output token limit to this value. Useful for cheap
+	 * condensation forks where the expected output is small and runaway generation
+	 * wastes tokens. Clamped to the model's own hard cap — can only lower, never
+	 * raise it.
+	 */
+	maxOutputTokens?: number;
 	output?: string;
 	outputMode?: AgentOutputMode;
 }

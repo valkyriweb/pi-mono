@@ -2306,6 +2306,7 @@ export class AgentSession {
 						context: "fork",
 						tools: opts.allowedTools,
 						model: opts.model,
+						maxOutputTokens: opts.maxOutputTokens,
 					},
 				],
 			},

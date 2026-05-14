@@ -482,6 +482,22 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 	}
 }
 
+function applyMaxOutputTokens(
+	model: Model<Api> | undefined,
+	maxOutputTokens: number | undefined,
+): Model<Api> | undefined {
+	if (
+		!model ||
+		maxOutputTokens === undefined ||
+		!Number.isFinite(maxOutputTokens) ||
+		maxOutputTokens <= 0 ||
+		maxOutputTokens >= model.maxTokens
+	) {
+		return model;
+	}
+	return { ...model, maxTokens: maxOutputTokens };
+}
+
 async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 	if (options.signal?.aborted) throw new Error("Agent tool aborted");
 	const agent = findAgentDefinition(options.registry, options.task.agent);
@@ -510,6 +526,7 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		parentThinkingLevel: options.parentThinkingLevel,
 		model,
 	});
+	const effectiveModel = applyMaxOutputTokens(model, options.task.maxOutputTokens);
 	// Fork mode: context:"fork" + parentSystemPrompt available.
 	// Use parent's exact tool set — 1:1 inheritance, no GLOBAL_DENY_TOOLS filtering.
 	// Tool schemas must be byte-identical to the parent's API request for a cache hit.
@@ -539,7 +556,7 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		task: options.task,
 		effectiveTools,
 		deniedTools,
-		model,
+		model: effectiveModel,
 		thinking,
 		startedAt,
 	});
@@ -559,7 +576,7 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 	const { session } = await createAgentSessionFromServices({
 		services: childServices,
 		sessionManager: childSessionManager,
-		model,
+		model: effectiveModel,
 		thinkingLevel: thinking,
 		tools: effectiveTools,
 		sessionStartEvent: { type: "session_start", reason: "startup" },
