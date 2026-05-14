@@ -346,6 +346,13 @@ export interface ForkAgentOptions {
 	 * standard background-agent completion message.
 	 */
 	silent?: boolean;
+	/**
+	 * Cap the forked agent's output token limit. Useful for cheap single-task
+	 * forks (e.g. condensation, summarisation) where the expected output is
+	 * small and runaway generation wastes tokens. Clamped to the model's own
+	 * hard cap — can only lower, never raise it.
+	 */
+	maxOutputTokens?: number;
 }
 
 /** Result of `ctx.forkAgent()`. */

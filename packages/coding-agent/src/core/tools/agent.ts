@@ -58,6 +58,12 @@ const taskSchema = Type.Object({
 	model: Type.Optional(Type.String()),
 	tools: Type.Optional(Type.Array(Type.String())),
 	thinking: Type.Optional(thinkingSchema),
+	maxOutputTokens: Type.Optional(
+		Type.Number({
+			minimum: 1,
+			description: "Cap the child session's provider output token limit. Can only lower the model's own cap.",
+		}),
+	),
 	output: Type.Optional(Type.String({ description: "Path for parent to save final child report" })),
 	outputMode: Type.Optional(outputModeSchema),
 });
@@ -77,6 +83,12 @@ export const agentToolSchema = Type.Object({
 	model: Type.Optional(Type.String()),
 	tools: Type.Optional(Type.Array(Type.String())),
 	thinking: Type.Optional(thinkingSchema),
+	maxOutputTokens: Type.Optional(
+		Type.Number({
+			minimum: 1,
+			description: "Cap the child session's provider output token limit. Can only lower the model's own cap.",
+		}),
+	),
 	output: Type.Optional(Type.String()),
 	outputMode: Type.Optional(outputModeSchema),
 	chainDir: Type.Optional(Type.String({ description: "Base directory for relative chain outputs" })),
@@ -140,6 +152,7 @@ export function normalizeAgentToolMode(params: AgentToolInput): {
 					model: params.model,
 					tools: params.tools,
 					thinking: params.thinking,
+					maxOutputTokens: params.maxOutputTokens,
 					output: params.output,
 					outputMode: params.outputMode,
 				},

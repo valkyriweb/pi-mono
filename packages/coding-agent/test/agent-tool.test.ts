@@ -36,6 +36,15 @@ describe("agent tool", () => {
 		).toThrow("exactly one mode");
 	});
 
+	test("single-agent mode preserves maxOutputTokens", () => {
+		const result = normalizeAgentToolMode({
+			agent: "scout",
+			task: "summarize",
+			maxOutputTokens: 1200,
+		});
+		expect(result.tasks[0].maxOutputTokens).toBe(1200);
+	});
+
 	test("output/outputMode writes parent-owned file", async () => {
 		const cwd = await makeTempDir();
 		await mkdir(join(cwd, "reports"), { recursive: true });
