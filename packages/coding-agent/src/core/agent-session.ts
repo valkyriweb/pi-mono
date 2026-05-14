@@ -1770,7 +1770,7 @@ export class AgentSession {
 			const { apiKey, headers } = await this._getRequiredRequestAuth(this.model);
 
 			const pathEntries = this.sessionManager.getBranch();
-			const settings = this.settingsManager.getCompactionSettings();
+			const settings = this.settingsManager.getCompactionSettings(this.model?.contextWindow);
 
 			const preparation = prepareCompaction(pathEntries, settings);
 			if (!preparation) {
@@ -1913,7 +1913,7 @@ export class AgentSession {
 	 * @param skipAbortedCheck If false, include aborted messages (for pre-prompt check). Default: true
 	 */
 	private async _checkCompaction(assistantMessage: AssistantMessage, skipAbortedCheck = true): Promise<void> {
-		const settings = this.settingsManager.getCompactionSettings();
+		const settings = this.settingsManager.getCompactionSettings(this.model?.contextWindow);
 		if (!settings.enabled) return;
 
 		// Skip if message was aborted (user cancelled) - unless skipAbortedCheck is false
@@ -1996,7 +1996,7 @@ export class AgentSession {
 	 * Internal: Run auto-compaction with events.
 	 */
 	private async _runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean): Promise<void> {
-		const settings = this.settingsManager.getCompactionSettings();
+		const settings = this.settingsManager.getCompactionSettings(this.model?.contextWindow);
 
 		this._emit({ type: "compaction_start", reason });
 		this._autoCompactionAbortController = new AbortController();

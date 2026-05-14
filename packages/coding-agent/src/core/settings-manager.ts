@@ -8,6 +8,7 @@ import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
 export interface CompactionSettings {
 	enabled?: boolean; // default: true
 	reserveTokens?: number; // default: 16384
+	triggerTokens?: number; // absolute context-token threshold; when set and contextWindow is known, derives reserveTokens as (contextWindow - triggerTokens)
 	keepRecentTokens?: number; // default: 20000
 }
 
@@ -679,7 +680,18 @@ export class SettingsManager {
 		this.save();
 	}
 
-	getCompactionReserveTokens(): number {
+	getCompactionReserveTokens(contextWindow?: number): number {
+		const triggerTokens = this.settings.compaction?.triggerTokens;
+		if (
+			typeof triggerTokens === "number" &&
+			Number.isFinite(triggerTokens) &&
+			triggerTokens > 0 &&
+			typeof contextWindow === "number" &&
+			Number.isFinite(contextWindow) &&
+			contextWindow > triggerTokens
+		) {
+			return Math.max(0, Math.floor(contextWindow - triggerTokens));
+		}
 		return this.settings.compaction?.reserveTokens ?? 16384;
 	}
 
@@ -687,10 +699,14 @@ export class SettingsManager {
 		return this.settings.compaction?.keepRecentTokens ?? 20000;
 	}
 
-	getCompactionSettings(): { enabled: boolean; reserveTokens: number; keepRecentTokens: number } {
+	getCompactionSettings(contextWindow?: number): {
+		enabled: boolean;
+		reserveTokens: number;
+		keepRecentTokens: number;
+	} {
 		return {
 			enabled: this.getCompactionEnabled(),
-			reserveTokens: this.getCompactionReserveTokens(),
+			reserveTokens: this.getCompactionReserveTokens(contextWindow),
 			keepRecentTokens: this.getCompactionKeepRecentTokens(),
 		};
 	}
