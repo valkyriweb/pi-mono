@@ -113,7 +113,10 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	if (hasBash && !hasGrep && !hasFind && !hasLs) {
 		addGuideline("Use bash for file operations like ls, rg, find");
 	} else if (hasBash && (hasGrep || hasFind || hasLs)) {
-		addGuideline("Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)");
+		const available = [hasGrep && "grep", hasFind && "find", hasLs && "ls"].filter(Boolean).join("/");
+		addGuideline(
+			`Use the ${available} tools for file exploration — NEVER invoke \`grep\`, \`rg\`, \`find\`, or \`ls\` via bash. The bash variants have no .gitignore filtering and no timeout, and routinely burn minutes on broad roots like ~/Projects. Narrow with \`path\` (smallest plausible dir) and \`glob\` first; raise \`limit\`/\`timeout\` only after a truncation notice.`,
+		);
 	}
 
 	for (const guideline of promptGuidelines ?? []) {

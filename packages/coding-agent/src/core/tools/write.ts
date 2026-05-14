@@ -187,7 +187,7 @@ export function createWriteToolDefinition(
 		name: "write",
 		label: "write",
 		description:
-			"Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+			"Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.\n\nUsage:\n- For modifying part of an existing file, use the `edit` tool — `write` overwrites the entire file and is wasteful for partial changes.\n- Before overwriting an existing file, `read` it first so you know what you're replacing. Blind overwrites of files you have not read are a common source of lost work.\n- Use `write` only for creating new files or for complete, intentional rewrites.\n- Do not create documentation files (*.md, README) unless the user explicitly asks for them.\n- Do not include emojis in file contents unless the user explicitly asks for them.",
 		promptSnippet: "Create or overwrite files",
 		promptGuidelines: ["Use write only for new files or complete rewrites."],
 		parameters: writeSchema,

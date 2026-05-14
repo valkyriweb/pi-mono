@@ -24,14 +24,14 @@ const findSchema = Type.Object({
 	path: Type.Optional(Type.String({ description: "Directory to search in (default: current directory)" })),
 	limit: Type.Optional(Type.Number({ description: "Maximum number of results (default: 1000)" })),
 	timeout: Type.Optional(
-		Type.Number({ description: "Timeout in seconds (default: 30, max 300)", exclusiveMinimum: 0, maximum: 300 }),
+		Type.Number({ description: "Timeout in seconds (default: 20, max 300)", exclusiveMinimum: 0, maximum: 300 }),
 	),
 });
 
 export type FindToolInput = Static<typeof findSchema>;
 
 const DEFAULT_LIMIT = 1000;
-const DEFAULT_TIMEOUT_SECONDS = 30;
+const DEFAULT_TIMEOUT_SECONDS = 20;
 const MAX_TIMEOUT_SECONDS = 300;
 const VCS_DIRS = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
 
@@ -230,7 +230,11 @@ export function createFindToolDefinition(
 	return {
 		name: "find",
 		label: "find",
-		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Prefers bfs when available, falling back to fd. The fd fallback respects .gitignore; bfs matches Claude Code Glob behavior and does not filter .gitignore. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
+		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. ALWAYS use this tool for file discovery — never invoke \`find\` or \`ls -R\` via bash (unbounded, no .gitignore, easy to burn minutes). For open-ended cross-repo discovery that needs multiple rounds of finding + grepping, delegate to the \`agent\` tool instead. Narrow with the smallest plausible \`path\` first.
+
+Glob syntax: \`*.ts\` (single dir), \`**/*.test.ts\` (recursive), \`src/**/*.{ts,tsx}\` (multi-extension), \`packages/*/src/index.ts\` (one level deep per star).
+
+Prefers bfs when available, falling back to fd. The fd fallback respects .gitignore; bfs matches Claude Code Glob behavior and does NOT filter .gitignore — if you only want tracked source files, narrow the path or pass an explicit pattern that excludes \`node_modules\`/build dirs. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; raise \`timeout\` up to ${MAX_TIMEOUT_SECONDS}s only for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
 		promptSnippet: "Find files by glob pattern",
 		parameters: findSchema,
 		async execute(

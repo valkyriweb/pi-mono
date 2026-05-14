@@ -33,13 +33,13 @@ const grepSchema = Type.Object({
 	),
 	limit: Type.Optional(Type.Number({ description: "Maximum number of matches to return (default: 100)" })),
 	timeout: Type.Optional(
-		Type.Number({ description: "Timeout in seconds (default: 30, max 300)", exclusiveMinimum: 0, maximum: 300 }),
+		Type.Number({ description: "Timeout in seconds (default: 20, max 300)", exclusiveMinimum: 0, maximum: 300 }),
 	),
 });
 
 export type GrepToolInput = Static<typeof grepSchema>;
 const DEFAULT_LIMIT = 100;
-const DEFAULT_TIMEOUT_SECONDS = 30;
+const DEFAULT_TIMEOUT_SECONDS = 20;
 const MAX_TIMEOUT_SECONDS = 300;
 const VCS_DIRS = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
 
@@ -258,7 +258,14 @@ export function createGrepToolDefinition(
 	return {
 		name: "grep",
 		label: "grep",
-		description: `Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} matches or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Long lines are truncated to ${GREP_MAX_LINE_LENGTH} chars.`,
+		description: `Search file contents for a pattern (ripgrep/ugrep). Returns matching lines with file paths and line numbers. Respects .gitignore. ALWAYS use this tool for content search — never invoke \`grep\`/\`rg\` via bash (unbounded, no .gitignore, easy to burn minutes). Narrow first: pass \`path\` to the smallest plausible directory and \`glob\` to filter by extension. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; raise \`timeout\` up to ${MAX_TIMEOUT_SECONDS}s only for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} matches or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first) — refine the pattern or raise \`limit\` if the limit notice appears. Long lines are truncated to ${GREP_MAX_LINE_LENGTH} chars.
+
+Pattern syntax:
+- Default for plain strings: set \`literal: true\`. No escaping needed — \`valkyriweb/multica\`, \`foo.bar()\`, \`{ key: 1 }\` all match exactly as written. Use this whenever you don't need regex.
+- Regex mode (default): ERE/POSIX-extended. Word boundary is \`\\b\` (use \`\\bvaluekyriweb/multica\\b\` instead of lookarounds like \`(?![-\\w])\`). Character classes \`[...]\`, alternation \`a|b\`, quantifiers \`* + ? {n,m}\`, groups \`(...)\`. Anchors \`^\` \`$\` match line start/end.
+- Lookarounds (\`(?=...)\`, \`(?!...)\`), backreferences, and other PCRE-only features are NOT portable across the ripgrep/ugrep backends — avoid them. If you reach for one, switch to \`literal: true\` or a simpler regex first.
+- Escape regex metacharacters when matching literally without \`literal\`: \`. * + ? ( ) [ ] { } | ^ $ \\\` — or just use \`literal: true\`.
+- Case-insensitive: pass \`ignoreCase: true\` (don't use inline \`(?i)\` flags).`,
 		promptSnippet: "Search file contents for patterns (respects .gitignore)",
 		parameters: grepSchema,
 		async execute(
