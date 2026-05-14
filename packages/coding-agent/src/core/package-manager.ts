@@ -1142,7 +1142,7 @@ export class DefaultPackageManager implements PackageManager {
 		const checks = packageSources
 			.filter(
 				(entry): entry is { pkg: PackageSource; scope: Exclude<SourceScope, "temporary"> } =>
-					entry.scope !== "temporary",
+					entry.scope !== "temporary" && this.isPackageEnabledForActiveModel(entry.pkg),
 			)
 			.map((entry) => async (): Promise<PackageUpdate | undefined> => {
 				const source = typeof entry.pkg === "string" ? entry.pkg : entry.pkg.source;
@@ -1188,12 +1188,34 @@ export class DefaultPackageManager implements PackageManager {
 		return results.filter((result): result is PackageUpdate => result !== undefined);
 	}
 
+	/**
+	 * Evaluate a package's `enabledWhen` gate against the active default model.
+	 * Returns true when the package has no gate or when the active model matches
+	 * any of the listed glob patterns. Project settings override global.
+	 */
+	private isPackageEnabledForActiveModel(pkg: PackageSource): boolean {
+		if (typeof pkg === "string") return true;
+		const patterns = pkg.enabledWhen?.models;
+		if (!patterns || patterns.length === 0) return true;
+
+		const globalSettings = this.settingsManager.getGlobalSettings();
+		const projectSettings = this.settingsManager.getProjectSettings();
+		const provider = projectSettings.defaultProvider ?? globalSettings.defaultProvider;
+		const modelId = projectSettings.defaultModel ?? globalSettings.defaultModel;
+		if (!modelId) return true; // no resolved active model — be permissive
+		const fullId = provider ? `${provider}/${modelId}` : modelId;
+		return patterns.some(
+			(pattern) => minimatch(fullId, pattern, { nocase: true }) || minimatch(modelId, pattern, { nocase: true }),
+		);
+	}
+
 	private async resolvePackageSources(
 		sources: Array<{ pkg: PackageSource; scope: SourceScope }>,
 		accumulator: ResourceAccumulator,
 		onMissing?: (source: string) => Promise<MissingSourceAction>,
 	): Promise<void> {
 		for (const { pkg, scope } of sources) {
+			if (!this.isPackageEnabledForActiveModel(pkg)) continue;
 			const sourceStr = typeof pkg === "string" ? pkg : pkg.source;
 			const filter = typeof pkg === "object" ? pkg : undefined;
 			const parsed = this.parseSource(sourceStr);
