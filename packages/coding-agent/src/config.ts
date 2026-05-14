@@ -398,8 +398,13 @@ export function getThemesDir(): string {
 	if (isBunBinary) {
 		return join(getPackageDir(), "theme");
 	}
-	// Theme is in modes/interactive/theme/ relative to src/ or dist/
+	// Theme is in modes/interactive/theme/ relative to src/ or dist/.
+	// getPackageDir() may return the dist/ dir itself (when package.json is
+	// copied into dist/ by copy-assets), so skip the subdir in that case.
 	const packageDir = getPackageDir();
+	if (existsSync(join(packageDir, "modes", "interactive", "theme"))) {
+		return join(packageDir, "modes", "interactive", "theme");
+	}
 	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
 	return join(packageDir, srcOrDist, "modes", "interactive", "theme");
 }
@@ -415,6 +420,9 @@ export function getExportTemplateDir(): string {
 		return join(getPackageDir(), "export-html");
 	}
 	const packageDir = getPackageDir();
+	if (existsSync(join(packageDir, "core", "export-html"))) {
+		return join(packageDir, "core", "export-html");
+	}
 	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
 	return join(packageDir, srcOrDist, "core", "export-html");
 }
@@ -455,6 +463,9 @@ export function getInteractiveAssetsDir(): string {
 		return join(getPackageDir(), "assets");
 	}
 	const packageDir = getPackageDir();
+	if (existsSync(join(packageDir, "modes", "interactive", "assets"))) {
+		return join(packageDir, "modes", "interactive", "assets");
+	}
 	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
 	return join(packageDir, srcOrDist, "modes", "interactive", "assets");
 }

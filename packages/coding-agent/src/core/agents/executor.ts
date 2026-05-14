@@ -18,6 +18,7 @@ import {
 	getFilteredForkMessages,
 	resolveContextPolicy,
 } from "./context.js";
+import { registerLiveSession, unregisterLiveSession } from "./live-sessions.js";
 import { writeAgentOutput } from "./output.js";
 import { findAgentDefinition, formatAvailableAgents, loadAgentRegistry } from "./registry.js";
 import type { AgentRecentRun } from "./status.js";
@@ -367,6 +368,7 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 	}
 
 	const taskId = options.taskId;
+	if (taskId) registerLiveSession(taskId, session);
 	const unsubscribe = session.subscribe((event) => {
 		if (!options.progressRuns.includes(details)) options.progressRuns.push(details);
 		refreshRunDetailsFromSession(details, session, startedAt);
@@ -446,6 +448,7 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 		details.error = error instanceof Error ? error.message : String(error);
 		throw Object.assign(new Error(details.error), { details });
 	} finally {
+		if (taskId) unregisterLiveSession(taskId);
 		if (options.signal) options.signal.removeEventListener("abort", abortChild);
 		unsubscribe();
 		options.onChildSessionEnd?.(session, details);

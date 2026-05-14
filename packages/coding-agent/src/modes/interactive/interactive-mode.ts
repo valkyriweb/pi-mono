@@ -143,6 +143,7 @@ import { ToolExecutionComponent } from "./components/tool-execution.js";
 import { TreeSelectorComponent } from "./components/tree-selector.js";
 import { UserMessageComponent } from "./components/user-message.js";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.js";
+import type { ZoomedSessionConfig } from "./components/zoomed-session-transcript.js";
 import { ZoomedTaskComponent } from "./components/zoomed-task.js";
 import {
 	getAvailableThemes,
@@ -346,6 +347,11 @@ export class InteractiveMode {
 	private zoomAutoPopTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	private unsubscribeZoomStatus?: () => void;
 	private static readonly ZOOM_STOPPED_DISPLAY_MS = 3000;
+
+	// Footer nav selection state.
+	// When footerSelectedTaskId is defined the footer renders selectable pills and
+	// up/down/enter are consumed by the footer nav handler instead of the editor.
+	private footerSelectedTaskId: string | undefined = undefined;
 
 	// Extension UI state
 	private extensionSelector: ExtensionSelectorComponent | undefined = undefined;
@@ -709,6 +715,11 @@ export class InteractiveMode {
 		});
 
 		this.unsubscribeAgentRuns = subscribeAgentRecentRuns(() => {
+			// If the footer-selected task just terminated, clear the selection.
+			if (this.footerSelectedTaskId) {
+				const still = getRunningTasksSorted().find((t) => t.id === this.footerSelectedTaskId);
+				if (!still) this.clearFooterFocus();
+			}
 			this.footer.invalidate();
 			this.ui.requestRender();
 		});
@@ -2402,6 +2413,11 @@ export class InteractiveMode {
 		// Set up handlers on defaultEditor - they use this.editor for text access
 		// so they work correctly regardless of which editor is active
 		this.defaultEditor.onEscape = () => {
+			// Footer nav takes priority: escape clears the selection without zooming.
+			if (this.footerSelectedTaskId) {
+				this.clearFooterFocus();
+				return;
+			}
 			if (this.session.isStreaming) {
 				this.restoreQueuedMessagesToEditor({ abort: true });
 			} else if (this.session.isBashRunning) {
@@ -2460,7 +2476,15 @@ export class InteractiveMode {
 			void this.runZoomedTaskVerb("kill");
 		});
 
+		// Footer nav: pre-input hook so up/down/enter fall through to the editor
+		// when conditions are not met (editor non-empty or no running tasks).
+		this.defaultEditor.onPreInput = (data: string) => this.handleFooterNavInput(data);
+
 		this.defaultEditor.onChange = (text: string) => {
+			// Typing into the editor cancels footer nav selection.
+			if (text.length > 0 && this.footerSelectedTaskId) {
+				this.clearFooterFocus();
+			}
 			const wasBashMode = this.isBashMode;
 			this.isBashMode = text.trimStart().startsWith("!");
 			if (wasBashMode !== this.isBashMode) {
@@ -3322,6 +3346,95 @@ export class InteractiveMode {
 	// Zoom-into-running-agent view
 	// ──────────────────────────────────────────────────────────────────────
 
+	// -------------------------------------------------------------------------
+	// Footer nav
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Conditionally handle up/down/enter for footer pill navigation.
+	 * Returns true if the input was consumed, false to fall through to the editor.
+	 */
+	private handleFooterNavInput(data: string): boolean {
+		if (this.keybindings.matches(data, "app.agents.footer.focusPrev")) {
+			if (this.defaultEditor.getText().length === 0 && getRunningTasksSorted().length > 0) {
+				this.footerFocusPrev();
+				return true;
+			}
+			return false;
+		}
+		if (this.keybindings.matches(data, "app.agents.footer.focusNext")) {
+			if (this.defaultEditor.getText().length === 0 && getRunningTasksSorted().length > 0) {
+				this.footerFocusNext();
+				return true;
+			}
+			return false;
+		}
+		if (this.keybindings.matches(data, "app.agents.footer.zoom")) {
+			if (this.footerSelectedTaskId) {
+				this.enterZoomFromFooter();
+				return true;
+			}
+			return false;
+		}
+		return false;
+	}
+
+	/** Highlight the previous running task pill (wraps around). */
+	private footerFocusPrev(): void {
+		const tasks = getRunningTasksSorted();
+		if (tasks.length === 0) {
+			this.clearFooterFocus();
+			return;
+		}
+		if (!this.footerSelectedTaskId) {
+			this.setFooterSelectedTaskId(tasks[tasks.length - 1]!.id);
+			return;
+		}
+		const idx = tasks.findIndex((t) => t.id === this.footerSelectedTaskId);
+		const prevIdx = idx <= 0 ? tasks.length - 1 : idx - 1;
+		this.setFooterSelectedTaskId(tasks[prevIdx]!.id);
+	}
+
+	/** Highlight the next running task pill (wraps around). */
+	private footerFocusNext(): void {
+		const tasks = getRunningTasksSorted();
+		if (tasks.length === 0) {
+			this.clearFooterFocus();
+			return;
+		}
+		if (!this.footerSelectedTaskId) {
+			this.setFooterSelectedTaskId(tasks[0]!.id);
+			return;
+		}
+		const idx = tasks.findIndex((t) => t.id === this.footerSelectedTaskId);
+		const nextIdx = idx < 0 || idx >= tasks.length - 1 ? 0 : idx + 1;
+		this.setFooterSelectedTaskId(tasks[nextIdx]!.id);
+	}
+
+	private setFooterSelectedTaskId(id: string | undefined): void {
+		this.footerSelectedTaskId = id;
+		this.footer.setFooterSelectedTaskId(id);
+		this.ui.requestRender();
+	}
+
+	/** Clear footer nav selection without zooming. */
+	private clearFooterFocus(): void {
+		if (!this.footerSelectedTaskId) return;
+		this.setFooterSelectedTaskId(undefined);
+	}
+
+	/** Zoom into the currently highlighted footer pill and clear the selection. */
+	private enterZoomFromFooter(): void {
+		const taskId = this.footerSelectedTaskId;
+		if (!taskId) return;
+		this.clearFooterFocus();
+		this.enterZoom(taskId);
+	}
+
+	// -------------------------------------------------------------------------
+	// Zoom
+	// -------------------------------------------------------------------------
+
 	/**
 	 * Enter zoom view from the global hotkey. Picks the most recently started
 	 * running task (last in sort order). Returns silently with a warning if no
@@ -3337,14 +3450,25 @@ export class InteractiveMode {
 		this.enterZoom(target.id);
 	}
 
+	private makeZoomedSessionConfig(): ZoomedSessionConfig {
+		return {
+			cwd: this.sessionManager.getCwd(),
+			hideThinkingBlock: this.hideThinkingBlock,
+			markdownTheme: this.getMarkdownThemeWithSettings(),
+			showImages: this.settingsManager.getShowImages(),
+			imageWidthCells: this.settingsManager.getImageWidthCells(),
+		};
+	}
+
 	private enterZoom(taskId: string): void {
 		if (this.zoomedTaskId === taskId) return;
+		const sessionConfig = this.makeZoomedSessionConfig();
 		// If already zoomed into a different task, swap component in place to
 		// avoid restoring + re-clearing the chat container twice.
 		if (this.zoomedTaskId) {
 			this.disposeZoomedComponent();
 			this.zoomedTaskId = taskId;
-			this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui);
+			this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui, sessionConfig);
 			this.chatContainer.addChild(this.zoomedComponent);
 			this.scheduleZoomTerminalCheck();
 			this.footer.invalidate();
@@ -3354,7 +3478,7 @@ export class InteractiveMode {
 		this.zoomedTaskId = taskId;
 		this.preZoomChatChildren = [...this.chatContainer.children];
 		this.chatContainer.clear();
-		this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui);
+		this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui, sessionConfig);
 		this.chatContainer.addChild(this.zoomedComponent);
 		// Watch for terminal status on this task to auto-pop.
 		this.unsubscribeZoomStatus = subscribeAgentRecentRuns(() => this.scheduleZoomTerminalCheck());

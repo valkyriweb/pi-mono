@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import * as _bundledPiAgentCore from "@earendil-works/pi-agent-core";
 import * as _bundledPiAi from "@earendil-works/pi-ai";
 import * as _bundledPiAiOauth from "@earendil-works/pi-ai/oauth";
@@ -344,8 +344,25 @@ function createExtensionAPI(
 }
 
 async function loadExtensionModule(extensionPath: string) {
+	// Pre-compiled .js/.mjs extensions can be loaded with native import() —
+	// no jiti/babel overhead. Only use jiti for .ts files.
+	if (/\.[mc]?js$/.test(extensionPath)) {
+		try {
+			const url = pathToFileURL(extensionPath).href;
+			const module = await import(url);
+			const factory = (module.default ?? module) as ExtensionFactory;
+			return typeof factory === "function" ? factory : undefined;
+		} catch {
+			// Fall through to jiti (handles CommonJS / alias needs)
+		}
+	}
+
 	const jiti = createJiti(import.meta.url, {
 		moduleCache: false,
+		// Cache transpiled .ts extension source to disk so jiti/babel doesn't
+		// re-parse on every boot. Explicit path so it survives reboots
+		// (fsCache:true falls back to tmpdir which is wiped on reboot).
+		fsCache: path.join(getAgentDir(), ".jiti-cache"),
 		// In Bun binary: use virtualModules for bundled packages (no filesystem resolution)
 		// Also disable tryNative so jiti handles ALL imports (not just the entry point)
 		// In Node.js/dev: use aliases to resolve to node_modules paths
@@ -471,7 +488,7 @@ function readPiManifest(packageJsonPath: string): PiManifest | null {
 }
 
 function isExtensionFile(name: string): boolean {
-	return name.endsWith(".ts") || name.endsWith(".js");
+	return name.endsWith(".ts") || name.endsWith(".js") || name.endsWith(".mjs");
 }
 
 /**
@@ -535,11 +552,21 @@ function discoverExtensionsInDir(dir: string): string[] {
 	try {
 		const entries = fs.readdirSync(dir, { withFileTypes: true });
 
+		// Collect file entries first so we can prefer .js over .ts when both exist.
+		const fileNames = new Set(entries.filter((e) => e.isFile() || e.isSymbolicLink()).map((e) => e.name));
+
 		for (const entry of entries) {
 			const entryPath = path.join(dir, entry.name);
 
 			// 1. Direct files: *.ts or *.js
+			// Prefer pre-compiled .js over .ts when both exist (avoids jiti transpile).
 			if ((entry.isFile() || entry.isSymbolicLink()) && isExtensionFile(entry.name)) {
+				if (
+					entry.name.endsWith(".ts") &&
+					(fileNames.has(entry.name.replace(/\.ts$/, ".js")) || fileNames.has(entry.name.replace(/\.ts$/, ".mjs")))
+				) {
+					continue; // .js/.mjs sibling exists — skip the .ts
+				}
 				discovered.push(entryPath);
 				continue;
 			}

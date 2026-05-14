@@ -2,6 +2,7 @@ import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/p
 import type { AgentSession } from "../../../core/agent-session.js";
 import { formatAgentFooterStatus } from "../../../core/agents/status.js";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.js";
+import { getRunningTasksSorted } from "../../../core/tasks/index.js";
 import { theme } from "../theme/theme.js";
 
 /**
@@ -50,10 +51,17 @@ export class FooterComponent implements Component {
 		totalCost: 0,
 	};
 
+	/** Task id currently highlighted in footer nav mode, or undefined when inactive. */
+	private footerSelectedTaskId: string | undefined = undefined;
+
 	constructor(
 		private session: AgentSession,
 		private footerData: ReadonlyFooterDataProvider,
 	) {}
+
+	setFooterSelectedTaskId(id: string | undefined): void {
+		this.footerSelectedTaskId = id;
+	}
 
 	setSession(session: AgentSession): void {
 		this.session = session;
@@ -77,6 +85,32 @@ export class FooterComponent implements Component {
 	 */
 	dispose(): void {
 		// Git watcher cleanup handled by provider
+	}
+
+	/**
+	 * Render the agent status line at the bottom of the footer.
+	 *
+	 * When footer-nav mode is active (`footerSelectedTaskId` is set), render a
+	 * pill-per-running-task row so the user can see which agent is highlighted.
+	 * Otherwise fall back to the plain `formatAgentFooterStatus()` summary.
+	 */
+	private renderAgentStatusLine(width: number): string | undefined {
+		if (this.footerSelectedTaskId !== undefined) {
+			const tasks = getRunningTasksSorted();
+			if (tasks.length === 0) return undefined;
+			const pills = tasks.map((t) => {
+				const label = ` ${t.id} `;
+				return t.id === this.footerSelectedTaskId
+					? theme.fg("accent", theme.bold(`[${t.id}]`))
+					: theme.fg("dim", label);
+			});
+			const hint = theme.fg("muted", " ↑↓ select · enter=zoom · esc=cancel");
+			const row = pills.join("") + hint;
+			return truncateToWidth(row, width, theme.fg("dim", "..."));
+		}
+		const agentStatus = formatAgentFooterStatus();
+		if (!agentStatus) return undefined;
+		return truncateToWidth(theme.fg("dim", sanitizeStatusText(agentStatus)), width, theme.fg("dim", "..."));
 	}
 
 	private getUsageTotals(): UsageTotals {
@@ -255,9 +289,9 @@ export class FooterComponent implements Component {
 		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
 		const lines = [pwdLine, dimStatsLeft + dimRemainder];
 
-		const agentStatus = formatAgentFooterStatus();
-		if (agentStatus) {
-			lines.push(truncateToWidth(theme.fg("dim", sanitizeStatusText(agentStatus)), width, theme.fg("dim", "...")));
+		const agentStatusLine = this.renderAgentStatusLine(width);
+		if (agentStatusLine) {
+			lines.push(agentStatusLine);
 		}
 
 		// Add extension statuses on a single line, sorted by key alphabetically

@@ -51,6 +51,7 @@
 		"jiti": "^2.7.0",
 		"minimatch": "^10.2.3",
 		"proper-lockfile": "^4.1.2",
+		"strip-ansi": "^7.2.0",
 		"typebox": "^1.1.24",
 		"undici": "^7.19.1",
 		"yaml": "^2.8.2"
@@ -69,6 +70,7 @@
 		"@types/hosted-git-info": "^3.0.5",
 		"@types/ms": "^2.1.0",
 		"@types/node": "^24.3.0",
+		"strip-ansi": "^7.2.0",
 		"@types/proper-lockfile": "^4.1.4",
 		"shx": "^0.4.0",
 		"typescript": "^5.7.3",
