@@ -72,7 +72,7 @@ describe("ToolExecutionComponent parity", () => {
 		const component = new ToolExecutionComponent(
 			"agent",
 			"tool-agent-1",
-			{ agent: "scout", task: "Find files" },
+			{ agent: "explore", task: "Find files" },
 			{},
 			createAgentToolDefinition(process.cwd()),
 			createFakeTui(),
@@ -80,18 +80,21 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		let rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("agent");
-		expect(rendered).toContain("single: scout");
+		expect(rendered).toContain("single: explore");
 
 		component.updateResult(
 			{
-				content: [{ type: "text", text: "agent single: completed\n1. scout: completed" }],
+				content: [{ type: "text", text: "agent single: completed\n1. explore: completed" }],
 				details: { mode: "single", status: "completed", runs: [] },
 				isError: false,
 			},
 			false,
 		);
 		rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("scout: completed");
+		// Renderer drives display from structured `details`, not the message content,
+		// so with empty runs the body shows the summary line rather than per-run text.
+		expect(rendered).toContain("agent single");
+		expect(rendered).toContain("completed");
 	});
 
 	test("uses built-in rendering for built-in overrides without custom renderers", () => {

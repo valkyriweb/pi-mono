@@ -77,8 +77,8 @@ describe("agent tool suite: parallel and chain", () => {
 			{
 				mode: "parallel",
 				tasks: [
-					{ agent: "scout", task: "first" },
-					{ agent: "scout", task: "second" },
+					{ agent: "explore", task: "first" },
+					{ agent: "explore", task: "second" },
 				],
 				concurrency: 2,
 			},

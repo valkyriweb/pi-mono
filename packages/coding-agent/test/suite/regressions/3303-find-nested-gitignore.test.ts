@@ -13,12 +13,17 @@ import { createFindToolDefinition } from "../../../src/core/tools/find.js";
  * also filtered files under sibling `b/`. The fix switches to fd's
  * hierarchical `.gitignore` handling via `--no-require-git` and drops the
  * manual collection.
+ *
+ * Fork note: this fork prefers `bfs` over `fd` and `bfs` matches Claude
+ * Code Glob semantics by intentionally not filtering `.gitignore`. The
+ * regression assertions here therefore force the `fd` backend so the
+ * fd-fallback path still gets nested-gitignore coverage.
  */
 describe("issue #3303 nested .gitignore rules leak into sibling directories", () => {
 	let tempRoot: string;
 
 	async function runFind(pattern: string): Promise<string[]> {
-		const def = createFindToolDefinition(tempRoot);
+		const def = createFindToolDefinition(tempRoot, { backend: "fd" });
 		const ctx = {} as Parameters<typeof def.execute>[4];
 		const result = (await def.execute("call-1", { pattern }, undefined, undefined, ctx)) as {
 			content: Array<{ type: string; text?: string }>;

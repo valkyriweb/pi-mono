@@ -48,8 +48,8 @@ describe("agent tool suite: context modes", () => {
 			{
 				mode: "parallel",
 				tasks: [
-					{ agent: "scout", task: "slim child", context: "slim" },
-					{ agent: "scout", task: "none child", context: "none" },
+					{ agent: "explore", task: "slim child", context: "slim" },
+					{ agent: "explore", task: "none child", context: "none" },
 				],
 				concurrency: 1,
 			},

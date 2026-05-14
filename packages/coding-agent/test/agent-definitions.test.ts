@@ -1,19 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.js";
 
-const READ_ONLY_AGENTS = new Set(["explore", "plan", "scout", "reviewer"]);
+const READ_ONLY_AGENTS = new Set(["explore", "plan", "reviewer"]);
 
 describe("built-in agent definitions", () => {
 	test("include the MVP base agents with non-empty prompts", () => {
 		const agents = getBuiltinAgentDefinitions();
-		expect(agents.map((agent) => agent.id).sort()).toEqual([
-			"explore",
-			"general",
-			"plan",
-			"reviewer",
-			"scout",
-			"worker",
-		]);
+		expect(agents.map((agent) => agent.id).sort()).toEqual(["explore", "general", "plan", "reviewer", "worker"]);
 		for (const agent of agents) {
 			expect(agent.description.trim()).not.toBe("");
 			expect(agent.prompt.trim()).not.toBe("");
@@ -35,7 +28,6 @@ describe("built-in agent definitions", () => {
 		expect(agents.get("explore")).toContain("### Files");
 		expect(agents.get("explore")).toContain("### Open Questions");
 		expect(agents.get("reviewer")).toContain("VERDICT: PASS|FAIL|PARTIAL");
-		expect(agents.get("scout")).toContain("### Key Files");
 	});
 
 	test("general and worker deny recursive agent", () => {
