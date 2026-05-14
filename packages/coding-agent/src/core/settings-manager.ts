@@ -49,6 +49,18 @@ export interface ThinkingBudgetsSettings {
 	high?: number;
 }
 
+export type SubagentThinkingSetting = "inherit" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export interface SubagentDefaultSettings {
+	model?: string;
+	thinking?: SubagentThinkingSetting;
+}
+
+export interface SubagentSettings {
+	defaults?: SubagentDefaultSettings;
+	providers?: Record<string, SubagentDefaultSettings>;
+}
+
 export interface MarkdownSettings {
 	codeBlockIndent?: string; // default: "  "
 }
@@ -103,6 +115,7 @@ export interface Settings {
 	terminal?: TerminalSettings;
 	images?: ImageSettings;
 	enabledModels?: string[]; // Model patterns for cycling (same format as --models CLI flag)
+	subagents?: SubagentSettings; // Default model/thinking for native child agents (precedence: explicit task option > agent frontmatter > providers[parent.provider] > defaults > parent inheritance)
 	doubleEscapeAction?: "fork" | "tree" | "none"; // Action for double-escape with empty editor (default: "tree")
 	treeFilterMode?: "default" | "no-tools" | "user-only" | "labeled-only" | "all"; // Default filter when opening /tree
 	thinkingBudgets?: ThinkingBudgetsSettings; // Custom token budgets for thinking levels
@@ -649,6 +662,15 @@ export class SettingsManager {
 
 	getDefaultThinkingLevel(): "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
 		return this.settings.defaultThinkingLevel;
+	}
+
+	/**
+	 * Returns subagent default model/thinking config. Used by the agent tool to
+	 * resolve the model and thinking level for a child session when the caller
+	 * didn't supply explicit overrides and the agent definition has no own pick.
+	 */
+	getSubagentSettings(): SubagentSettings {
+		return structuredClone(this.settings.subagents ?? {});
 	}
 
 	setDefaultThinkingLevel(level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh"): void {

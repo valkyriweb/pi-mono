@@ -36,6 +36,7 @@ import {
 } from "./status.js";
 import type {
 	AgentBackgroundCompletion,
+	AgentDefaultSelection,
 	AgentDefinition,
 	AgentExecutionProgress,
 	AgentOutputMode,
@@ -172,12 +173,17 @@ export function resolveEffectiveTools(options: {
 export function resolveAgentModel(options: {
 	modelReference?: string;
 	agent: AgentDefinition;
+	defaults?: AgentDefaultSelection;
 	parentModel: Model<Api> | undefined;
 	modelRegistry: ModelRegistry;
 }): Model<Api> | undefined {
+	// Precedence: explicit task option > agent frontmatter > settings.subagents (provider override > defaults) > parent inheritance.
+	const defaultRef =
+		options.defaults?.model && options.defaults.model !== "inherit" ? options.defaults.model : undefined;
 	const reference =
 		options.modelReference ??
-		(options.agent.model && options.agent.model !== "inherit" ? options.agent.model : undefined);
+		(options.agent.model && options.agent.model !== "inherit" ? options.agent.model : undefined) ??
+		defaultRef;
 	if (!reference) return options.parentModel;
 
 	// `"fast"` / `"medium"` aliases: resolve to the parent provider's mapped tier.
@@ -209,18 +215,38 @@ export function resolveAgentThinking(options: {
 	taskThinking?: ThinkingLevel;
 	toolThinking?: ThinkingLevel;
 	agent: AgentDefinition;
+	defaults?: AgentDefaultSelection;
 	parentThinkingLevel: ThinkingLevel;
 	model: Model<Api> | undefined;
 }): ThinkingLevel {
 	const agentThinking =
 		options.agent.thinking && options.agent.thinking !== "inherit" ? options.agent.thinking : undefined;
+	const defaultThinking =
+		options.defaults?.thinking && options.defaults.thinking !== "inherit"
+			? (options.defaults.thinking as ThinkingLevel)
+			: undefined;
+	// Precedence mirrors resolveAgentModel — task > tool > agent frontmatter > settings.subagents > parent.
 	const selected =
 		options.taskThinking ??
 		options.toolThinking ??
 		agentThinking ??
+		defaultThinking ??
 		options.parentThinkingLevel ??
 		DEFAULT_THINKING_LEVEL;
 	return clampThinkingForModel(options.model, selected);
+}
+
+/**
+ * Reads settings.subagents and folds providers[parent.provider] over defaults
+ * to produce the AgentDefaultSelection to pass into resolveAgentModel/Thinking.
+ */
+export function resolveAgentDefaults(options: {
+	parentModel: Model<Api> | undefined;
+	settingsManager: SettingsManager;
+}): AgentDefaultSelection {
+	const settings = options.settingsManager.getSubagentSettings();
+	const providerDefaults = options.parentModel ? settings.providers?.[options.parentModel.provider] : undefined;
+	return { ...(settings.defaults ?? {}), ...(providerDefaults ?? {}) };
 }
 
 function extractFinalAssistantText(messages: readonly { role: string; content?: unknown }[]): string {
@@ -465,9 +491,14 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		);
 	}
 
+	const agentDefaults = resolveAgentDefaults({
+		parentModel: options.parentModel,
+		settingsManager: options.parentServices.settingsManager,
+	});
 	const model = resolveAgentModel({
 		modelReference: options.task.model,
 		agent,
+		defaults: agentDefaults,
 		parentModel: options.parentModel,
 		modelRegistry: options.parentServices.modelRegistry,
 	});
@@ -475,6 +506,7 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		taskThinking: options.task.thinking,
 		toolThinking: options.toolThinking,
 		agent,
+		defaults: agentDefaults,
 		parentThinkingLevel: options.parentThinkingLevel,
 		model,
 	});
@@ -682,9 +714,14 @@ async function resumeSingleBackgroundRun(
 		throw new Error(`Unknown agent "${task.agent}". Available agents: ${formatAvailableAgents(registry)}`);
 	}
 
+	const agentDefaults = resolveAgentDefaults({
+		parentModel: options.parentModel,
+		settingsManager: options.parentServices.settingsManager,
+	});
 	const model = resolveAgentModel({
 		modelReference: task.model,
 		agent,
+		defaults: agentDefaults,
 		parentModel: options.parentModel,
 		modelRegistry: options.parentServices.modelRegistry,
 	});
@@ -692,6 +729,7 @@ async function resumeSingleBackgroundRun(
 		taskThinking: task.thinking,
 		toolThinking: input.thinking,
 		agent,
+		defaults: agentDefaults,
 		parentThinkingLevel: options.parentThinkingLevel,
 		model,
 	});

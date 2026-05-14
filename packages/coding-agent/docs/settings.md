@@ -20,6 +20,25 @@ Edit directly or use `/settings` for common options.
 | `defaultThinkingLevel` | string | - | `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"` |
 | `hideThinkingBlock` | boolean | `false` | Hide thinking blocks in output |
 | `thinkingBudgets` | object | - | Custom token budgets per thinking level |
+| `subagents` | object | - | Default native child-agent model/thinking, optionally per parent provider |
+
+#### subagents
+
+Native child agents inherit the parent model and thinking by default. Configure fallback defaults globally or per parent provider:
+
+```json
+{
+  "subagents": {
+    "defaults": { "thinking": "off" },
+    "providers": {
+      "openai-codex": { "model": "gpt-5.5", "thinking": "medium" },
+      "claude-bridge": { "model": "claude-sonnet-4-6", "thinking": "off" }
+    }
+  }
+}
+```
+
+The `agent` tool can still override these per call or per task with `model` and `thinking` (`"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`). Precedence: explicit task option > agent frontmatter > `subagents.providers[<parent.provider>]` > `subagents.defaults` > parent inheritance.
 
 #### thinkingBudgets
 

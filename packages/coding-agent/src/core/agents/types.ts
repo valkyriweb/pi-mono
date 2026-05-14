@@ -12,6 +12,16 @@ export type AgentToolList = string[] | "*";
 export type AgentThinkingLevel = ThinkingLevel | "inherit";
 export type AgentModelPreference = string | "inherit";
 
+/**
+ * Default model/thinking selection for a child agent, sourced from
+ * settings.subagents.defaults and settings.subagents.providers[<parent.provider>].
+ * Sits between the agent definition's own picks and parent inheritance.
+ */
+export interface AgentDefaultSelection {
+	model?: string;
+	thinking?: AgentThinkingLevel;
+}
+
 export interface AgentDefinition {
 	id: string;
 	description: string;
