@@ -84,6 +84,17 @@ export type PackageSource =
 			skills?: string[];
 			prompts?: string[];
 			themes?: string[];
+			/**
+			 * Conditional load gate. When set, the package (and all resources it
+			 * provides) is only loaded if the active default model matches one of
+			 * the listed patterns. Patterns use the same glob form as `enabledModels`
+			 * (e.g. `"openai-codex/*"`, `"*sonnet*"`).
+			 *
+			 * Evaluated against `defaultProvider/defaultModel` from settings at
+			 * package-resolve time. Mid-session model switches do NOT re-evaluate;
+			 * change settings and reload to switch which packages are active.
+			 */
+			enabledWhen?: { models?: string[] };
 	  };
 
 export interface Settings {
