@@ -25,6 +25,7 @@ import {
 	type SessionMessageEntry,
 	type ThinkingLevelChangeEntry,
 } from "../src/core/session-manager.js";
+import { SettingsManager } from "../src/core/settings-manager.js";
 
 // ============================================================================
 // Test fixtures
@@ -245,6 +246,34 @@ describe("shouldCompact", () => {
 		};
 
 		expect(shouldCompact(95000, 100000, settings)).toBe(false);
+	});
+
+	it("derives reserve tokens from absolute triggerTokens when context window is known", () => {
+		const settingsManager = SettingsManager.inMemory({
+			compaction: { triggerTokens: 150000, reserveTokens: 10000 },
+		});
+
+		const settings = settingsManager.getCompactionSettings(200000);
+
+		expect(settings.reserveTokens).toBe(50000);
+		expect(shouldCompact(151000, 200000, settings)).toBe(true);
+		expect(shouldCompact(149000, 200000, settings)).toBe(false);
+	});
+
+	it("falls back to reserveTokens when triggerTokens is above the context window", () => {
+		const settingsManager = SettingsManager.inMemory({
+			compaction: { triggerTokens: 150000, reserveTokens: 10000 },
+		});
+
+		expect(settingsManager.getCompactionSettings(100000).reserveTokens).toBe(10000);
+	});
+
+	it("falls back to reserveTokens when contextWindow is not provided", () => {
+		const settingsManager = SettingsManager.inMemory({
+			compaction: { triggerTokens: 150000, reserveTokens: 10000 },
+		});
+
+		expect(settingsManager.getCompactionSettings().reserveTokens).toBe(10000);
 	});
 });
 

@@ -74,12 +74,14 @@ Set `PI_SKIP_VERSION_CHECK=1` to disable the Pi version update check. Use `--off
 |---------|------|---------|-------------|
 | `compaction.enabled` | boolean | `true` | Enable auto-compaction |
 | `compaction.reserveTokens` | number | `16384` | Tokens reserved for LLM response |
+| `compaction.triggerTokens` | number | unset | Absolute context-token count where auto-compaction should trigger. When set and the active model's context window is known, Pi derives `reserveTokens` as `contextWindow - triggerTokens`. Falls back to `reserveTokens` if the window is unknown or smaller than `triggerTokens`. |
 | `compaction.keepRecentTokens` | number | `20000` | Recent tokens to keep (not summarized) |
 
 ```json
 {
   "compaction": {
     "enabled": true,
+    "triggerTokens": 180000,
     "reserveTokens": 16384,
     "keepRecentTokens": 20000
   }
