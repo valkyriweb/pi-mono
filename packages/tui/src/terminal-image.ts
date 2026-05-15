@@ -70,6 +70,11 @@ export function detectCapabilities(): TerminalCapabilities {
 		return { images: "iterm2", trueColor: true, hyperlinks: true };
 	}
 
+	// Warp and Rusty Warp support the iTerm2 inline image protocol.
+	if (termProgram === "warpterminal") {
+		return { images: "iterm2", trueColor: true, hyperlinks: true };
+	}
+
 	if (termProgram === "vscode") {
 		return { images: null, trueColor: true, hyperlinks: true };
 	}

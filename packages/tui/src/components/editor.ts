@@ -191,7 +191,7 @@ interface EditorState {
 	cursorCol: number;
 }
 
-interface LayoutLine {
+export interface LayoutLine {
 	text: string;
 	hasCursor: boolean;
 	cursorPos?: number;
@@ -822,6 +822,7 @@ export class Editor implements Component, Focusable {
 
 	private layoutText(contentWidth: number): LayoutLine[] {
 		const layoutLines: LayoutLine[] = [];
+		const logicalIndices: number[] = [];
 
 		if (this.state.lines.length === 0 || (this.state.lines.length === 1 && this.state.lines[0] === "")) {
 			// Empty editor
@@ -830,7 +831,8 @@ export class Editor implements Component, Focusable {
 				hasCursor: true,
 				cursorPos: 0,
 			});
-			return layoutLines;
+			logicalIndices.push(0);
+			return this.onLayoutLines(layoutLines, logicalIndices);
 		}
 
 		// Process each logical line
@@ -853,6 +855,7 @@ export class Editor implements Component, Focusable {
 						hasCursor: false,
 					});
 				}
+				logicalIndices.push(i);
 			} else {
 				// Line needs wrapping - use word-aware wrapping
 				const chunks = wordWrapLine(line, contentWidth, [...this.segment(line)]);
@@ -901,11 +904,22 @@ export class Editor implements Component, Focusable {
 							hasCursor: false,
 						});
 					}
+					logicalIndices.push(i);
 				}
 			}
 		}
 
-		return layoutLines;
+		return this.onLayoutLines(layoutLines, logicalIndices);
+	}
+
+	/**
+	 * Hook called after layout computation, before rendering.
+	 * Subclasses can override to transform layout lines (e.g. syntax highlighting).
+	 * Each entry in `logicalIndices[i]` is the logical line index for `lines[i]`.
+	 * When transforming `text`, update `cursorPos` to account for any inserted ANSI bytes.
+	 */
+	protected onLayoutLines(lines: LayoutLine[], _logicalIndices: number[]): LayoutLine[] {
+		return lines;
 	}
 
 	getText(): string {

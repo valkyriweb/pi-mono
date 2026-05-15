@@ -165,113 +165,93 @@ export class FooterComponent implements Component {
 		const state = this.session.state;
 		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost } = this.getUsageTotals();
 
-		// Calculate context usage from session (handles compaction correctly).
-		// After compaction, tokens are unknown until the next LLM response.
 		const contextUsage = this.session.getContextUsage();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
 		const contextTokens = contextUsage?.tokens ?? null;
+		const knownTokens = contextTokens ?? 0;
 
-		// Replace home directory with ~
-		let pwd = this.session.sessionManager.getCwd();
+		// CWD with ~ substitution
+		let basePwd = this.session.sessionManager.getCwd();
 		const home = process.env.HOME || process.env.USERPROFILE;
-		if (home && pwd.startsWith(home)) {
-			pwd = `~${pwd.slice(home.length)}`;
-		}
+		if (home && basePwd.startsWith(home)) basePwd = `~${basePwd.slice(home.length)}`;
 
-		// Add git branch if available
 		const branch = this.footerData.getGitBranch();
-		if (branch) {
-			pwd = `${pwd} (${branch})`;
-		}
-
-		// Add session name if set
 		const sessionName = this.session.sessionManager.getSessionName();
-		if (sessionName) {
-			pwd = `${pwd} • ${sessionName}`;
+
+		// Dim middle-dot separator
+		const sep = theme.fg("dim", " · ");
+
+		// ── Line 1: pwd · branch · session ────────────────────────────────────────
+		let pwdContent = theme.fg("muted", basePwd);
+		if (branch) {
+			pwdContent += theme.fg("dim", " (") + theme.fg("borderAccent", theme.bold(branch)) + theme.fg("dim", ")");
 		}
+		if (sessionName) {
+			pwdContent += sep + theme.fg("accent", sessionName);
+		}
+		const pwdLine = truncateToWidth(pwdContent, width, theme.fg("dim", "..."));
 
-		// Build stats line
-		const statsParts = [];
-		if (totalInput) statsParts.push(`↑${formatTokens(totalInput)}`);
-		if (totalOutput) statsParts.push(`↓${formatTokens(totalOutput)}`);
-		if (totalCacheRead) statsParts.push(`R${formatTokens(totalCacheRead)}`);
-		if (totalCacheWrite) statsParts.push(`W${formatTokens(totalCacheWrite)}`);
+		// ── Line 2: token stats · context% ··············· model · thinking ───────
+		const leftParts: string[] = [];
+		if (totalInput) leftParts.push(theme.fg("dim", `↑${formatTokens(totalInput)}`));
+		if (totalOutput) leftParts.push(theme.fg("dim", `↓${formatTokens(totalOutput)}`));
+		if (totalCacheRead) leftParts.push(theme.fg("dim", `R${formatTokens(totalCacheRead)}`));
+		if (totalCacheWrite) leftParts.push(theme.fg("dim", `W${formatTokens(totalCacheWrite)}`));
 
-		// Show cost with "(sub)" indicator if using OAuth subscription
 		const usingSubscription = state.model ? this.session.modelRegistry.isUsingOAuth(state.model) : false;
 		if (totalCost || usingSubscription) {
 			const costStr = `$${totalCost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
-			statsParts.push(costStr);
+			leftParts.push(theme.fg("dim", costStr));
 		}
 
-		// Colorize context percentage based on usage
-		let contextPercentStr: string;
+		// Context % — each piece coloured independently (no outer dim wrapper)
 		const autoIndicator = this.autoCompactEnabled ? " (auto)" : "";
 		const contextTokensDisplay = contextTokens === null ? "?" : formatTokens(contextTokens);
 		const percentLabel = contextPercent === "?" ? "?%" : `${contextPercent}%`;
 		const tokensLabel = `${contextTokensDisplay}/${formatTokens(contextWindow)}${autoIndicator}`;
-		const knownTokens = contextTokens ?? 0;
+
+		let ctxPct: string;
 		if (contextPercentValue > 90) {
-			// Red — nearly full
-			contextPercentStr = `${theme.fg("error", theme.bold(percentLabel))} ${theme.fg("muted", tokensLabel)}`;
+			ctxPct = theme.fg("error", theme.bold(percentLabel));
 		} else if (contextPercentValue > 70) {
-			// Orange — getting crowded
-			contextPercentStr = `${theme.fg("warning", theme.bold(percentLabel))} ${theme.fg("muted", tokensLabel)}`;
+			ctxPct = theme.fg("warning", theme.bold(percentLabel));
 		} else if (knownTokens < 25_000) {
-			// Bright green — healthy startup range
-			contextPercentStr = `${theme.fg("success", theme.bold(percentLabel))} ${theme.fg("muted", tokensLabel)}`;
+			ctxPct = theme.fg("success", theme.bold(percentLabel));
 		} else {
-			// Muted green — growing but not yet worrying
-			contextPercentStr = `${theme.fg("success", percentLabel)} ${theme.fg("muted", tokensLabel)}`;
+			ctxPct = theme.fg("success", percentLabel);
 		}
-		statsParts.push(contextPercentStr);
+		leftParts.push(ctxPct + " " + theme.fg("dim", tokensLabel));
 
-		let statsLeft = statsParts.join(" ");
-
-		// Add model name on the right side, plus thinking level if model supports it
-		const modelName = state.model?.id || "no-model";
-
+		const statsLeft = leftParts.join(sep);
 		let statsLeftWidth = visibleWidth(statsLeft);
+		if (statsLeftWidth > width) statsLeftWidth = visibleWidth(truncateToWidth(statsLeft, width, "..."));
 
-		// If statsLeft is too wide, truncate it
-		if (statsLeftWidth > width) {
-			statsLeft = truncateToWidth(statsLeft, width, "...");
-			statsLeftWidth = visibleWidth(statsLeft);
-		}
-
-		// Calculate available space for padding (minimum 2 spaces between stats and model)
-		const minPadding = 2;
-
-		// Add thinking level indicator if model supports reasoning
-		let rightSideWithoutProvider = modelName;
+		// Right side: model (warm yellow) · thinking level (teal)
+		const modelName = state.model?.id || "no-model";
+		const rightParts: string[] = [theme.fg("syntaxFunction", modelName)];
 		if (state.model?.reasoning) {
 			const thinkingLevel = state.thinkingLevel || "off";
-			rightSideWithoutProvider =
-				thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
+			rightParts.push(thinkingLevel === "off" ? theme.fg("dim", "thinking off") : theme.fg("accent", thinkingLevel));
 		}
+		let rightSide = rightParts.join(sep);
 
-		// Prepend the provider in parentheses if there are multiple providers and there's enough room
-		let rightSide = rightSideWithoutProvider;
+		// Prepend provider if multiple providers and there's room
+		const minPadding = 2;
 		if (this.footerData.getAvailableProviderCount() > 1 && state.model) {
-			rightSide = `(${state.model!.provider}) ${rightSideWithoutProvider}`;
-			if (statsLeftWidth + minPadding + visibleWidth(rightSide) > width) {
-				// Too wide, fall back
-				rightSide = rightSideWithoutProvider;
+			const withProvider = theme.fg("dim", `(${state.model!.provider}) `) + rightSide;
+			if (statsLeftWidth + minPadding + visibleWidth(withProvider) <= width) {
+				rightSide = withProvider;
 			}
 		}
 
 		const rightSideWidth = visibleWidth(rightSide);
-		const totalNeeded = statsLeftWidth + minPadding + rightSideWidth;
-
 		let statsLine: string;
-		if (totalNeeded <= width) {
-			// Both fit - add padding to right-align model
+		if (statsLeftWidth + minPadding + rightSideWidth <= width) {
 			const padding = " ".repeat(width - statsLeftWidth - rightSideWidth);
 			statsLine = statsLeft + padding + rightSide;
 		} else {
-			// Need to truncate right side
 			const availableForRight = width - statsLeftWidth - minPadding;
 			if (availableForRight > 0) {
 				const truncatedRight = truncateToWidth(rightSide, availableForRight, "");
@@ -279,20 +259,11 @@ export class FooterComponent implements Component {
 				const padding = " ".repeat(Math.max(0, width - statsLeftWidth - truncatedRightWidth));
 				statsLine = statsLeft + padding + truncatedRight;
 			} else {
-				// Not enough space for right side at all
-				statsLine = statsLeft;
+				statsLine = truncateToWidth(statsLeft, width, theme.fg("dim", "..."));
 			}
 		}
 
-		// Apply dim to each part separately. statsLeft may contain color codes (for context %)
-		// that end with a reset, which would clear an outer dim wrapper. So we dim the parts
-		// before and after the colored section independently.
-		const dimStatsLeft = theme.fg("dim", statsLeft);
-		const remainder = statsLine.slice(statsLeft.length); // padding + rightSide
-		const dimRemainder = theme.fg("dim", remainder);
-
-		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
-		const lines = [pwdLine, dimStatsLeft + dimRemainder];
+		const lines = [pwdLine, statsLine];
 
 		const agentStatusLine = this.renderAgentStatusLine(width);
 		if (agentStatusLine) {
