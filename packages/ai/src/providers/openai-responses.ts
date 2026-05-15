@@ -151,7 +151,8 @@ export const streamSimpleOpenAIResponses: StreamFunction<"openai-responses", Sim
 
 	const base = buildBaseOptions(model, options, apiKey);
 	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
-	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+	// "adaptive" is Anthropic-only; OpenAI Responses has no equivalent. Drop it here.
+	const reasoningEffort = clampedReasoning === "off" || clampedReasoning === "adaptive" ? undefined : clampedReasoning;
 
 	return streamOpenAIResponses(model, context, {
 		...base,
