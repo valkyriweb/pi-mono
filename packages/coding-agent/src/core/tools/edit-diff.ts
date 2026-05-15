@@ -263,11 +263,19 @@ export function applyEditsToNormalizedContent(
  * Generate a unified diff string with line numbers and context.
  * Returns both the diff string and the first changed line number (in the new file).
  */
+export interface DiffHunk {
+	oldStart: number;
+	oldLines: number;
+	newStart: number;
+	newLines: number;
+	lines: string[];
+}
+
 export function generateDiffString(
 	oldContent: string,
 	newContent: string,
 	contextLines = 4,
-): { diff: string; firstChangedLine: number | undefined } {
+): { diff: string; firstChangedLine: number | undefined; hunks: DiffHunk[]; originalContent: string } {
 	const parts = Diff.diffLines(oldContent, newContent);
 	const output: string[] = [];
 
@@ -385,12 +393,24 @@ export function generateDiffString(
 		}
 	}
 
-	return { diff: output.join("\n"), firstChangedLine };
+	// Build structured hunks via the diff library for rich UI rendering
+	const structuredResult = Diff.structuredPatch("", "", oldContent, newContent, "", "", { context: 3 });
+	const hunks: DiffHunk[] = (structuredResult?.hunks ?? []).map((h) => ({
+		oldStart: h.oldStart,
+		oldLines: h.oldLines,
+		newStart: h.newStart,
+		newLines: h.newLines,
+		lines: h.lines,
+	}));
+
+	return { diff: output.join("\n"), firstChangedLine, hunks, originalContent: oldContent };
 }
 
 export interface EditDiffResult {
 	diff: string;
 	firstChangedLine: number | undefined;
+	hunks: DiffHunk[];
+	originalContent: string;
 }
 
 export interface EditDiffError {

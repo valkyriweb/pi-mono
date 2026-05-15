@@ -210,16 +210,21 @@ export class FooterComponent implements Component {
 		let contextPercentStr: string;
 		const autoIndicator = this.autoCompactEnabled ? " (auto)" : "";
 		const contextTokensDisplay = contextTokens === null ? "?" : formatTokens(contextTokens);
-		const contextPercentDisplay =
-			contextPercent === "?"
-				? `? ${contextTokensDisplay}/${formatTokens(contextWindow)}${autoIndicator}`
-				: `${contextPercent}% ${contextTokensDisplay}/${formatTokens(contextWindow)}${autoIndicator}`;
+		const percentLabel = contextPercent === "?" ? "?%" : `${contextPercent}%`;
+		const tokensLabel = `${contextTokensDisplay}/${formatTokens(contextWindow)}${autoIndicator}`;
+		const knownTokens = contextTokens ?? 0;
 		if (contextPercentValue > 90) {
-			contextPercentStr = theme.fg("error", contextPercentDisplay);
+			// Red — nearly full
+			contextPercentStr = `${theme.fg("error", theme.bold(percentLabel))} ${theme.fg("muted", tokensLabel)}`;
 		} else if (contextPercentValue > 70) {
-			contextPercentStr = theme.fg("warning", contextPercentDisplay);
+			// Orange — getting crowded
+			contextPercentStr = `${theme.fg("warning", theme.bold(percentLabel))} ${theme.fg("muted", tokensLabel)}`;
+		} else if (knownTokens < 25_000) {
+			// Bright green — healthy startup range
+			contextPercentStr = `${theme.fg("success", theme.bold(percentLabel))} ${theme.fg("muted", tokensLabel)}`;
 		} else {
-			contextPercentStr = contextPercentDisplay;
+			// Muted green — growing but not yet worrying
+			contextPercentStr = `${theme.fg("success", percentLabel)} ${theme.fg("muted", tokensLabel)}`;
 		}
 		statsParts.push(contextPercentStr);
 

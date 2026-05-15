@@ -25,6 +25,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Changed
 
+- Compact skill listings in the system prompt by rendering each skill as a single XML element and capping prompt descriptions, reducing loaded skill prompt text while preserving names and load paths.
 - Tightened the built-in `explore` agent prompt to mirror Claude Code's read-only search specialist: explicit READ-ONLY prohibitions, parallel-tool guidance, caller-specified thoroughness levels (`quick` / `medium` / `very thorough`).
 - Removed the built-in `scout` agent; it overlapped `explore`. `explore` is now the single read-only research agent.
 - Updated the `agent` tool's prompt guidelines to route codebase research and file/symbol lookups to `explore` instead of `general`, and to prefer `plan` before delegating implementation to `worker`.

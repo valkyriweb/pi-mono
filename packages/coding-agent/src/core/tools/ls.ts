@@ -63,6 +63,12 @@ function formatLsCall(
 	return text;
 }
 
+function colorLsEntry(entry: string, theme: typeof import("../../modes/interactive/theme/theme.js").theme): string {
+	if (entry.endsWith("/")) return theme.fg("accent", entry);
+	if (entry.startsWith(".")) return theme.fg("muted", entry);
+	return theme.fg("toolOutput", entry);
+}
+
 function formatLsResult(
 	result: {
 		content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
@@ -79,10 +85,17 @@ function formatLsResult(
 		const maxLines = options.expanded ? lines.length : 20;
 		const displayLines = lines.slice(0, maxLines);
 		const remaining = lines.length - maxLines;
-		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
+		text += `\n${displayLines.map((line) => colorLsEntry(line, theme)).join("\n")}`;
 		if (remaining > 0) {
 			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")})`;
 		}
+		// Entry count summary
+		const dirCount = lines.filter((l) => l.endsWith("/")).length;
+		const fileCount = lines.length - dirCount;
+		const parts: string[] = [];
+		if (dirCount > 0) parts.push(`${dirCount} dir${dirCount === 1 ? "" : "s"}`);
+		if (fileCount > 0) parts.push(`${fileCount} file${fileCount === 1 ? "" : "s"}`);
+		if (parts.length > 0) text += `\n${theme.fg("dim", parts.join(", "))}`;
 	}
 
 	const entryLimit = result.details?.entryLimitReached;

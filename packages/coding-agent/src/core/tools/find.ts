@@ -204,10 +204,15 @@ function formatFindResult(
 		const maxLines = options.expanded ? lines.length : 20;
 		const displayLines = lines.slice(0, maxLines);
 		const remaining = lines.length - maxLines;
-		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
+		text += `\n${displayLines
+			.map((line) => (line.endsWith("/") ? theme.fg("accent", line) : theme.fg("toolOutput", line)))
+			.join("\n")}`;
 		if (remaining > 0) {
 			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")})`;
 		}
+		// Result count summary
+		const n = lines.length;
+		text += `\n${theme.fg("dim", `${n} result${n === 1 ? "" : "s"}`)}`;
 	}
 
 	const resultLimit = result.details?.resultLimitReached;

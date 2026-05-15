@@ -6,6 +6,7 @@ import { readFileSync, statSync } from "fs";
 import path from "path";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
+import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.js";
 import { ensureTool, getOptionalSearchToolPath, toolDisplayName } from "../../utils/tools-manager.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { resolveToCwd } from "./path-utils.js";
@@ -195,6 +196,43 @@ export interface GrepToolOptions {
 	operations?: GrepOperations;
 }
 
+/**
+ * Colour a single grep output line.
+ * Match lines:   "path:lineno:content"  → accent / syntaxNumber / toolOutput
+ * Context lines: "path-lineno-content" → dim
+ * Separators:    "--"                   → muted dots
+ */
+function colorGrepLine(line: string, theme: typeof import("../../modes/interactive/theme/theme.js").theme): string {
+	if (line === "--") return theme.fg("muted", "···");
+
+	// Match line: "file:lineno:content"
+	const matchM = line.match(/^(.+?):(\d+):(.*)/);
+	if (matchM) {
+		const [, file, num, content] = matchM;
+		// Try to syntax-highlight the content using the language inferred from file extension.
+		// Single-line highlight is best-effort; fall back to toolOutput on unknown lang.
+		const lang = getLanguageFromPath(file);
+		const leading = content.match(/^(\s*)/)?.[1] ?? "";
+		const trimmed = content.trimStart();
+		const highlightedContent =
+			lang && trimmed
+				? leading + (highlightCode(trimmed, lang)[0] ?? theme.fg("toolOutput", trimmed))
+				: theme.fg("toolOutput", content);
+		return (
+			theme.fg("accent", file) +
+			theme.fg("muted", ":") +
+			theme.fg("syntaxNumber", num) +
+			theme.fg("muted", ":") +
+			highlightedContent
+		);
+	}
+
+	// Context line: "file-lineno-content"
+	if (line.match(/^(.+?)-(\d+)-(.*)/)) return theme.fg("dim", line);
+
+	return theme.fg("toolOutput", line);
+}
+
 function formatGrepCall(
 	args: { pattern: string; path?: string; glob?: string; limit?: number } | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
@@ -231,9 +269,17 @@ function formatGrepResult(
 		const maxLines = options.expanded ? lines.length : 15;
 		const displayLines = lines.slice(0, maxLines);
 		const remaining = lines.length - maxLines;
-		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
+		text += `\n${displayLines.map((line) => colorGrepLine(line, theme)).join("\n")}`;
 		if (remaining > 0) {
 			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")})`;
+		}
+
+		// Summary: match count + distinct file count (always shown outside collapse region)
+		const matchLines = lines.filter((l) => /^.+?:\d+:/.test(l));
+		const fileCount = new Set(matchLines.map((l) => l.match(/^(.+?):\d+:/)?.[1]).filter(Boolean)).size;
+		if (matchLines.length > 0) {
+			const filePart = fileCount > 1 ? ` across ${fileCount} files` : fileCount === 1 ? " in 1 file" : "";
+			text += `\n${theme.fg("dim", `${matchLines.length} match${matchLines.length === 1 ? "" : "es"}${filePart}`)}`;
 		}
 	}
 

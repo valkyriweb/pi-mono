@@ -241,10 +241,9 @@ describe("skills", () => {
 
 			expect(result).toContain("<available_skills>");
 			expect(result).toContain("</available_skills>");
-			expect(result).toContain("<skill>");
-			expect(result).toContain("<name>test-skill</name>");
-			expect(result).toContain("<description>A test skill.</description>");
-			expect(result).toContain("<location>/path/to/skill/SKILL.md</location>");
+			expect(result).toContain(
+				'<skill name="test-skill" description="A test skill." location="/path/to/skill/SKILL.md" />',
+			);
 		});
 
 		it("should include intro text before XML", () => {
@@ -300,9 +299,9 @@ describe("skills", () => {
 
 			const result = formatSkillsForPrompt(skills);
 
-			expect(result).toContain("<name>skill-one</name>");
-			expect(result).toContain("<name>skill-two</name>");
-			expect((result.match(/<skill>/g) || []).length).toBe(2);
+			expect(result).toContain('name="skill-one"');
+			expect(result).toContain('name="skill-two"');
+			expect((result.match(/<skill /g) || []).length).toBe(2);
 		});
 
 		it("should exclude skills with disableModelInvocation from prompt", () => {
@@ -324,9 +323,9 @@ describe("skills", () => {
 
 			const result = formatSkillsForPrompt(skills);
 
-			expect(result).toContain("<name>visible-skill</name>");
-			expect(result).not.toContain("<name>hidden-skill</name>");
-			expect((result.match(/<skill>/g) || []).length).toBe(1);
+			expect(result).toContain('name="visible-skill"');
+			expect(result).not.toContain('name="hidden-skill"');
+			expect((result.match(/<skill /g) || []).length).toBe(1);
 		});
 
 		it("should return empty string when all skills have disableModelInvocation", () => {

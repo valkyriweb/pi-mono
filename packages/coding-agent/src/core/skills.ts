@@ -13,6 +13,7 @@ const MAX_NAME_LENGTH = 64;
 
 /** Max description length per spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
+const MAX_PROMPT_DESCRIPTION_LENGTH = 500;
 
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
 
@@ -353,16 +354,22 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
 	];
 
 	for (const skill of visibleSkills) {
-		lines.push("  <skill>");
-		lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-		lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-		lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
-		lines.push("  </skill>");
+		lines.push(
+			`  <skill name="${escapeXml(skill.name)}" description="${escapeXml(formatPromptDescription(skill.description))}" location="${escapeXml(skill.filePath)}" />`,
+		);
 	}
 
 	lines.push("</available_skills>");
 
 	return lines.join("\n");
+}
+
+function formatPromptDescription(description: string): string {
+	const normalized = description.replace(/\s+/g, " ").trim();
+	if (normalized.length <= MAX_PROMPT_DESCRIPTION_LENGTH) {
+		return normalized;
+	}
+	return `${normalized.slice(0, MAX_PROMPT_DESCRIPTION_LENGTH - 3).trimEnd()}...`;
 }
 
 function escapeXml(str: string): string {

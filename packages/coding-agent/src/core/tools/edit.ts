@@ -4,10 +4,13 @@ import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "fs/promises";
 import { type Static, Type } from "typebox";
 import { renderDiff } from "../../modes/interactive/components/diff.js";
+import { theme } from "../../modes/interactive/theme/theme.js";
+import { renderHunks } from "../../utils/color-diff.js";
 import type { ToolDefinition } from "../extensions/types.js";
 import {
 	applyEditsToNormalizedContent,
 	computeEditsDiff,
+	type DiffHunk,
 	detectLineEnding,
 	type Edit,
 	type EditDiffError,
@@ -61,6 +64,47 @@ export interface EditToolDetails {
 	diff: string;
 	/** Line number of the first change in the new file (for editor navigation) */
 	firstChangedLine?: number;
+	/** Structured hunks for rich syntax-highlighted diff rendering */
+	hunks?: DiffHunk[];
+	/** Original file content for syntax context */
+	originalContent?: string;
+}
+
+/**
+ * A TUI component that renders diff hunks with syntax highlighting and
+ * background colours (green/red lines, word-level changes) using the
+ * ColorDiff engine adapted from Claude Code.
+ */
+class ColorDiffComponent {
+	private cachedWidth?: number;
+	private cachedTheme?: string;
+	private cachedLines?: string[];
+
+	constructor(
+		private readonly hunks: DiffHunk[],
+		private readonly filePath: string,
+		private readonly originalContent: string | null,
+		private readonly dim: boolean,
+	) {}
+
+	render(width: number): string[] {
+		const themeName = (theme.name?.toLowerCase() ?? "").includes("light") ? "light" : "dark";
+		if (this.cachedLines && this.cachedWidth === width && this.cachedTheme === themeName) {
+			return this.cachedLines;
+		}
+		const firstLine = this.originalContent?.split("\n")[0] ?? null;
+		const lines = renderHunks(this.hunks, firstLine, this.filePath, this.originalContent, themeName, width, this.dim);
+		this.cachedLines = lines;
+		this.cachedWidth = width;
+		this.cachedTheme = themeName;
+		return lines;
+	}
+
+	invalidate(): void {
+		this.cachedWidth = undefined;
+		this.cachedLines = undefined;
+		this.cachedTheme = undefined;
+	}
 }
 
 /**
@@ -222,6 +266,10 @@ function formatEditResult(
 
 	const resultDiff = result.details?.diff;
 	if (resultDiff && resultDiff !== previewDiff) {
+		// Prefer rich rendering if structured hunks are available
+		if (result.details?.hunks?.length) {
+			return "__COLOR_DIFF__"; // sentinel: caller will use ColorDiffComponent
+		}
 		return renderDiff(resultDiff, { filePath: rawPath ?? undefined });
 	}
 
@@ -258,10 +306,19 @@ function buildEditCallComponent(
 		return component;
 	}
 
-	const body =
-		"error" in component.preview ? theme.fg("error", component.preview.error) : renderDiff(component.preview.diff);
 	component.addChild(new Spacer(1));
-	component.addChild(new Text(body, 0, 0));
+	if ("error" in component.preview) {
+		component.addChild(new Text(theme.fg("error", component.preview.error), 0, 0));
+	} else if (component.preview.hunks?.length && args) {
+		const rawPath = str((args as RenderableEditArgs)?.file_path ?? (args as RenderableEditArgs)?.path);
+		const filePath = rawPath ?? "";
+		component.addChild(
+			new ColorDiffComponent(component.preview.hunks, filePath, component.preview.originalContent ?? null, false),
+		);
+	} else {
+		const body = renderDiff(component.preview.diff);
+		component.addChild(new Text(body, 0, 0));
+	}
 	return component;
 }
 
@@ -401,7 +458,12 @@ export function createEditToolDefinition(
 											text: `Successfully replaced ${edits.length} block(s) in ${path}.`,
 										},
 									],
-									details: { diff: diffResult.diff, firstChangedLine: diffResult.firstChangedLine },
+									details: {
+										diff: diffResult.diff,
+										firstChangedLine: diffResult.firstChangedLine,
+										hunks: diffResult.hunks,
+										originalContent: diffResult.originalContent,
+									},
 								});
 							} catch (error: unknown) {
 								// Clean up abort handler.
@@ -458,7 +520,12 @@ export function createEditToolDefinition(
 					changed =
 						setEditPreview(
 							callComponent,
-							{ diff: resultDiff, firstChangedLine: typedResult.details?.firstChangedLine },
+							{
+								diff: resultDiff,
+								firstChangedLine: typedResult.details?.firstChangedLine,
+								hunks: typedResult.details?.hunks ?? [],
+								originalContent: typedResult.details?.originalContent ?? "",
+							},
 							argsKey,
 						) || changed;
 				}
@@ -478,7 +545,23 @@ export function createEditToolDefinition(
 				return component;
 			}
 			component.addChild(new Spacer(1));
-			component.addChild(new Text(output, 1, 0));
+			// Use rich ColorDiff rendering when structured hunks are available
+			if (output === "__COLOR_DIFF__" && typedResult.details?.hunks?.length) {
+				const rawPath = str(
+					(context.args as RenderableEditArgs | undefined)?.file_path ??
+						(context.args as RenderableEditArgs | undefined)?.path,
+				);
+				component.addChild(
+					new ColorDiffComponent(
+						typedResult.details.hunks,
+						rawPath ?? "",
+						typedResult.details.originalContent ?? null,
+						false,
+					),
+				);
+			} else {
+				component.addChild(new Text(output, 1, 0));
+			}
 			return component;
 		},
 	};

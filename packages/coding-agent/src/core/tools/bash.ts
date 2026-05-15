@@ -7,7 +7,7 @@ import { spawn } from "child_process";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 import { truncateToVisualLines } from "../../modes/interactive/components/visual-truncate.js";
-import { theme } from "../../modes/interactive/theme/theme.js";
+import { highlightCode, theme } from "../../modes/interactive/theme/theme.js";
 import { waitForChildProcess } from "../../utils/child-process.js";
 import {
 	getShellConfig,
@@ -343,12 +343,35 @@ function resolveBashTimeout(timeout: number | false | undefined): number | undef
 	return timeout ?? DEFAULT_BASH_TIMEOUT_SECONDS;
 }
 
-function formatBashCall(args: { command?: string; timeout?: number | false } | undefined): string {
+function formatBashCall(
+	args: { command?: string; timeout?: number | false; run_in_background?: boolean } | undefined,
+): string {
 	const command = str(args?.command);
 	const timeout = resolveBashTimeout(args?.timeout as number | false | undefined);
-	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : theme.fg("muted", " (no timeout)");
-	const commandDisplay = command === null ? invalidArgText(theme) : command ? command : theme.fg("toolOutput", "...");
-	return theme.fg("toolTitle", theme.bold(`$ ${commandDisplay}`)) + timeoutSuffix;
+	const isBackground = args?.run_in_background === true;
+	const timeoutSuffix = isBackground
+		? theme.fg("accent", " [bg]")
+		: timeout
+			? theme.fg("muted", ` (timeout ${timeout}s)`)
+			: theme.fg("muted", " (no timeout)");
+
+	const prompt = `${theme.fg("toolTitle", theme.bold("$"))} `;
+
+	if (command === null) return prompt + invalidArgText(theme) + timeoutSuffix;
+	if (!command) return prompt + theme.fg("toolOutput", "...") + timeoutSuffix;
+
+	// Syntax-highlight the command as bash
+	const lines = highlightCode(command, "bash");
+	const highlighted =
+		lines.length === 1
+			? (lines[0] ?? "")
+			: (lines[0] ?? "") +
+				lines
+					.slice(1)
+					.map((l) => `\n  ${l}`)
+					.join("");
+
+	return prompt + highlighted + timeoutSuffix;
 }
 
 function rebuildBashResultRenderComponent(
