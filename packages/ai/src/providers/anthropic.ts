@@ -986,12 +986,14 @@ function buildParams(
 
 	if (context.tools && context.tools.length > 0) {
 		const compat = getAnthropicCompat(model);
+		// Claude Code never puts cache_control on tools — only on system prompt
+		// blocks and messages. Passing cacheControl here caused a conflict with
+		// defer_loading tools (the API rejects both on the same tool definition).
 		params.tools = convertTools(
 			context.tools,
 			isOAuthToken,
 			compat.supportsEagerToolInputStreaming,
 			compat.supportsDeferredTools,
-			compat.supportsCacheControlOnTools ? cacheControl : undefined,
 		);
 	}
 
@@ -1248,11 +1250,10 @@ function convertTools(
 	isOAuthToken: boolean,
 	supportsEagerToolInputStreaming: boolean,
 	supportsDeferredTools: boolean,
-	cacheControl?: CacheControlEphemeral,
 ): Anthropic.Messages.Tool[] {
 	if (!tools) return [];
 
-	return tools.map((tool, index) => {
+	return tools.map((tool) => {
 		const schema = tool.parameters as { properties?: unknown; required?: string[] };
 
 		return {
@@ -1265,7 +1266,6 @@ function convertTools(
 				properties: schema.properties ?? {},
 				required: schema.required ?? [],
 			},
-			...(cacheControl && index === tools.length - 1 ? { cache_control: cacheControl } : {}),
 		};
 	});
 }

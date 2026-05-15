@@ -13,7 +13,9 @@ const MAX_NAME_LENGTH = 64;
 
 /** Max description length per spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
-const MAX_PROMPT_DESCRIPTION_LENGTH = 500;
+const MAX_PROMPT_DESCRIPTION_LENGTH = 250;
+/** Hard cap on total chars emitted by formatSkillsForPrompt (~2k tokens at 4 chars/token). */
+const MAX_SKILLS_PROMPT_CHARS = 8000;
 
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
 
@@ -338,30 +340,35 @@ function loadSkillFromFile(
  * Skills with disableModelInvocation=true are excluded from the prompt
  * (they can only be invoked explicitly via /skill:name commands).
  */
-export function formatSkillsForPrompt(skills: Skill[]): string {
+export function formatSkillsForPrompt(skills: Skill[], opts: { maxChars?: number } = {}): string {
 	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
 
 	if (visibleSkills.length === 0) {
 		return "";
 	}
 
-	const lines = [
+	const maxChars = opts.maxChars ?? MAX_SKILLS_PROMPT_CHARS;
+
+	const header = [
 		"\n\nThe following skills provide specialized instructions for specific tasks.",
 		"Use the read tool to load a skill's file when the task matches its description.",
 		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
 		"",
 		"<available_skills>",
-	];
+	].join("\n");
+
+	const footer = "</available_skills>";
+	let remaining = maxChars - header.length - footer.length - 1; // 1 for the joining newline
+	const entries: string[] = [];
 
 	for (const skill of visibleSkills) {
-		lines.push(
-			`  <skill name="${escapeXml(skill.name)}" description="${escapeXml(formatPromptDescription(skill.description))}" location="${escapeXml(skill.filePath)}" />`,
-		);
+		const entry = `  <skill name="${escapeXml(skill.name)}" description="${escapeXml(formatPromptDescription(skill.description))}" location="${escapeXml(skill.filePath)}" />`;
+		if (entry.length > remaining) break;
+		entries.push(entry);
+		remaining -= entry.length + 1; // +1 for newline
 	}
 
-	lines.push("</available_skills>");
-
-	return lines.join("\n");
+	return [header, ...entries, footer].join("\n");
 }
 
 function formatPromptDescription(description: string): string {

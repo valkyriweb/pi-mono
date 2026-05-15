@@ -113,7 +113,17 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	if (hasBash && !hasGrep && !hasFind && !hasLs) {
 		addGuideline("Use bash for file operations like ls, rg, find");
 	} else if (hasBash && (hasGrep || hasFind || hasLs)) {
-		addGuideline("Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)");
+		// Single CC-style bullet: positive verb leads, negative explains why.
+		// Worded to match bash.ts promptGuidelines so the dedup in addGuideline collapses both into one line.
+		addGuideline(
+			"Use the grep, find, and ls tools for file exploration instead of bash — `grep`/`rg`/`find`/`ls` invoked via bash are blocked at runtime.",
+		);
+	}
+
+	if (hasBash) {
+		addGuideline(
+			"Run bash commands from the current working directory unless the command truly needs another directory. Avoid `cd <cwd> && ...`; for another directory, prefer command-native flags like `git -C <dir>` or `npm --prefix <dir>` when available.",
+		);
 	}
 
 	for (const guideline of promptGuidelines ?? []) {

@@ -586,11 +586,15 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		session.state.messages = getFilteredForkMessages(options.parentSessionManager);
 	}
 
-	// Fork mode: inject parent's frozen system prompt so the child's first API call
-	// matches the parent's cached prefix (system + tools bytes identical).
+	// System-prompt override priority:
+	//   1. Task-level `systemPrompt` (explicit caller-supplied bytes)
+	//   2. Fork-mode parentSystemPrompt (cache-share with parent's API request)
+	//   3. Otherwise: keep the freshly-built prompt from session creation.
 	// Must run after session creation (which builds a fresh prompt) and after
 	// message assignment (order doesn't matter for the prompt).
-	if (isForkMode && options.parentSystemPrompt) {
+	if (options.task.systemPrompt) {
+		session.overrideBaseSystemPrompt(options.task.systemPrompt);
+	} else if (isForkMode && options.parentSystemPrompt) {
 		session.overrideBaseSystemPrompt(options.parentSystemPrompt);
 	}
 

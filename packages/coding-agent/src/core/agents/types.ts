@@ -65,6 +65,16 @@ export interface AgentTaskConfig {
 	 * raise it.
 	 */
 	maxOutputTokens?: number;
+	/**
+	 * Hand-built system prompt that fully replaces the auto-built one for this
+	 * child run. When set, tools/agent-append/project-context/skills/date/cwd are
+	 * NOT auto-injected — the caller owns every byte of the prefix.
+	 *
+	 * Used by extension-launched forks (`ctx.forkAgent({ systemPrompt })`) that
+	 * want byte-stable cross-cwd cache reuse. Per-call dynamic data must move
+	 * into the user `task` text instead.
+	 */
+	systemPrompt?: string;
 	output?: string;
 	outputMode?: AgentOutputMode;
 }

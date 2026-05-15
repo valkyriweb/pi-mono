@@ -235,7 +235,7 @@ export function createFindToolDefinition(
 	return {
 		name: "find",
 		label: "find",
-		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Prefers bfs when available, falling back to fd. The fd fallback respects .gitignore; bfs matches Claude Code Glob behavior and does not filter .gitignore. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
+		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Use this tool for file discovery; do not invoke \`find\` via bash — those calls are blocked at runtime. Prefers bfs when available, falling back to fd. The fd fallback respects .gitignore; bfs matches Claude Code Glob behavior and does not filter .gitignore. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
 		promptSnippet: "Find files by glob pattern",
 		parameters: findSchema,
 		async execute(

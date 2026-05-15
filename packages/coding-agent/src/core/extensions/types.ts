@@ -334,6 +334,40 @@ export interface ForkAgentOptions {
 	 * different model voids the cached prefix and incurs a full reprocess.
 	 */
 	model?: string;
+	/**
+	 * Child context inheritance. Controls how much of the parent's session bleeds
+	 * into the child's system prompt — and therefore how cache-stable the child's
+	 * prefix is across invocations.
+	 *
+	 * - `"fork"` (default): inherit parent's full system prompt + transcript.
+	 *   Maximum cache reuse with the parent's current API request, but the
+	 *   prefix changes whenever the parent's prompt does (CLAUDE.md edits, skill
+	 *   load, project context). Use when the child needs the parent's full
+	 *   working context.
+	 * - `"slim"`: drop parent's project context (CLAUDE.md cascade), skills, and
+	 *   transcript. Child gets a fresh minimal prefix built from base prompt +
+	 *   tools list + agent-append. Stable across invocations of the same agent
+	 *   from the same cwd on the same day → cross-session cache hits for
+	 *   recurring extension forks.
+	 * - `"none"`: same as `"slim"` but also drops the agent-append block. Use
+	 *   only when the caller is supplying its own complete `systemPrompt`.
+	 */
+	context?: "fork" | "slim" | "none";
+	/**
+	 * Hand-built system prompt that fully replaces the auto-built one for the
+	 * child session. When set, tools list, agent-append, project context,
+	 * skills, date, and cwd are NOT auto-injected — the caller owns every byte
+	 * of the prefix.
+	 *
+	 * Use this for cross-cwd cache stability: identical bytes across every
+	 * project-rooted call → one warm Anthropic cache entry shared by all
+	 * sessions, every project. Per-call dynamic data (slug, ids, file lists)
+	 * must move into `prompt` (the user message) instead.
+	 *
+	 * Mirrors Claude Code's Task tool, which lets the launcher pass a fully
+	 * pre-built `systemPrompt` to the spawned subagent.
+	 */
+	systemPrompt?: string;
 	/** Abort signal chained with `ctx.signal`. */
 	signal?: AbortSignal;
 	/** Short human label for logs/UI. */

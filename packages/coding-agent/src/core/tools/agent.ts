@@ -72,8 +72,8 @@ export const agentToolSchema = Type.Object({
 	action: Type.Optional(controlActionSchema),
 	runId: Type.Optional(Type.String({ description: "Background run id for control actions" })),
 	message: Type.Optional(Type.String({ description: "Optional resume/continue prompt for control actions" })),
-	agent: Type.Optional(Type.String()),
-	task: Type.Optional(Type.String()),
+	agent: Type.Optional(Type.String({ description: "Agent id/name to run" })),
+	task: Type.Optional(Type.String({ description: "Task for the child agent" })),
 	description: Type.Optional(Type.String()),
 	tasks: Type.Optional(Type.Array(taskSchema, { maxItems: 8 })),
 	chain: Type.Optional(Type.Array(taskSchema, { minItems: 1 })),
@@ -455,8 +455,8 @@ export function createAgentToolDefinition(
 					const names = mode.tasks.map((task) => task.agent).join(", ");
 					label = `${mode.mode}${args.background ? " background" : ""}: ${names}`;
 				}
-			} catch {
-				label = "agent: invalid mode";
+			} catch (e) {
+				label = `agent: ${e instanceof Error ? e.message : "invalid mode"}`;
 			}
 			text.setText(`${theme.fg("toolTitle", theme.bold("agent"))} ${theme.fg("accent", label)}`);
 			return text;

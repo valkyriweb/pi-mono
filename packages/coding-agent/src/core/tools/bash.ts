@@ -1,6 +1,6 @@
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Container, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { spawn } from "child_process";
@@ -313,6 +313,7 @@ export interface BashToolOptions {
 const BASH_PREVIEW_LINES = 5;
 const BASH_UPDATE_THROTTLE_MS = 100;
 const DEFAULT_BASH_TIMEOUT_SECONDS = 300;
+const NATIVE_TOOL_COMMANDS = new Set(["grep", "rg", "find", "ls"]);
 
 type BashRenderState = {
 	startedAt: number | undefined;
@@ -459,6 +460,39 @@ function resolveBashTimeout(timeout: number | false | undefined): number | undef
 	return timeout ?? DEFAULT_BASH_TIMEOUT_SECONDS;
 }
 
+export function nativeToolCommandUsedInBash(command: string): "grep" | "rg" | "find" | "ls" | undefined {
+	const pattern =
+		/(?:^|[;&|()\n]|\b(?:then|do)\b)\s*(?:command\s+|builtin\s+|env\s+(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*)?(grep|rg|find|ls)\b/g;
+	for (const match of command.matchAll(pattern)) {
+		const tool = match[1] as "grep" | "rg" | "find" | "ls";
+		if (NATIVE_TOOL_COMMANDS.has(tool)) return tool;
+	}
+	return undefined;
+}
+
+function nativeToolCommandError(tool: string): string {
+	return `Blocked bash ${tool}: use the native ${tool === "rg" ? "grep" : tool} tool instead of running ${tool} inside bash.`;
+}
+
+function unquoteShellPath(value: string): string {
+	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+		return value.slice(1, -1);
+	}
+	return value.replace(/\\ /g, " ");
+}
+
+export function redundantCdToCurrentWorkingDirectory(command: string, cwd: string): boolean {
+	const match = /^\s*cd\s+((?:"[^"]+"|'[^']+'|\\\S+|\S)+)\s*(?:&&|;)\s*\S/s.exec(command);
+	if (!match) return false;
+	let target = unquoteShellPath(match[1]!);
+	if (target === "~" || target.startsWith("~/")) target = join(homedir(), target.slice(2));
+	return resolve(cwd, target) === resolve(cwd);
+}
+
+function redundantCdError(): string {
+	return "Blocked redundant cd: bash already runs in the current working directory. Run the command without `cd <cwd> && ...`, or use command-native flags like `git -C <dir>` / `npm --prefix <dir>` for another directory.";
+}
+
 function formatBashCall(
 	args: { command?: string; timeout?: number | false; run_in_background?: boolean } | undefined,
 ): string {
@@ -471,7 +505,7 @@ function formatBashCall(
 			? theme.fg("muted", ` (timeout ${timeout}s)`)
 			: theme.fg("muted", " (no timeout)");
 
-	const prompt = `${theme.fg("toolTitle", theme.bold("$"))} `;
+	const prompt = `${theme.fg("toolTitle", theme.bold("bash"))} `;
 
 	if (command === null) return prompt + invalidArgText(theme) + timeoutSuffix;
 	if (!command) return prompt + theme.fg("toolOutput", "...") + timeoutSuffix;
@@ -581,13 +615,15 @@ export function createBashToolDefinition(
 	return {
 		name: "bash",
 		label: "bash",
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: do not use this tool to run \`grep\`, \`rg\`, \`find\`, or \`ls\` \u2014 use the dedicated \`grep\`, \`find\`, and \`ls\` tools instead. Bash invocations of those commands are blocked at runtime and return an error. Reserve bash for shell-only operations (pipelines, \`stat\`, \`wc\`, \`head\`, \`tail\`, git, package managers, etc.).\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
 		promptSnippet:
 			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
 		promptGuidelines: [
 			"Use run_in_background:true for any command likely to exceed ~30s when you don't need the output immediately (builds, installers, kubectl rollouts, long test suites, dev servers).",
 			"Do NOT poll a background bash job with sleep loops. Call bash_output(bgId) when you need its current state, or use monitor_start instead if you want to be woken on every output batch.",
 			"Always stop background jobs you started but no longer need with bash_kill(bgId).",
+			// Worded identically to system-prompt.ts so the dedup in addGuideline merges both into one bullet.
+			"Use the grep, find, and ls tools for file exploration instead of bash — `grep`/`rg`/`find`/`ls` invoked via bash are blocked at runtime.",
 		],
 		parameters: bashSchema,
 		async execute(
@@ -601,6 +637,23 @@ export function createBashToolDefinition(
 			onUpdate?,
 			_ctx?,
 		) {
+			if (redundantCdToCurrentWorkingDirectory(command, cwd)) {
+				return {
+					isError: true,
+					content: [{ type: "text", text: redundantCdError() }],
+					details: undefined,
+				};
+			}
+
+			const nativeToolCommand = nativeToolCommandUsedInBash(command);
+			if (nativeToolCommand) {
+				return {
+					isError: true,
+					content: [{ type: "text", text: nativeToolCommandError(nativeToolCommand) }],
+					details: undefined,
+				};
+			}
+
 			// Background fast-path: spawn detached, return immediately. No timeout, no output streaming.
 			if (run_in_background) {
 				const job = spawnBashBackground(command, cwd, options?.shellPath, commandPrefix);

@@ -2303,10 +2303,15 @@ export class AgentSession {
 						agent: "general",
 						task: opts.prompt,
 						description: opts.description,
-						context: "fork",
+						// Default "fork" preserves prior behaviour (inherit parent prefix).
+						// Extensions wanting cache-stable prefixes pass "slim" or "none".
+						context: opts.context ?? "fork",
 						tools: opts.allowedTools,
 						model: opts.model,
 						maxOutputTokens: opts.maxOutputTokens,
+						// When provided, fully replaces the auto-built child prompt — caller
+						// owns every byte for byte-stable cross-session/cross-cwd cache reuse.
+						systemPrompt: opts.systemPrompt,
 					},
 				],
 			},

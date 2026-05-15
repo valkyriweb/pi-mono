@@ -871,8 +871,12 @@ export class DefaultPackageManager implements PackageManager {
 
 		for (const resourceType of RESOURCE_TYPES) {
 			const target = this.getTargetMap(accumulator, resourceType);
-			const globalEntries = (globalSettings[resourceType] ?? []) as string[];
-			const projectEntries = (projectSettings[resourceType] ?? []) as string[];
+			const globalEntries = (
+				Array.isArray(globalSettings[resourceType]) ? globalSettings[resourceType] : []
+			) as string[];
+			const projectEntries = (
+				Array.isArray(projectSettings[resourceType]) ? projectSettings[resourceType] : []
+			) as string[];
 			this.resolveLocalEntries(
 				projectEntries,
 				resourceType,
@@ -2160,17 +2164,18 @@ export class DefaultPackageManager implements PackageManager {
 			baseDir: projectBaseDir,
 		};
 
+		const toArray = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
 		const userOverrides = {
-			extensions: (globalSettings.extensions ?? []) as string[],
-			skills: (globalSettings.skills ?? []) as string[],
-			prompts: (globalSettings.prompts ?? []) as string[],
-			themes: (globalSettings.themes ?? []) as string[],
+			extensions: toArray(globalSettings.extensions),
+			skills: toArray(globalSettings.skills),
+			prompts: toArray(globalSettings.prompts),
+			themes: toArray(globalSettings.themes),
 		};
 		const projectOverrides = {
-			extensions: (projectSettings.extensions ?? []) as string[],
-			skills: (projectSettings.skills ?? []) as string[],
-			prompts: (projectSettings.prompts ?? []) as string[],
-			themes: (projectSettings.themes ?? []) as string[],
+			extensions: toArray(projectSettings.extensions),
+			skills: toArray(projectSettings.skills),
+			prompts: toArray(projectSettings.prompts),
+			themes: toArray(projectSettings.themes),
 		};
 
 		const userDirs = {
