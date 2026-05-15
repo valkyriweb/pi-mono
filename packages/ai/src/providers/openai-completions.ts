@@ -425,7 +425,8 @@ export const streamSimpleOpenAICompletions: StreamFunction<"openai-completions",
 
 	const base = buildBaseOptions(model, options, apiKey);
 	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
-	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+	// "adaptive" is Anthropic-only; OpenAI Completions has no equivalent. Drop it here.
+	const reasoningEffort = clampedReasoning === "off" || clampedReasoning === "adaptive" ? undefined : clampedReasoning;
 	const toolChoice = (options as OpenAICompletionsOptions | undefined)?.toolChoice;
 
 	return streamOpenAICompletions(model, context, {

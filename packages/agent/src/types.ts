@@ -289,10 +289,12 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 
 /**
  * Thinking/reasoning level for models that support it.
- * Note: "xhigh" is only supported by selected model families. Use model thinking-level metadata
- * from @earendil-works/pi-ai to detect support for a concrete model.
+ * Note: "xhigh" and "adaptive" are only supported by selected model families.
+ * - "adaptive" is Claude-4.6+ / Sonnet-4.6 only: model self-regulates thinking budget per turn.
+ * - "xhigh" is reserved for native xhigh-effort models (Opus 4.7, GPT-5, etc.).
+ * Use model thinking-level metadata from @earendil-works/pi-ai to detect support for a concrete model.
  */
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "adaptive";
 
 /**
  * Extensible interface for custom app messages.

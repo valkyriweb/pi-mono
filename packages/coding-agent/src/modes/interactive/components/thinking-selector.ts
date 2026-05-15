@@ -10,12 +10,17 @@ const THINKING_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 
 const LEVEL_DESCRIPTIONS: Record<ThinkingLevel, string> = {
 	off: "No reasoning",
+	adaptive: "Model self-regulates (Claude 4.6+)",
 	minimal: "Very brief reasoning (~1k tokens)",
 	low: "Light reasoning (~2k tokens)",
 	medium: "Moderate reasoning (~8k tokens)",
 	high: "Deep reasoning (~16k tokens)",
 	xhigh: "Maximum reasoning (~32k tokens)",
 };
+
+// Display order: off → adaptive → ladder. Adaptive sits near the top because it's a mode,
+// not a budget rung; the rest are ordered low→high effort.
+const DISPLAY_ORDER: ThinkingLevel[] = ["off", "adaptive", "minimal", "low", "medium", "high", "xhigh"];
 
 /**
  * Component that renders a thinking level selector with borders
@@ -31,7 +36,8 @@ export class ThinkingSelectorComponent extends Container {
 	) {
 		super();
 
-		const thinkingLevels: SelectItem[] = availableLevels.map((level) => ({
+		const orderedLevels = DISPLAY_ORDER.filter((level) => availableLevels.includes(level));
+		const thinkingLevels: SelectItem[] = orderedLevels.map((level) => ({
 			value: level,
 			label: level,
 			description: LEVEL_DESCRIPTIONS[level],

@@ -881,10 +881,17 @@ function buildAdditionalModelRequestFields(
 		// Omit it there until the GovCloud Converse schema catches up.
 		const display = isGovCloudBedrockTarget(model, options) ? undefined : (options.thinkingDisplay ?? "summarized");
 		const result: Record<string, any> = supportsAdaptiveThinking(model.id, model.name)
-			? {
-					thinking: { type: "adaptive", ...(display !== undefined ? { display } : {}) },
-					output_config: { effort: mapThinkingLevelToEffort(model, options.reasoning) },
-				}
+			? (() => {
+					const thinking = { type: "adaptive", ...(display !== undefined ? { display } : {}) };
+					// "adaptive" level = no effort cap; Claude self-regulates fully.
+					if (options.reasoning === "adaptive") {
+						return { thinking };
+					}
+					return {
+						thinking,
+						output_config: { effort: mapThinkingLevelToEffort(model, options.reasoning) },
+					};
+				})()
 			: (() => {
 					const defaultBudgets: Record<ThinkingLevel, number> = {
 						minimal: 1024,
@@ -892,10 +899,12 @@ function buildAdditionalModelRequestFields(
 						medium: 8192,
 						high: 16384,
 						xhigh: 16384, // Claude doesn't support xhigh, clamp to high
+						adaptive: 16384, // Non-adaptive Claude models can't go adaptive, clamp to high
 					};
 
-					// Custom budgets override defaults (xhigh not in ThinkingBudgets, use high)
-					const level = options.reasoning === "xhigh" ? "high" : options.reasoning;
+					// Custom budgets override defaults (xhigh/adaptive not in ThinkingBudgets, use high)
+					const level =
+						options.reasoning === "xhigh" || options.reasoning === "adaptive" ? "high" : options.reasoning;
 					const budget = options.thinkingBudgets?.[level] ?? defaultBudgets[options.reasoning];
 
 					return {
