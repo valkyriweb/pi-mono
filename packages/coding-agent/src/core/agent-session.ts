@@ -889,10 +889,34 @@ export class AgentSession {
 	 * Changes take effect on the next agent turn.
 	 */
 	setActiveToolsByName(toolNames: string[]): void {
+		// Fix #3 full variant (cache-break-investigation-2026-05-16.md §7.3 c):
+		// builtin and alwaysLoad-tagged tools that were active before this call
+		// stay active. Bridge log shows Bash/Edit/Write/Grep/Read each removed
+		// ~2,560× per 18d — most plausibly extensions calling setActiveTools()
+		// with a narrow list that doesn't re-include builtins (e.g. pi-tool-search
+		// computing a curated active set, deferred-tool activation paths).
+		//
+		// Protection is additive and gated:
+		//   - Only restores tools that were ALREADY active. Sessions created
+		//     with `noTools: "builtin"` (builtins registered but inactive) stay
+		//     inactive — we never add a tool that wasn't already active.
+		//   - Only restores builtins (`allToolNames` set) and `alwaysLoad:true`
+		//     tools. Extension tools and deferred tools follow the caller's
+		//     replacement list as before.
+		const orderedNames: string[] = [...toolNames];
+		const previousActive = new Set(this.getActiveToolNames());
+		for (const name of previousActive) {
+			const tool = this._toolRegistry.get(name);
+			if (!tool) continue;
+			if (allToolNames.has(name as ToolName) || tool.alwaysLoad === true) {
+				orderedNames.push(name);
+			}
+		}
+
 		const tools: AgentTool[] = [];
 		const validToolNames: string[] = [];
 		const seenToolNames = new Set<string>();
-		for (const name of toolNames) {
+		for (const name of orderedNames) {
 			if (seenToolNames.has(name)) continue;
 			const tool = this._toolRegistry.get(name);
 			if (tool) {

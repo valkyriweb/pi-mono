@@ -46,8 +46,12 @@ describe("deferred tool activation refresh", () => {
 		});
 		harnesses.push(harness);
 		await harness.session.bindExtensions({});
+		// setActiveToolsByName preserves previously-active builtin tools per
+		// Fix #3 (cache-break-investigation-2026-05-16.md). Assert on the
+		// extension-tool surface, not exact set, so the test reflects the
+		// production-correct cache-stable spec.
 		harness.session.setActiveToolsByName(["tool_search"]);
-		expect(harness.session.getActiveToolNames()).toEqual(["tool_search"]);
+		expect(harness.session.getActiveToolNames()).toContain("tool_search");
 
 		harness.setResponses([
 			(context: Context) => {
@@ -66,10 +70,17 @@ describe("deferred tool activation refresh", () => {
 
 		await harness.session.prompt("activate and use fake echo");
 
-		expect(seenToolNames[0]).toEqual(["tool_search"]);
-		expect(seenToolNames[1]).toEqual(["tool_search", "fake_deferred_echo"]);
-		expect(seenToolNames[2]).toEqual(["tool_search", "fake_deferred_echo"]);
-		expect(harness.session.getActiveToolNames()).toEqual(["tool_search", "fake_deferred_echo"]);
+		// The activation behaviour under test: tool_search is exposed turn 1;
+		// fake_deferred_echo becomes exposed from turn 2 onwards. Builtins
+		// (preserved by Fix #3) may also be present — not asserted here.
+		expect(seenToolNames[0]).toContain("tool_search");
+		expect(seenToolNames[0]).not.toContain("fake_deferred_echo");
+		expect(seenToolNames[1]).toContain("tool_search");
+		expect(seenToolNames[1]).toContain("fake_deferred_echo");
+		expect(seenToolNames[2]).toContain("tool_search");
+		expect(seenToolNames[2]).toContain("fake_deferred_echo");
+		expect(harness.session.getActiveToolNames()).toContain("tool_search");
+		expect(harness.session.getActiveToolNames()).toContain("fake_deferred_echo");
 	});
 
 	it("handles grouped activation without duplicate active tools", async () => {
@@ -107,7 +118,17 @@ describe("deferred tool activation refresh", () => {
 
 		await harness.session.prompt("activate both fake tools");
 
-		expect(seenToolNames[0]).toEqual(["tool_search", "fake_deferred_one", "fake_deferred_two"]);
-		expect(harness.session.getActiveToolNames()).toEqual(["tool_search", "fake_deferred_one", "fake_deferred_two"]);
+		// The grouped-activation behaviour under test: both deferred tools end
+		// up active without duplication. Builtins (preserved by Fix #3) may
+		// also be present — not asserted here.
+		expect(seenToolNames[0]).toContain("tool_search");
+		expect(seenToolNames[0]).toContain("fake_deferred_one");
+		expect(seenToolNames[0]).toContain("fake_deferred_two");
+		const activeAfter = harness.session.getActiveToolNames();
+		expect(activeAfter).toContain("tool_search");
+		expect(activeAfter).toContain("fake_deferred_one");
+		expect(activeAfter).toContain("fake_deferred_two");
+		// No duplicates (Set-shaped result).
+		expect(new Set(activeAfter).size).toBe(activeAfter.length);
 	});
 });
