@@ -2741,6 +2741,18 @@ export class AgentSession {
 		flagValues?: Map<string, boolean | string>;
 		includeAllExtensionTools?: boolean;
 	}): void {
+		// Trigger logger (Fix #3 in cache-break-investigation-2026-05-16.md).
+		// Gate on PI_LOG_BUILD_RUNTIME=1. Bucket the captured stacks to find the
+		// top 3 callers of mid-session rebuilds (extension hot-reload?
+		// sub-agent return? settings-watch?). Stderr only — no behavior change.
+		if (process.env.PI_LOG_BUILD_RUNTIME === "1") {
+			const trace = new Error("BUILD-RUNTIME").stack ?? "";
+			const caller = trace.split("\n").slice(2, 7).join(" | ");
+			process.stderr.write(
+				`[BUILD-RUNTIME] activeTools=${options.activeToolNames?.length ?? "-"} ` +
+					`includeAll=${options.includeAllExtensionTools ?? false} caller=${caller}\n`,
+			);
+		}
 		const autoResizeImages = this.settingsManager.getImageAutoResize();
 		const shellCommandPrefix = this.settingsManager.getShellCommandPrefix();
 		const shellPath = this.settingsManager.getShellPath();
