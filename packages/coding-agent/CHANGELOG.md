@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.74.0-valk.2] - 2026-05-16
+
+Cache-stability follow-up to valk.1. Lands Fix #2 + Fix #3 (conservative
+variant) from `~/Projects/personal/my-pi/docs/cache-break-investigation-2026-05-16.md`.
+Predicted impact: ~12M write-tokens / 18d for Fix #2 alone (~7.4% of total
+bridge cache-break volume).
+
+### Cache stability (fork-only)
+
+- `feat(anthropic): cache-stable tool serialization (sort keys + memoize)` (730fb3c1) — `convertTools()` emits byte-identical Anthropic tool definitions across turns. Recursive key sort defends against non-deterministic property order from MCP-bridged tool sources. Per-tool WeakMap memo (keyed by tool identity + flag combo) guarantees object identity for stable tool references across rebuilds. 4 new tests in `anthropic-tool-serialization-stable.test.ts`.
+- `feat(agent-session): preserve builtin tools across registry refresh` (7c2c3767) — `_refreshToolRegistry` restores previously-active builtin and `alwaysLoad`-tagged tools when called with a narrow `activeToolNames`. Defends against the per-tool churn pattern showing Bash/Edit/Write/Grep/Read each removed ~2,560× per 18d. Respects `noTools: "builtin"` (never force-adds tools that were not previously active) and `isAllowedTool` allowlist. Conservative scope — leaves `setActiveToolsByName` wholesale-replacement semantics untouched pending trigger data from `PI_LOG_BUILD_RUNTIME=1`.
+
 ## [0.74.0-valk.1] - 2026-05-16
 
 First fork-specific release of `valkyriweb/pi-mono`. Cuts a tag against fork
