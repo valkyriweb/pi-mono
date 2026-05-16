@@ -1245,6 +1245,65 @@ function hasToolReferenceContent(context: Context): boolean {
 	});
 }
 
+/**
+ * Recursively sort object keys for deterministic serialization. Arrays are
+ * left in place (preserves enum order). Primitives pass through.
+ *
+ * JSON Schema is semantically key-order-independent, so sorting is safe. This
+ * defends against cache-prefix mutation when the upstream schema source (e.g.
+ * an MCP server re-emitting `tools/list`) returns the same keys in a
+ * different order between turns.
+ *
+ * Refs: my-pi/docs/cache-break-investigation-2026-05-16.md Fix #2.
+ */
+function sortObjectKeysDeep(value: unknown): unknown {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+	const input = value as Record<string, unknown>;
+	const out: Record<string, unknown> = {};
+	for (const key of Object.keys(input).sort()) {
+		out[key] = sortObjectKeysDeep(input[key]);
+	}
+	return out;
+}
+
+/**
+ * Per-tool memoization of the converted Anthropic shape. Same `tool` reference
+ * + same flag combination => byte-identical returned object across calls.
+ *
+ * Steady state (no `_buildRuntime` rebuild): `state.tools.slice()` returns a
+ * fresh array but the element references are stable, so the memo hits and we
+ * return the exact same converted object each turn. Anthropic's prompt cache
+ * hashes these bytes, so identity + sort-keys together guarantee a stable
+ * cache prefix for the tools slot.
+ *
+ * On rebuild: new tool references => memo miss => recompute. No correctness
+ * risk; just no caching benefit until the rebuild cycle itself is fixed
+ * (Fix #3 in the cache-break investigation doc).
+ */
+const convertedToolCache = new WeakMap<object, Map<string, Anthropic.Messages.Tool>>();
+
+function convertOneTool(
+	tool: Tool,
+	isOAuthToken: boolean,
+	supportsEagerToolInputStreaming: boolean,
+	deferLoading: boolean,
+): Anthropic.Messages.Tool {
+	const schema = tool.parameters as { properties?: unknown; required?: string[] };
+	const properties = sortObjectKeysDeep(schema.properties ?? {}) as Record<string, unknown>;
+	const required = (schema.required ?? []).slice().sort();
+	return {
+		name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,
+		description: tool.description,
+		...(supportsEagerToolInputStreaming ? { eager_input_streaming: true } : {}),
+		...(deferLoading ? { defer_loading: true } : {}),
+		input_schema: {
+			type: "object",
+			properties,
+			required,
+		},
+	};
+}
+
 function convertTools(
 	tools: Tool[],
 	isOAuthToken: boolean,
@@ -1254,19 +1313,19 @@ function convertTools(
 	if (!tools) return [];
 
 	return tools.map((tool) => {
-		const schema = tool.parameters as { properties?: unknown; required?: string[] };
-
-		return {
-			name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,
-			description: tool.description,
-			...(supportsEagerToolInputStreaming ? { eager_input_streaming: true } : {}),
-			...(supportsDeferredTools && tool.deferLoading && !tool.alwaysLoad ? { defer_loading: true } : {}),
-			input_schema: {
-				type: "object",
-				properties: schema.properties ?? {},
-				required: schema.required ?? [],
-			},
-		};
+		const deferLoading = !!(supportsDeferredTools && tool.deferLoading && !tool.alwaysLoad);
+		const flagKey = `${isOAuthToken ? 1 : 0}|${supportsEagerToolInputStreaming ? 1 : 0}|${deferLoading ? 1 : 0}`;
+		let perToolMap = convertedToolCache.get(tool);
+		if (!perToolMap) {
+			perToolMap = new Map();
+			convertedToolCache.set(tool, perToolMap);
+		}
+		let cached = perToolMap.get(flagKey);
+		if (!cached) {
+			cached = convertOneTool(tool, isOAuthToken, supportsEagerToolInputStreaming, deferLoading);
+			perToolMap.set(flagKey, cached);
+		}
+		return cached;
 	});
 }
 
