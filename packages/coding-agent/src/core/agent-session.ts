@@ -97,7 +97,7 @@ import type { SlashCommandInfo } from "./slash-commands.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.js";
 import { type BashOperations, createLocalBashOperations, killAllBashBgJobs } from "./tools/bash.js";
-import { createAllToolDefinitions } from "./tools/index.js";
+import { allToolNames, createAllToolDefinitions, type ToolName } from "./tools/index.js";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.js";
 
 // ============================================================================
@@ -2733,6 +2733,28 @@ export class AgentSession {
 		if (this._toolRegistry.has("tool_search")) {
 			nextActiveToolNames.push("tool_search");
 		}
+
+		// Fix #3 (cache-break-investigation-2026-05-16.md): preserve builtin
+		// and alwaysLoad-tagged tools that were active before this refresh.
+		// Bridge cache-break log shows Bash/Edit/Write/Grep/Read each removed
+		// ~2,560× per 18d — that churn invalidates the tools-slot cache prefix.
+		// Trigger: when a caller passes `options.activeToolNames` with a narrow
+		// list, the carry-over from previousActiveToolNames is bypassed and
+		// protected tools silently drop out. Restore them here.
+		//
+		// Constraint: only restore tools that WERE previously active. Sessions
+		// created with `noTools: "builtin"` start with builtins registered but
+		// inactive — we must not force them in. Scoped to the refresh path so
+		// direct setActiveToolsByName callers keep replacement semantics.
+		for (const name of previousActiveToolNames) {
+			if (!isAllowedTool(name)) continue;
+			const tool = this._toolRegistry.get(name);
+			if (!tool) continue;
+			if (allToolNames.has(name as ToolName) || tool.alwaysLoad === true) {
+				nextActiveToolNames.push(name);
+			}
+		}
+
 		this.setActiveToolsByName([...new Set(nextActiveToolNames)]);
 	}
 
