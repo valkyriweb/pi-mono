@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.74.0-valk.1] - 2026-05-16
+
+First fork-specific release of `valkyriweb/pi-mono`. Cuts a tag against fork
+HEAD so `build-binaries.yml` produces standalone binaries for downstream
+consumers (Mac Mini openclaw node, lue-kube multica-runtime, paperclip seed).
+
+### Cache stability (fork-only)
+
+- `fix(agent): cache-safe fork children + promote extension system prompt to base` — extension `forkAgent` no longer breaks Anthropic prompt-cache prefix between turns (L1).
+- `feat(coding-agent): ExtensionContext.forkAgent + transcript.append + memory_saved renderer` — extension surface that lets `pi-memory` and similar consolidators run without cache-breaking context inheritance (L2).
+- `feat(coding-agent): forkAgent silent:true default, suppress extension-fork agent_completion spam` — reduces transcript noise from background fork agents.
+
+See `packages/coding-agent/docs/cache-strategy.md` for the L1/L2/L3 layered
+model and verification recipe.
+
+### Other fork-only changes since upstream v0.74.0
+
+- `feat(ai): adaptive thinking level for Claude 4.6+/4.7/Sonnet 4.6` (#8)
+- `feat(packages): gate package loading on active model via enabledWhen.models` (#7)
+- `feat(compaction): triggerTokens — absolute auto-compact threshold` (#5)
+- `feat(subagents): default model + thinking config`
+- `feat(coding-agent): "fast" + "medium" model aliases for agent tool`
+- `feat(bash): run_in_background + bash_output + bash_kill`
+- `feat(coding-agent): running-tasks panel + agent tool taskId wiring`
+- `feat(coding-agent): background agent terminal-status notifications`
+- `feat(agent): maxOutputTokens cap on agent tool + executor`
+- `feat(agent-session): env-gated _buildRuntime trigger logger`
+- `refactor(agent): harden harness session semantics` (result-based execution env, direct harness loop, isolated node filesystem session deps)
+- `fix(ai): honor retry-after for OpenAI Codex SSE retries`
+- `fix(ai): ignore generic GitHub tokens for Copilot auth`
+- `ci(sync): add daily upstream-sync workflow` (#6)
+
 ## [Unreleased]
 
 ### Added
