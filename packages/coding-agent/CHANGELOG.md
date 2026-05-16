@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.74.0-valk.3] - 2026-05-16
+
+Completes Fix #3 from `~/Projects/personal/my-pi/docs/cache-break-investigation-2026-05-16.md`. Combined with valk.2, all three ranked fixes are now landed.
+
+### Cache stability (fork-only)
+
+- `feat(agent-session): setActiveToolsByName preserves builtins + alwaysLoad` (20ac8254) — closes the direct-call path for the per-tool churn pattern (Bash/Edit/Write/Grep/Read each removed ~2,560× per 18d). Extensions that call `pi.setActiveTools([curated list])` without re-including builtins no longer silently invalidate the tools-slot cache prefix. Additive only — sessions created with `noTools: "builtin"` keep builtins inactive. New regression test `cache-break-builtin-preservation.test.ts` (4 cases). One existing test (`deferred-tool-activation-refresh.test.ts`) had two `toEqual` assertions updated to `toContain` since they encoded the now-corrected wholesale-replacement spec.
+
 ## [0.74.0-valk.2] - 2026-05-16
 
 Cache-stability follow-up to valk.1. Lands Fix #2 + Fix #3 (conservative
