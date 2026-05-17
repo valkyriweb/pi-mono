@@ -268,7 +268,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingLevel = clampThinkingLevel(model, thinkingLevel) as ThinkingLevel;
 	}
 
-	const defaultActiveToolNames: ToolName[] = ["read", "bash", "edit", "write", "agent", "grep", "find", "ls"];
+	// `bash_output`/`bash_kill` are the read/stop half of the bash job-control trio.
+	// Sessions without pi-tool-search (which would re-add them via alwaysActive)
+	// previously got `bash` without them, making run_in_background:true unusable.
+	const defaultActiveToolNames: ToolName[] = [
+		"read",
+		"bash",
+		"bash_output",
+		"bash_kill",
+		"edit",
+		"write",
+		"agent",
+		"grep",
+		"find",
+		"ls",
+	];
 	const allowedToolNames = options.tools ?? (options.noTools === "all" ? [] : undefined);
 	const initialActiveToolNames: string[] = options.tools
 		? [...options.tools]

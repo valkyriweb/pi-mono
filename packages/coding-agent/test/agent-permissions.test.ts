@@ -35,4 +35,44 @@ describe("agent tool permissions", () => {
 		expect(result.effectiveTools).toEqual(["read", "grep", "find", "ls"]);
 		expect(result.effectiveTools).not.toContain("bash");
 	});
+
+	test("bash brings bash_output and bash_kill along when parent has them", () => {
+		// Job-control trio: granting `bash` without the read/stop pair leaves
+		// run_in_background:true bgIds dangling and surfaces "Tool bash_output not found".
+		const result = resolveEffectiveTools({
+			parentActiveTools: ["agent", "read", "bash", "bash_output", "bash_kill", "write"],
+			agent: generalPurpose ?? getBuiltinAgentDefinitions()[0],
+			requestedTools: ["bash", "write"],
+		});
+		expect(result.effectiveTools).toContain("bash");
+		expect(result.effectiveTools).toContain("bash_output");
+		expect(result.effectiveTools).toContain("bash_kill");
+	});
+
+	test("bash trio bundling respects denyTools", () => {
+		// If an agent explicitly denies bash_output, bundling must not override.
+		const agent = {
+			...(generalPurpose ?? getBuiltinAgentDefinitions()[0]),
+			denyTools: ["agent", "bash_output"],
+		};
+		const result = resolveEffectiveTools({
+			parentActiveTools: ["agent", "bash", "bash_output", "bash_kill"],
+			agent,
+			requestedTools: ["bash", "bash_output", "bash_kill"],
+		});
+		expect(result.effectiveTools).toContain("bash");
+		expect(result.effectiveTools).toContain("bash_kill");
+		expect(result.effectiveTools).not.toContain("bash_output");
+		expect(result.deniedTools).toContain("bash_output");
+	});
+
+	test("bash trio bundling does not synthesise tools the parent lacks", () => {
+		// Defensive: never grant a child a tool the parent itself doesn't have active.
+		const result = resolveEffectiveTools({
+			parentActiveTools: ["agent", "bash"],
+			agent: generalPurpose ?? getBuiltinAgentDefinitions()[0],
+			requestedTools: ["bash"],
+		});
+		expect(result.effectiveTools).toEqual(["bash"]);
+	});
 });

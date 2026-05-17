@@ -2851,9 +2851,12 @@ export class AgentSession {
 		this._bindExtensionCore(this._extensionRunner);
 		this._applyExtensionBindings(this._extensionRunner);
 
+		// Keep `bash_output`/`bash_kill` in defaults so sessions without
+		// pi-tool-search still get the full bash job-control trio. Without them,
+		// run_in_background:true returns a bgId the model can never read or stop.
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write", "agent", "grep", "find", "ls"];
+			: ["read", "bash", "bash_output", "bash_kill", "edit", "write", "agent", "grep", "find", "ls"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,
