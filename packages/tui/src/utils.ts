@@ -264,9 +264,21 @@ export function visibleWidth(str: string): number {
 const THAI_LAO_AM_REGEX = /[\u0e33\u0eb3]/;
 const THAI_LAO_AM_GLOBAL_REGEX = /[\u0e33\u0eb3]/g;
 
+// Tabs cause width drift: visibleWidth() counts \t as 3 columns, but terminals
+// expand it to the next 8-column tab stop. Replace with 3 spaces here so the
+// emitted buffer matches what we measured and box layouts stay aligned.
+// See pi-crash from `du -sh .` output (`9,9M\t.`) blowing a BTW box by 3 cols.
+const TAB_GLOBAL_REGEX = /\t/g;
+
 export function normalizeTerminalOutput(str: string): string {
-	if (!THAI_LAO_AM_REGEX.test(str)) return str;
-	return str.replace(THAI_LAO_AM_GLOBAL_REGEX, (char) => (char === "\u0e33" ? "\u0e4d\u0e32" : "\u0ecd\u0eb2"));
+	let out = str;
+	if (out.includes("\t")) {
+		out = out.replace(TAB_GLOBAL_REGEX, "   ");
+	}
+	if (THAI_LAO_AM_REGEX.test(out)) {
+		out = out.replace(THAI_LAO_AM_GLOBAL_REGEX, (char) => (char === "\u0e33" ? "\u0e4d\u0e32" : "\u0ecd\u0eb2"));
+	}
+	return out;
 }
 
 /**
