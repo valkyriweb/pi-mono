@@ -40,6 +40,22 @@ function resolveDeploymentName(model: Model<"azure-openai-responses">, options?:
 	return mappedDeployment || model.id;
 }
 
+function formatAzureOpenAIError(error: unknown): string {
+	if (error instanceof Error) {
+		const status = (error as Error & { status?: unknown }).status;
+		const statusCode = typeof status === "number" ? status : undefined;
+		if (statusCode !== undefined) {
+			return `Azure OpenAI API error (${statusCode}): ${error.message}`;
+		}
+		return error.message;
+	}
+	try {
+		return JSON.stringify(error);
+	} catch {
+		return String(error);
+	}
+}
+
 // Azure OpenAI Responses-specific options
 export interface AzureOpenAIResponsesOptions extends StreamOptions {
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -119,7 +135,7 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 				delete (block as { partialJson?: string }).partialJson;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+			output.errorMessage = formatAzureOpenAIError(error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
