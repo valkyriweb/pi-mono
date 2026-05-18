@@ -1074,10 +1074,10 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// keys from platform.xiaomimimo.com). The three `xiaomi-token-plan-*`
 		// providers cover prepaid Token Plan endpoints in cn / ams / sgp.
 		const xiaomiVariants = [
-			{ provider: "xiaomi", baseUrl: "https://api.xiaomimimo.com/anthropic" },
-			{ provider: "xiaomi-token-plan-cn", baseUrl: "https://token-plan-cn.xiaomimimo.com/anthropic" },
-			{ provider: "xiaomi-token-plan-ams", baseUrl: "https://token-plan-ams.xiaomimimo.com/anthropic" },
-			{ provider: "xiaomi-token-plan-sgp", baseUrl: "https://token-plan-sgp.xiaomimimo.com/anthropic" },
+			{ provider: "xiaomi", baseUrl: "https://api.xiaomimimo.com/v1" },
+			{ provider: "xiaomi-token-plan-cn", baseUrl: "https://token-plan-cn.xiaomimimo.com/v1" },
+			{ provider: "xiaomi-token-plan-ams", baseUrl: "https://token-plan-ams.xiaomimimo.com/v1" },
+			{ provider: "xiaomi-token-plan-sgp", baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1" },
 		] as const;
 
 		if (data.xiaomi?.models) {
@@ -1089,7 +1089,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					models.push({
 						id: modelId,
 						name: m.name || modelId,
-						api: "anthropic-messages",
+						api: "openai-completions",
 						provider,
 						baseUrl,
 						reasoning: m.reasoning === true,
@@ -1546,18 +1546,6 @@ async function generateModels() {
 			maxTokens: CODEX_MAX_TOKENS,
 		},
 		{
-			id: "gpt-5.4-fast",
-			name: "GPT-5.4 Fast",
-			api: "openai-codex-responses",
-			provider: "openai-codex",
-			baseUrl: CODEX_BASE_URL,
-			reasoning: true,
-			input: ["text", "image"],
-			cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
-			contextWindow: CODEX_CONTEXT,
-			maxTokens: CODEX_MAX_TOKENS,
-		},
-		{
 			id: "gpt-5.4-mini",
 			name: "GPT-5.4 mini",
 			api: "openai-codex-responses",
@@ -1566,18 +1554,6 @@ async function generateModels() {
 			reasoning: true,
 			input: ["text", "image"],
 			cost: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
-			contextWindow: CODEX_CONTEXT,
-			maxTokens: CODEX_MAX_TOKENS,
-		},
-		{
-			id: "gpt-5.4-mini-fast",
-			name: "GPT-5.4 mini Fast",
-			api: "openai-codex-responses",
-			provider: "openai-codex",
-			baseUrl: CODEX_BASE_URL,
-			reasoning: true,
-			input: ["text", "image"],
-			cost: { input: 1.5, output: 9, cacheRead: 0.15, cacheWrite: 0 },
 			contextWindow: CODEX_CONTEXT,
 			maxTokens: CODEX_MAX_TOKENS,
 		},
@@ -1593,23 +1569,11 @@ async function generateModels() {
 			contextWindow: CODEX_CONTEXT,
 			maxTokens: CODEX_MAX_TOKENS,
 		},
-		{
-			id: "gpt-5.5-fast",
-			name: "GPT-5.5 Fast",
-			api: "openai-codex-responses",
-			provider: "openai-codex",
-			baseUrl: CODEX_BASE_URL,
-			reasoning: true,
-			input: ["text", "image"],
-			cost: { input: 12.5, output: 75, cacheRead: 1.25, cacheWrite: 0 },
-			contextWindow: CODEX_CONTEXT,
-			maxTokens: CODEX_MAX_TOKENS,
-		},
 	];
 	allModels.push(...codexModels);
 
 	// Add missing Grok models
-	const missingGrokModels: Model[] = [
+	const missingGrokModels: Model<"openai-completions">[] = [
 		{
 			id: "grok-3",
 			name: "Grok 3",

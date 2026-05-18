@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DefaultPackageManager, type ProgressEvent, type ResolvedResource } from "../src/core/package-manager.js";
 import { SettingsManager } from "../src/core/settings-manager.js";
-import { shouldUseWindowsShell } from "../src/utils/child-process.js";
+import { resolveSpawnCommand } from "../src/utils/child-process.js";
 
 function normalizeForMatch(value: string): string {
 	return value.replace(/\\/g, "/");
@@ -618,13 +618,58 @@ Content`,
 	});
 
 	describe("windows command spawning", () => {
-		it("should avoid the shell for git so Windows paths with spaces stay single arguments", () => {
+		it("should keep unresolved executables as argv commands", () => {
 			vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 
-			expect(shouldUseWindowsShell("git")).toBe(false);
-			expect(shouldUseWindowsShell("npm")).toBe(true);
-			expect(shouldUseWindowsShell("pnpm")).toBe(true);
-			expect(shouldUseWindowsShell("C:/Program Files/nodejs/npm.cmd")).toBe(true);
+			const resolved = resolveSpawnCommand("git", ["clone", "repo", "C:\\Users\\A B\\repo"], {
+				env: { PATH: tempDir },
+			});
+
+			expect(resolved).toEqual({ command: "git", args: ["clone", "repo", "C:\\Users\\A B\\repo"] });
+		});
+
+		it("should prefer Windows executables over command scripts", () => {
+			vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+			const binDir = join(tempDir, "bin");
+			mkdirSync(binDir, { recursive: true });
+			writeFileSync(join(binDir, "npm.exe"), "");
+			writeFileSync(join(binDir, "npm.cmd"), "@echo off\r\n");
+
+			const args = ["install", "pkg", "--prefix", "C:\\Users\\A B\\.pi\\npm"];
+			const resolved = resolveSpawnCommand("npm", args, { env: { PATH: binDir } });
+
+			expect(resolved).toEqual({ command: join(binDir, "npm.exe"), args });
+		});
+
+		it("should resolve npm command shims to their Node entrypoint without a shell", () => {
+			vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+			const binDir = join(tempDir, "node-bin");
+			const npmCli = join(binDir, "node_modules", "npm", "bin", "npm-cli.js");
+			mkdirSync(join(binDir, "node_modules", "npm", "bin"), { recursive: true });
+			writeFileSync(join(binDir, "node.exe"), "");
+			writeFileSync(npmCli, "");
+			writeFileSync(
+				join(binDir, "npm.cmd"),
+				'@ECHO off\r\nSET "dp0=%~dp0"\r\nSET "_prog=%dp0%\\node.exe"\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%" "%dp0%\\node_modules\\npm\\bin\\npm-cli.js" %*\r\n',
+			);
+
+			const args = ["install", "pkg", "--prefix", "C:\\Users\\A B\\.pi\\npm"];
+			const resolved = resolveSpawnCommand("npm", args, { env: { PATH: binDir } });
+
+			expect(resolved).toEqual({ command: join(binDir, "node.exe"), args: [npmCli, ...args] });
+		});
+
+		it("should reject unrecognized Windows command scripts instead of using cmd.exe", () => {
+			vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+			const binDir = join(tempDir, "bin");
+			mkdirSync(binDir, { recursive: true });
+			writeFileSync(join(binDir, "npm.cmd"), "@echo off\r\necho %*\r\n");
+
+			expect(() =>
+				resolveSpawnCommand("npm", ["install", "pkg"], {
+					env: { PATH: binDir },
+				}),
+			).toThrow("Refusing to run Windows command shim without a shell");
 		});
 	});
 

@@ -3,7 +3,7 @@ import { accessSync, constants, existsSync, readFileSync, realpathSync } from "f
 import { homedir } from "os";
 import { basename, dirname, join, resolve, sep, win32 } from "path";
 import { fileURLToPath } from "url";
-import { shouldUseWindowsShell } from "./utils/child-process.js";
+import { resolveSpawnCommand } from "./utils/child-process.js";
 
 // =============================================================================
 // Package Detection
@@ -183,10 +183,18 @@ function readCommandOutput(
 	args: string[],
 	options: { requireSuccess?: boolean } = {},
 ): string | undefined {
-	const result = spawnSync(command, args, {
+	let resolved: ReturnType<typeof resolveSpawnCommand>;
+	try {
+		resolved = resolveSpawnCommand(command, args);
+	} catch (error) {
+		if (options.requireSuccess) {
+			throw error;
+		}
+		return undefined;
+	}
+	const result = spawnSync(resolved.command, resolved.args, {
 		encoding: "utf-8",
 		stdio: ["ignore", "pipe", "pipe"],
-		shell: shouldUseWindowsShell(command),
 	});
 	if (result.status === 0) return result.stdout.trim() || undefined;
 	if (options.requireSuccess) {

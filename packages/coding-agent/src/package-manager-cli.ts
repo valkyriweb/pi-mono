@@ -12,7 +12,7 @@ import {
 } from "./config.js";
 import { DefaultPackageManager } from "./core/package-manager.js";
 import { SettingsManager } from "./core/settings-manager.js";
-import { shouldUseWindowsShell } from "./utils/child-process.js";
+import { resolveSpawnCommand } from "./utils/child-process.js";
 import { getLatestPiRelease, isNewerPackageVersion } from "./utils/version-check.js";
 
 export type PackageCommand = "install" | "remove" | "update" | "list";
@@ -320,10 +320,9 @@ async function runSelfUpdate(command: SelfUpdateCommand): Promise<void> {
 	console.log(chalk.dim(`Updating ${APP_NAME} with ${command.display}...`));
 	for (const step of command.steps ?? [command]) {
 		await new Promise<void>((resolve, reject) => {
-			// Windows package managers are commonly .cmd shims. Use the shell so Node can execute them.
-			const child = spawn(step.command, step.args, {
+			const resolved = resolveSpawnCommand(step.command, step.args);
+			const child = spawn(resolved.command, resolved.args, {
 				stdio: "inherit",
-				shell: shouldUseWindowsShell(step.command),
 			});
 			child.on("error", (error) => {
 				reject(error);

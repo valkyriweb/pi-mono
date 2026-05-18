@@ -51,6 +51,22 @@ function getPromptCacheRetention(
 	return cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined;
 }
 
+function formatOpenAIResponsesError(error: unknown): string {
+	if (error instanceof Error) {
+		const status = (error as Error & { status?: unknown }).status;
+		const statusCode = typeof status === "number" ? status : undefined;
+		if (statusCode !== undefined) {
+			return `OpenAI API error (${statusCode}): ${error.message}`;
+		}
+		return error.message;
+	}
+	try {
+		return JSON.stringify(error);
+	} catch {
+		return String(error);
+	}
+}
+
 // OpenAI Responses-specific options
 export interface OpenAIResponsesOptions extends StreamOptions {
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -130,7 +146,7 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 				delete (block as { partialJson?: string }).partialJson;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+			output.errorMessage = formatOpenAIResponsesError(error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
