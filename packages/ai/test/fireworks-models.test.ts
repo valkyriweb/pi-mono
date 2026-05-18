@@ -228,14 +228,13 @@ describe("Fireworks Anthropic session affinity and tool compat", () => {
 		}
 	});
 
-	it("sends cache_control on tools for native Anthropic models", async () => {
+	it("omits cache_control on tools for native Anthropic models", async () => {
 		const model = createAnthropicModel();
 		const request = await captureAnthropicRequest(model, createContext());
 
 		const tools = getTools(request.body);
 		const lastTool = tools[tools.length - 1];
-		expect(lastTool.cache_control).toBeDefined();
-		expect((lastTool.cache_control as { type: string }).type).toBe("ephemeral");
+		expect(lastTool.cache_control).toBeUndefined();
 	});
 
 	it("sends eager_input_streaming on tools for native Anthropic models", async () => {
