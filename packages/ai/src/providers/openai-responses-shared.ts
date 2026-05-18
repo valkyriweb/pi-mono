@@ -81,6 +81,8 @@ export interface ConvertResponsesMessagesOptions {
 
 export interface ConvertResponsesToolsOptions {
 	strict?: boolean | null;
+	/** Sort tools and JSON Schema object keys for byte-stable prompt-cache prefixes. */
+	deterministic?: boolean;
 }
 
 // =============================================================================
@@ -265,13 +267,31 @@ export function convertResponsesMessages<TApi extends Api>(
 // Tool conversion
 // =============================================================================
 
+function sortJsonSchemaForCache(value: unknown): unknown {
+	if (value === null || typeof value !== "object") return value;
+	if (Array.isArray(value)) {
+		return value.map((item) => sortJsonSchemaForCache(item));
+	}
+
+	const input = value as Record<string, unknown>;
+	const out: Record<string, unknown> = {};
+	for (const key of Object.keys(input).sort()) {
+		const child = input[key];
+		out[key] = key === "required" && Array.isArray(child) ? child.slice().sort() : sortJsonSchemaForCache(child);
+	}
+	return out;
+}
+
 export function convertResponsesTools(tools: Tool[], options?: ConvertResponsesToolsOptions): OpenAITool[] {
 	const strict = options?.strict === undefined ? false : options.strict;
-	return tools.map((tool) => ({
+	const sourceTools = options?.deterministic
+		? tools.slice().sort((a, b) => a.name.localeCompare(b.name) || a.description.localeCompare(b.description))
+		: tools;
+	return sourceTools.map((tool) => ({
 		type: "function",
 		name: tool.name,
 		description: tool.description,
-		parameters: tool.parameters as any, // TypeBox already generates JSON Schema
+		parameters: (options?.deterministic ? sortJsonSchemaForCache(tool.parameters) : tool.parameters) as any, // TypeBox already generates JSON Schema
 		strict,
 	}));
 }

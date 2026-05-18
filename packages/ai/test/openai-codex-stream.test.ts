@@ -8,7 +8,7 @@ import {
 	streamOpenAICodexResponses,
 	streamSimpleOpenAICodexResponses,
 } from "../src/providers/openai-codex-responses.js";
-import type { Context, Model } from "../src/types.js";
+import type { Context, Model, Tool } from "../src/types.js";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 
@@ -30,6 +30,21 @@ function mockToken(): string {
 		"utf8",
 	).toString("base64");
 	return `aaa.${payload}.bbb`;
+}
+
+function createCodexModel(): Model<"openai-codex-responses"> {
+	return {
+		id: "gpt-5.5",
+		name: "GPT-5.5 Codex",
+		api: "openai-codex-responses",
+		provider: "openai-codex",
+		baseUrl: "https://chatgpt.com/backend-api",
+		reasoning: true,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 400000,
+		maxTokens: 128000,
+	};
 }
 
 function buildSSEPayload({
@@ -79,7 +94,114 @@ function buildSSEPayload({
 	return `${events.join("\n\n")}\n\n`;
 }
 
+async function captureCodexRequestBody(context: Context): Promise<Record<string, unknown>> {
+	const tempDir = mkdtempSync(join(tmpdir(), "pi-codex-stream-"));
+	process.env.PI_CODING_AGENT_DIR = tempDir;
+	const token = mockToken();
+	const sse = buildSSEPayload({ status: "completed" });
+	const encoder = new TextEncoder();
+	let capturedBody: Record<string, unknown> | undefined;
+	const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+		const url = typeof input === "string" ? input : input.toString();
+		if (url === "https://chatgpt.com/backend-api/codex/responses") {
+			capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			return new Response(
+				new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(encoder.encode(sse));
+						controller.close();
+					},
+				}),
+				{ status: 200, headers: { "content-type": "text/event-stream" } },
+			);
+		}
+		return new Response("not found", { status: 404 });
+	});
+	vi.stubGlobal("fetch", fetchMock);
+
+	await streamOpenAICodexResponses(createCodexModel(), context, {
+		apiKey: token,
+		transport: "sse",
+		sessionId: "cache-stability-test-session",
+	}).result();
+
+	if (!capturedBody) throw new Error("Codex request body was not captured");
+	return capturedBody;
+}
+
 describe("openai-codex streaming", () => {
+	it("serializes Codex tools deterministically across tool and schema key order", async () => {
+		const lookupA: Tool = {
+			name: "lookup",
+			description: "Look up a value",
+			parameters: {
+				type: "object",
+				properties: {
+					gamma: { minLength: 1, description: "g", type: "string" },
+					alpha: { type: "string", description: "a" },
+				},
+				required: ["gamma", "alpha"],
+			} as Tool["parameters"],
+		};
+		const lookupB: Tool = {
+			name: "lookup",
+			description: "Look up a value",
+			parameters: {
+				required: ["alpha", "gamma"],
+				properties: {
+					alpha: { description: "a", type: "string" },
+					gamma: { type: "string", description: "g", minLength: 1 },
+				},
+				type: "object",
+			} as Tool["parameters"],
+		};
+		const bashTool: Tool = {
+			name: "bash",
+			description: "Run a command",
+			parameters: {
+				type: "object",
+				properties: { command: { type: "string" } },
+				required: ["command"],
+			} as Tool["parameters"],
+		};
+
+		const baseContext = {
+			systemPrompt: "Stable system prompt",
+			messages: [{ role: "user" as const, content: "Use a tool", timestamp: 1 }],
+		};
+		const bodyA = await captureCodexRequestBody({ ...baseContext, tools: [lookupA, bashTool] });
+		const bodyB = await captureCodexRequestBody({ ...baseContext, tools: [bashTool, lookupB] });
+
+		expect(JSON.stringify(bodyB.tools)).toBe(JSON.stringify(bodyA.tools));
+		expect((bodyA.tools as Array<{ name: string }>).map((tool) => tool.name)).toEqual(["bash", "lookup"]);
+	});
+
+	it("keeps volatile message timestamps out of the Codex tools/instructions prefix", async () => {
+		const tool: Tool = {
+			name: "read",
+			description: "Read a file",
+			parameters: {
+				type: "object",
+				properties: { path: { type: "string" } },
+				required: ["path"],
+			} as Tool["parameters"],
+		};
+		const systemPrompt = "Stable system prompt";
+		const bodyA = await captureCodexRequestBody({
+			systemPrompt,
+			tools: [tool],
+			messages: [{ role: "user", content: "Read one file", timestamp: 1 }],
+		});
+		const bodyB = await captureCodexRequestBody({
+			systemPrompt,
+			tools: [tool],
+			messages: [{ role: "user", content: "Read one file", timestamp: Date.now() }],
+		});
+
+		expect(bodyB.instructions).toBe(bodyA.instructions);
+		expect(JSON.stringify(bodyB.tools)).toBe(JSON.stringify(bodyA.tools));
+	});
+
 	it("streams SSE responses into AssistantMessageEventStream", async () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "pi-codex-stream-"));
 		process.env.PI_CODING_AGENT_DIR = tempDir;
@@ -1004,6 +1126,10 @@ describe("openai-codex streaming", () => {
 			storeTrueRequests: 0,
 			fullContextRequests: 1,
 			deltaRequests: 1,
+			lastInputItems: 1,
+			lastInputBytes: JSON.stringify(secondBody.input).length,
+			lastToolsBytes: 2,
+			lastInstructionsBytes: "You are a helpful assistant.".length,
 			lastDeltaInputItems: 1,
 			lastPreviousResponseId: "resp_1",
 		});

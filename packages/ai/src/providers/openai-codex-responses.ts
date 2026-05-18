@@ -393,7 +393,7 @@ function buildRequestBody(
 	}
 
 	if (context.tools && context.tools.length > 0) {
-		body.tools = convertResponsesTools(context.tools, { strict: null });
+		body.tools = convertResponsesTools(context.tools, { strict: null, deterministic: true });
 	}
 
 	if (options?.reasoningEffort !== undefined) {
@@ -642,6 +642,9 @@ export interface OpenAICodexWebSocketDebugStats {
 	fullContextRequests: number;
 	deltaRequests: number;
 	lastInputItems: number;
+	lastInputBytes: number;
+	lastToolsBytes: number;
+	lastInstructionsBytes: number;
 	lastDeltaInputItems?: number;
 	lastPreviousResponseId?: string;
 	websocketFailures: number;
@@ -666,6 +669,9 @@ function getOrCreateWebSocketDebugStats(sessionId: string): OpenAICodexWebSocket
 			fullContextRequests: 0,
 			deltaRequests: 0,
 			lastInputItems: 0,
+			lastInputBytes: 0,
+			lastToolsBytes: 0,
+			lastInstructionsBytes: 0,
 			websocketFailures: 0,
 			sseFallbacks: 0,
 		};
@@ -1211,6 +1217,9 @@ async function processWebSocketStream(
 		if (useCachedContext) stats.cachedContextRequests++;
 		if (requestBody.store === true) stats.storeTrueRequests++;
 		stats.lastInputItems = requestBody.input?.length ?? 0;
+		stats.lastInputBytes = JSON.stringify(requestBody.input ?? []).length;
+		stats.lastToolsBytes = JSON.stringify(requestBody.tools ?? []).length;
+		stats.lastInstructionsBytes = requestBody.instructions?.length ?? 0;
 		if (requestBody.previous_response_id) {
 			stats.deltaRequests++;
 			stats.lastDeltaInputItems = requestBody.input?.length ?? 0;
