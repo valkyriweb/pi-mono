@@ -127,8 +127,22 @@ export function getFilteredForkMessages(sessionManager: ReadonlySessionManager):
 	return filterIncompleteToolCalls(filterDeniedToolArtifacts(messages, deniedToolNames));
 }
 
+// Static reminder prepended to every child task message. Lives in the user
+// message (not the system prompt / tool schemas) so it stays inside the
+// cache-eligible prefix without changing the parent's cached bytes — fork-mode
+// children still share the parent's system + tools cache. Mirrors Claude Code's
+// `<system-reminder>` pattern for subagent guidance.
+const CHILD_AGENT_REMINDER =
+	"<system-reminder>\n" +
+	"You are a Pi child agent (subagent). The `agent` tool is not available to you — " +
+	"child agents cannot spawn further child agents, even if the tool schema appears in " +
+	"your tool list (fork-mode children inherit the parent's tool schemas for cache reasons). " +
+	"If the task genuinely requires delegation, return your findings to the parent and let " +
+	"them dispatch the follow-up work.\n" +
+	"</system-reminder>";
+
 export function buildChildTaskPrompt(task: AgentTaskConfig): string {
-	const parts = ["Complete this delegated task:", "", task.task.trim()];
+	const parts = [CHILD_AGENT_REMINDER, "", "Complete this delegated task:", "", task.task.trim()];
 	if (task.extraContext?.trim()) {
 		parts.push("", "Additional context:", task.extraContext.trim());
 	}

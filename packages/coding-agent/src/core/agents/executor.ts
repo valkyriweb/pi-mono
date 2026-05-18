@@ -543,6 +543,11 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 	// Fork mode: context:"fork" + parentSystemPrompt available.
 	// Use parent's exact tool set — 1:1 inheritance, no GLOBAL_DENY_TOOLS filtering.
 	// Tool schemas must be byte-identical to the parent's API request for a cache hit.
+	// Consequence: the `agent` tool schema stays in the child's tool list, so the
+	// runtime guard against recursive delegation is *prompt-level* via the
+	// CHILD_AGENT_REMINDER prefix injected by buildChildTaskPrompt (mirrors
+	// Claude Code's <system-reminder> pattern). Default/slim modes keep the
+	// hard GLOBAL_DENY_TOOLS filter as defense-in-depth.
 	// All other modes: standard agent-definition-based tool resolution.
 	const isForkMode =
 		resolveContextPolicy(options.task.context).includeTranscript && Boolean(options.parentSystemPrompt);
