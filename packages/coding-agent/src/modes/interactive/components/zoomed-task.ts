@@ -75,7 +75,11 @@ function renderEvent(event: TaskMessageEvent): string {
  * Lets the header reflect live status/duration without re-subscribing.
  */
 class LiveText implements Component {
-	constructor(private readonly getter: () => string) {}
+	private readonly getter: () => string;
+
+	constructor(getter: () => string) {
+		this.getter = getter;
+	}
 	render(width: number): string[] {
 		// Reuse a Text instance per render for wrapping/padding semantics.
 		return new Text(this.getter(), 1, 0).render(width);
@@ -86,6 +90,9 @@ class LiveText implements Component {
 }
 
 export class ZoomedTaskComponent extends Container {
+	private readonly taskId: string;
+	private readonly ui: TUI;
+	private readonly sessionConfig: ZoomedSessionConfig | undefined;
 	private unsubscribeMessages?: () => void;
 	/** Number of `TaskMessageEvent`s already rendered into `eventsContainer`. */
 	private renderedEventCount = 0;
@@ -96,12 +103,11 @@ export class ZoomedTaskComponent extends Container {
 	/** Live session transcript — used when a child AgentSession is available. */
 	private sessionTranscript: ZoomedSessionTranscript | undefined = undefined;
 
-	constructor(
-		private readonly taskId: string,
-		private readonly ui: TUI,
-		private readonly sessionConfig?: ZoomedSessionConfig,
-	) {
+	constructor(taskId: string, ui: TUI, sessionConfig?: ZoomedSessionConfig) {
 		super();
+		this.taskId = taskId;
+		this.ui = ui;
+		this.sessionConfig = sessionConfig;
 		// Build the static scaffold once: header, divider, events container.
 		this.addChild(new DynamicBorder());
 		this.addChild(new LiveText(() => this.renderHeader()));

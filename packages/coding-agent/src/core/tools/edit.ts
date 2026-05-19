@@ -76,16 +76,20 @@ export interface EditToolDetails {
  * ColorDiff engine adapted from Claude Code.
  */
 class ColorDiffComponent {
+	private readonly hunks: DiffHunk[];
+	private readonly filePath: string;
+	private readonly originalContent: string | null;
+	private readonly dim: boolean;
 	private cachedWidth?: number;
 	private cachedTheme?: string;
 	private cachedLines?: string[];
 
-	constructor(
-		private readonly hunks: DiffHunk[],
-		private readonly filePath: string,
-		private readonly originalContent: string | null,
-		private readonly dim: boolean,
-	) {}
+	constructor(hunks: DiffHunk[], filePath: string, originalContent: string | null, dim: boolean) {
+		this.hunks = hunks;
+		this.filePath = filePath;
+		this.originalContent = originalContent;
+		this.dim = dim;
+	}
 
 	render(width: number): string[] {
 		const themeName = (theme.name?.toLowerCase() ?? "").includes("light") ? "light" : "dark";

@@ -52,6 +52,8 @@ interface UsageTotals {
  */
 export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
+	private session: AgentSession;
+	private footerData: ReadonlyFooterDataProvider;
 	private usageCacheKey = "";
 	private usageCache: UsageTotals = {
 		totalInput: 0,
@@ -64,10 +66,10 @@ export class FooterComponent implements Component {
 	/** Footer item currently highlighted in nav mode, or undefined when inactive. */
 	private footerSelectedTaskId: string | undefined = undefined;
 
-	constructor(
-		private session: AgentSession,
-		private footerData: ReadonlyFooterDataProvider,
-	) {}
+	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
+		this.session = session;
+		this.footerData = footerData;
+	}
 
 	setFooterSelectedTaskId(id: string | undefined): void {
 		this.footerSelectedTaskId = id;

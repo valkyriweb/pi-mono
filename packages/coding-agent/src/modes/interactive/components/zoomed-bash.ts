@@ -42,7 +42,11 @@ function statusColor(job: BashBgJob): string {
 }
 
 class LiveText implements Component {
-	constructor(private readonly getter: () => string) {}
+	private readonly getter: () => string;
+
+	constructor(getter: () => string) {
+		this.getter = getter;
+	}
 	render(width: number): string[] {
 		return new Text(this.getter(), 1, 0).render(width);
 	}
@@ -50,12 +54,15 @@ class LiveText implements Component {
 }
 
 class LogTail implements Component {
+	private readonly getJob: () => BashBgJob | undefined;
 	private cachedWidth: number | undefined;
 	private cachedMtimeMs: number | undefined;
 	private cachedSize: number | undefined;
 	private cachedLines: string[] | undefined;
 
-	constructor(private readonly getJob: () => BashBgJob | undefined) {}
+	constructor(getJob: () => BashBgJob | undefined) {
+		this.getJob = getJob;
+	}
 
 	render(width: number): string[] {
 		const job = this.getJob();
@@ -110,13 +117,14 @@ class LogTail implements Component {
 }
 
 export class ZoomedBashComponent extends Container {
+	private readonly bgId: string;
+	private readonly ui: TUI;
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
 
-	constructor(
-		private readonly bgId: string,
-		private readonly ui: TUI,
-	) {
+	constructor(bgId: string, ui: TUI) {
 		super();
+		this.bgId = bgId;
+		this.ui = ui;
 		this.addChild(new DynamicBorder((s: string) => theme.fg("bashMode", s)));
 		this.addChild(new LiveText(() => this.renderHeader()));
 		this.addChild(new DynamicBorder((s: string) => theme.fg("bashMode", s)));
