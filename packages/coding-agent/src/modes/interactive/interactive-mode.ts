@@ -1531,6 +1531,9 @@ export class InteractiveMode {
 		const uiContext = this.createExtensionUIContext();
 		await this.session.bindExtensions({
 			uiContext,
+			abortHandler: () => {
+				this.restoreQueuedMessagesToEditor({ abort: true });
+			},
 			commandContextActions: {
 				waitForIdle: () => this.session.agent.waitForIdle(),
 				newSession: async (options) => {
@@ -1686,7 +1689,9 @@ export class InteractiveMode {
 				model: session.model,
 				isIdle: () => !session.isStreaming,
 				signal: session.agent.signal,
-				abort: () => session.abort(),
+				abort: () => {
+					this.restoreQueuedMessagesToEditor({ abort: true });
+				},
 				hasPendingMessages: () => session.pendingMessageCount > 0,
 				shutdown: () => {
 					this.shutdownRequested = true;
