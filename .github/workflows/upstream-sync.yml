@@ -180,19 +180,25 @@ jobs:
             gh pr edit "${EXISTING}" --title "${TITLE}" --body "${BODY}"
             echo "::notice::Updated existing PR #${EXISTING}."
           else
-            DRAFT_FLAG=""
-            [ "${DRAFT}" = "true" ] && DRAFT_FLAG="--draft"
-            PR_URL=$(gh pr create \
-              --base "${FORK_BRANCH}" \
-              --head "${BRANCH}" \
-              --title "${TITLE}" \
-              --body "${BODY}" \
-              ${DRAFT_FLAG})
+            DRAFT_JSON=false
+            [ "${DRAFT}" = "true" ] && DRAFT_JSON=true
+            PR_JSON=$(gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/pulls" \
+              -f base="${FORK_BRANCH}" \
+              -f head="${BRANCH}" \
+              -f title="${TITLE}" \
+              -f body="${BODY}" \
+              -F draft="${DRAFT_JSON}")
+            PR_URL=$(echo "${PR_JSON}" | jq -r '.html_url')
+            PR_NUM=$(echo "${PR_JSON}" | jq -r '.number')
             echo "::notice::Opened ${PR_URL}"
-            PR_NUM=$(echo "${PR_URL}" | grep -oE '[0-9]+$')
-            LABEL="upstream-sync"
-            [ "${DRAFT}" = "true" ] && LABEL="${LABEL},needs-conflict-resolution"
+            LABELS='["upstream-sync"]'
+            [ "${DRAFT}" = "true" ] && LABELS='["upstream-sync","needs-conflict-resolution"]'
             # Best-effort label add (skip silently if labels don't exist yet)
-            gh pr edit "${PR_NUM}" --add-label "${LABEL}" 2>/dev/null || \
+            gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/labels" \
+              --input - <<<"{\"labels\":${LABELS}}" 2>/dev/null || \
               echo "::warning::Could not add labels (may not exist). Run: gh label create upstream-sync; gh label create needs-conflict-resolution"
           fi
