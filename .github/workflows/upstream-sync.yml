@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
 
       - name: Add upstream remote and fetch
         run: |
@@ -49,6 +49,31 @@ jobs:
       - name: Stop if up-to-date
         if: steps.check.outputs.skip == 'true'
         run: echo "::notice::Fork is up to date with ${UPSTREAM_REPO}@${UPSTREAM_BRANCH}. Nothing to do."
+
+      - name: Clean up stale sync branches
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+
+          TODAY_BRANCH="sync/upstream-$(date -u +%Y-%m-%d)"
+          git ls-remote --heads origin "sync/upstream-*" |
+            while read -r _ REF; do
+              BRANCH="${REF#refs/heads/}"
+              if [ "${BRANCH}" = "${TODAY_BRANCH}" ]; then
+                continue
+              fi
+
+              OPEN_PR=$(gh pr list --head "${BRANCH}" --state open --json number -q '.[0].number')
+              if [ -n "${OPEN_PR}" ]; then
+                echo "::notice::Keeping ${BRANCH}; open PR #${OPEN_PR}."
+                continue
+              fi
+
+              git push origin --delete "${BRANCH}"
+              echo "::notice::Deleted stale sync branch ${BRANCH}."
+            done
 
       - name: Configure git author
         if: steps.check.outputs.skip != 'true'
@@ -94,7 +119,7 @@ jobs:
       - name: Open or update PR
         if: steps.check.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
           BRANCH: ${{ steps.merge.outputs.branch }}
           DRAFT: ${{ steps.merge.outputs.draft }}
           CONFLICTS: ${{ steps.merge.outputs.conflicts }}

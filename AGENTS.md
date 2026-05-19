@@ -44,6 +44,17 @@
 - `lgtmi` approves future issues
 - `lgtm` approves future issues and rights to submit PRs
 
+## GitHub Actions Governance
+
+When triaging GitHub checks, workflow failures, or branch status:
+
+- Review `.github/workflows/*` and recent run history before assuming a check is required.
+- Identify workflow ownership with `git log --follow -- .github/workflows/<file>`: upstream-inherited, fork-owned, or third-party automation.
+- Keep only workflows that protect this fork's actual release/triage paths; disable noisy inherited workflows that do not serve `valkyriweb/pi-mono`.
+- Check whether branch protection requires a status before disabling it. This fork currently has no protected `main` branch unless GitHub settings say otherwise.
+- For scheduled workflows, verify they short-circuit before expensive/write work when there is nothing to do.
+- ClawSweeper/CI agents should audit Actions from outside the workflow they are reviewing; a workflow should not be the sole authority on its own health.
+
 When creating issues:
 
 - Add `pkg:*` labels to indicate which package(s) the issue affects
