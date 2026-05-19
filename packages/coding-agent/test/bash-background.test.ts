@@ -38,6 +38,7 @@ describe("bash run_in_background", () => {
 		expect(readText).toContain("bg-line-1");
 		expect(readText).toContain("bg-line-3");
 		expect(readText).toMatch(/status: exited/);
+		expect(readResult.details?.fullOutputPath).toBe(readResult.details?.logPath);
 
 		// Idempotent kill on a finished job.
 		const killResult = await kill.execute("t3", { bgId: details.bgId }, undefined, undefined, ctx);

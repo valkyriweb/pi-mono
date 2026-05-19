@@ -98,6 +98,23 @@ describe("DefaultPackageManager", () => {
 			expect(result.extensions.some((r) => r.path === extPath && r.enabled)).toBe(true);
 		});
 
+		it("should ignore extension config objects when resolving local extension paths", async () => {
+			settingsManager = SettingsManager.inMemory({
+				extensions: {
+					"pi-tool-search": {
+						alwaysActive: ["bash", "read"],
+					},
+				},
+			} as unknown as Partial<Parameters<typeof SettingsManager.inMemory>[0]>);
+			packageManager = new DefaultPackageManager({
+				cwd: tempDir,
+				agentDir,
+				settingsManager,
+			});
+
+			await expect(packageManager.resolve()).resolves.toMatchObject({ extensions: [] });
+		});
+
 		it("should resolve skill paths from settings", async () => {
 			const skillDir = join(agentDir, "skills", "my-skill");
 			mkdirSync(skillDir, { recursive: true });

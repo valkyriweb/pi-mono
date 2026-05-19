@@ -251,6 +251,8 @@ Paths in `~/.pi/agent/settings.json` resolve relative to `~/.pi/agent`. Paths in
 
 Arrays support glob patterns and exclusions. Use `!pattern` to exclude. Use `+path` to force-include an exact path and `-path` to force-exclude an exact path.
 
+If an extension also stores configuration under a resource key (for example an object-valued `extensions` entry in older/local settings), the package manager treats it as extension configuration, not as local resource paths. This keeps `pi`/`pii` startup tolerant of mixed settings files while path-based resources continue to require arrays.
+
 #### packages
 
 String form loads all resources from a package:

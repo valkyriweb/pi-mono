@@ -192,6 +192,10 @@ export interface BashToolDetails {
 	fullOutputPath?: string;
 }
 
+export interface BashOutputToolDetails extends BashBgJob {
+	fullOutputPath: string;
+}
+
 /**
  * Pluggable operations for the bash tool.
  * Override these to delegate command execution to remote systems (for example SSH).
@@ -990,7 +994,10 @@ const bashOutputSchema = Type.Object({
 
 export type BashOutputToolInput = Static<typeof bashOutputSchema>;
 
-export function createBashOutputToolDefinition(): ToolDefinition<typeof bashOutputSchema, BashBgJob | undefined> {
+export function createBashOutputToolDefinition(): ToolDefinition<
+	typeof bashOutputSchema,
+	BashOutputToolDetails | undefined
+> {
 	return {
 		name: "bash_output",
 		label: "bash_output",
@@ -1028,7 +1035,7 @@ export function createBashOutputToolDefinition(): ToolDefinition<typeof bashOutp
 			const body = lines.length ? lines.join("\n") : "(no output yet)";
 			return {
 				content: [{ type: "text", text: `${header}\n\n${body}` }],
-				details: job,
+				details: { ...job, fullOutputPath: job.logPath },
 			};
 		},
 	};
