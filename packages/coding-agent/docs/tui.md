@@ -18,6 +18,8 @@ When the native `agent` tool runs, collapsed tool rendering shows the execution 
 
 Child agent sessions are persisted as normal Pi session files and linked back to the parent session. Recent foreground and background runs are visible through `/agents-status`; pass a run id (for example `/agents-status agent-1` or `/agents status agent-1`) for a detail view with tool calls, skills, usage, session refs, output refs, and resumability. Background runs also add a footer status line with a `/agents runs` hint and are monitored for stalled progress; stale runs are marked `needs attention` instead of being killed by a hard timeout. Native background runs can be interrupted, cancelled, and resumed for single-child interrupted sessions while the owning Pi process is alive.
 
+Background bash jobs started with `bash({ run_in_background: true })` appear in the same footer navigation as background agents. With an empty editor, use ↑/↓ to select the `sh:*` pill and Enter to zoom into a live tail of the job log; use the normal zoom exit binding to return.
+
 Extensions and custom tools can render custom TUI components for interactive user interfaces. This page covers the component system and available building blocks.
 
 **Source:** [`@earendil-works/pi-tui`](https://github.com/earendil-works/pi-mono/tree/main/packages/tui)

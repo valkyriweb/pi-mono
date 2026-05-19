@@ -3,6 +3,7 @@ import type { AgentSession } from "../../../core/agent-session.js";
 import { formatAgentFooterStatus } from "../../../core/agents/status.js";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.js";
 import { getRunningTasksSorted } from "../../../core/tasks/index.js";
+import { type BashBgJob, getRunningBashBgJobsSorted } from "../../../core/tools/bash.js";
 import { theme } from "../theme/theme.js";
 
 /**
@@ -28,6 +29,15 @@ function formatTokens(count: number): string {
 	return `${Math.round(count / 1000000)}M`;
 }
 
+function shortBgId(id: string): string {
+	return id.startsWith("bg_") ? id.slice(3, 9) : id.slice(0, 6);
+}
+
+function formatBashFooterStatus(jobs: BashBgJob[]): string {
+	if (jobs.length === 1) return `shell ${shortBgId(jobs[0]!.id)} running`;
+	return `${jobs.length} shells running`;
+}
+
 interface UsageTotals {
 	totalInput: number;
 	totalOutput: number;
@@ -51,7 +61,7 @@ export class FooterComponent implements Component {
 		totalCost: 0,
 	};
 
-	/** Task id currently highlighted in footer nav mode, or undefined when inactive. */
+	/** Footer item currently highlighted in nav mode, or undefined when inactive. */
 	private footerSelectedTaskId: string | undefined = undefined;
 
 	constructor(
@@ -88,29 +98,48 @@ export class FooterComponent implements Component {
 	}
 
 	/**
-	 * Render the agent status line at the bottom of the footer.
+	 * Render the background work status line at the bottom of the footer.
 	 *
 	 * When footer-nav mode is active (`footerSelectedTaskId` is set), render a
-	 * pill-per-running-task row so the user can see which agent is highlighted.
-	 * Otherwise fall back to the plain `formatAgentFooterStatus()` summary.
+	 * pill-per-running-task/job row so the user can see which item is highlighted.
+	 * Otherwise fall back to compact agent + shell summaries.
 	 */
-	private renderAgentStatusLine(width: number): string | undefined {
+	private renderBackgroundStatusLine(width: number): string | undefined {
 		if (this.footerSelectedTaskId !== undefined) {
-			const tasks = getRunningTasksSorted();
-			if (tasks.length === 0) return undefined;
-			const pills = tasks.map((t) => {
-				const label = ` ${t.id} `;
-				return t.id === this.footerSelectedTaskId
-					? theme.fg("accent", theme.bold(`[${t.id}]`))
+			const items = this.getFooterNavItems();
+			if (items.length === 0) return undefined;
+			const pills = items.map((item) => {
+				const label = ` ${item.label} `;
+				return item.id === this.footerSelectedTaskId
+					? theme.fg(item.kind === "bash" ? "bashMode" : "accent", theme.bold(`[${item.label}]`))
 					: theme.fg("dim", label);
 			});
 			const hint = theme.fg("muted", " ↑↓ select · enter=zoom · esc=cancel");
 			const row = pills.join("") + hint;
 			return truncateToWidth(row, width, theme.fg("dim", "..."));
 		}
+
+		const parts: string[] = [];
 		const agentStatus = formatAgentFooterStatus();
-		if (!agentStatus) return undefined;
-		return truncateToWidth(theme.fg("dim", sanitizeStatusText(agentStatus)), width, theme.fg("dim", "..."));
+		if (agentStatus) parts.push(sanitizeStatusText(agentStatus));
+		const bashJobs = getRunningBashBgJobsSorted();
+		if (bashJobs.length > 0) parts.push(formatBashFooterStatus(bashJobs));
+		if (parts.length === 0) return undefined;
+		return truncateToWidth(theme.fg("dim", parts.join(" · ")), width, theme.fg("dim", "..."));
+	}
+
+	private getFooterNavItems(): Array<{ id: string; kind: "agent" | "bash"; label: string }> {
+		const agents = getRunningTasksSorted().map((task) => ({
+			id: `agent:${task.id}`,
+			kind: "agent" as const,
+			label: task.id,
+		}));
+		const bashJobs = getRunningBashBgJobsSorted().map((job) => ({
+			id: `bash:${job.id}`,
+			kind: "bash" as const,
+			label: `sh:${shortBgId(job.id)}`,
+		}));
+		return [...agents, ...bashJobs];
 	}
 
 	private getUsageTotals(): UsageTotals {
@@ -265,9 +294,9 @@ export class FooterComponent implements Component {
 
 		const lines = [pwdLine, statsLine];
 
-		const agentStatusLine = this.renderAgentStatusLine(width);
-		if (agentStatusLine) {
-			lines.push(agentStatusLine);
+		const backgroundStatusLine = this.renderBackgroundStatusLine(width);
+		if (backgroundStatusLine) {
+			lines.push(backgroundStatusLine);
 		}
 
 		// Add extension statuses on a single line, sorted by key alphabetically

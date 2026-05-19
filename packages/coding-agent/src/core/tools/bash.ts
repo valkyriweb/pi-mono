@@ -44,7 +44,7 @@ const bashSchema = Type.Object({
 // can read or stop them by id. Output is appended to a log file under
 // ~/.pi/agent/bash-bg/<bgId>.log so it survives process exit and can be tailed.
 
-interface BashBgJob {
+export interface BashBgJob {
 	id: string;
 	command: string;
 	cwd: string;
@@ -59,6 +59,16 @@ interface BashBgJob {
 }
 
 const bashBgJobs = new Map<string, BashBgJob>();
+const bashBgSubscribers = new Set<() => void>();
+
+function notifyBashBgJobsChanged(): void {
+	for (const subscriber of bashBgSubscribers) subscriber();
+}
+
+export function subscribeBashBgJobs(callback: () => void): () => void {
+	bashBgSubscribers.add(callback);
+	return () => bashBgSubscribers.delete(callback);
+}
 
 function bashBgLogDir(): string {
 	const dir = join(homedir(), ".pi", "agent", "bash-bg");
@@ -70,12 +80,18 @@ function nextBashBgId(): string {
 	return `bg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function getBashBgJob(id: string): BashBgJob | undefined {
+export function getBashBgJob(id: string): BashBgJob | undefined {
 	return bashBgJobs.get(id);
 }
 
 export function listBashBgJobs(): BashBgJob[] {
 	return [...bashBgJobs.values()];
+}
+
+export function getRunningBashBgJobsSorted(): BashBgJob[] {
+	return listBashBgJobs()
+		.filter((job) => job.status === "running")
+		.sort((a, b) => a.startedAt - b.startedAt);
 }
 
 /**
@@ -96,6 +112,7 @@ export function killAllBashBgJobs(): void {
 		}
 	}
 	bashBgJobs.clear();
+	notifyBashBgJobsChanged();
 }
 
 function spawnBashBackground(command: string, cwd: string, shellPath?: string, commandPrefix?: string): BashBgJob {
@@ -130,11 +147,13 @@ function spawnBashBackground(command: string, cwd: string, shellPath?: string, c
 		error: undefined,
 	};
 	bashBgJobs.set(id, job);
+	notifyBashBgJobsChanged();
 	child.on("error", (err) => {
 		job.status = "failed";
 		job.error = err.message;
 		job.endedAt = Date.now();
 		if (child.pid) untrackDetachedChildPid(child.pid);
+		notifyBashBgJobsChanged();
 	});
 	child.on("exit", (code, signal) => {
 		job.exitCode = code;
@@ -144,6 +163,7 @@ function spawnBashBackground(command: string, cwd: string, shellPath?: string, c
 			job.status = signal ? "killed" : "exited";
 		}
 		if (child.pid) untrackDetachedChildPid(child.pid);
+		notifyBashBgJobsChanged();
 	});
 	// Don't keep the event loop alive on our behalf — caller decides.
 	child.unref();
@@ -1099,6 +1119,7 @@ export function createBashKillToolDefinition(): ToolDefinition<typeof bashKillSc
 			}
 			job.status = "killed";
 			job.endedAt = Date.now();
+			notifyBashBgJobsChanged();
 			return {
 				content: [{ type: "text", text: `Killed bgId=${bgId} (pid=${job.pid ?? "unknown"}).` }],
 				details: job,
