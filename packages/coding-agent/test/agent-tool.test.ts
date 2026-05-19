@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Type } from "typebox";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { writeAgentOutput } from "../src/core/agents/output.js";
 import {
@@ -11,6 +12,7 @@ import {
 } from "../src/core/agents/status.js";
 import type { AgentToolDetails } from "../src/core/agents/types.js";
 import { createDeferredToolSearchTool } from "../src/core/deferred-tool-search-tool.js";
+import type { ToolDefinition } from "../src/core/extensions/types.js";
 import {
 	createAgentToolDefinition,
 	normalizeAgentToolAliases,
@@ -271,8 +273,34 @@ describe("agent tool", () => {
 	});
 
 	test("deferred tool search prefers Claude-compatible agent aliases in query matches", () => {
+		const definitions: ToolDefinition[] = [
+			{
+				name: "agent",
+				label: "agent",
+				description: "agent",
+				deferLoading: true,
+				parameters: Type.Object({}),
+				execute: async () => ({ content: [{ type: "text", text: "agent" }] }),
+			},
+			{
+				name: "Agent",
+				label: "Agent",
+				description: "agent",
+				deferLoading: true,
+				parameters: Type.Object({}),
+				execute: async () => ({ content: [{ type: "text", text: "Agent" }] }),
+			},
+			{
+				name: "Task",
+				label: "Task",
+				description: "agent",
+				deferLoading: true,
+				parameters: Type.Object({}),
+				execute: async () => ({ content: [{ type: "text", text: "Task" }] }),
+			},
+		];
 		const tool = createDeferredToolSearchTool({
-			getToolDefinitions: () => createAllToolDefinitions(process.cwd()) as never,
+			getToolDefinitions: () => definitions,
 			getModel: () => undefined,
 			getDiscoveredToolNames: () => [],
 			setDiscoveredToolNames: () => undefined,
