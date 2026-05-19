@@ -127,6 +127,8 @@ const defaultEditOperations: EditOperations = {
 };
 
 export interface EditToolOptions {
+	toolName?: "edit" | "Edit";
+	label?: string;
 	/** Custom operations for file editing. Default: local filesystem */
 	operations?: EditOperations;
 }
@@ -347,9 +349,11 @@ export function createEditToolDefinition(
 	options?: EditToolOptions,
 ): ToolDefinition<typeof editSchema, EditToolDetails | undefined, EditRenderState> {
 	const ops = options?.operations ?? defaultEditOperations;
+	const toolName = options?.toolName ?? "edit";
+	const label = options?.label ?? toolName;
 	return {
-		name: "edit",
-		label: "edit",
+		name: toolName,
+		label,
 		description:
 			"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
 		promptSnippet:
@@ -569,4 +573,15 @@ export function createEditToolDefinition(
 
 export function createEditTool(cwd: string, options?: EditToolOptions): AgentTool<typeof editSchema> {
 	return wrapToolDefinition(createEditToolDefinition(cwd, options));
+}
+
+export function createUppercaseEditToolDefinition(
+	cwd: string,
+	options?: EditToolOptions,
+): ToolDefinition<typeof editSchema, EditToolDetails | undefined, EditRenderState> {
+	return createEditToolDefinition(cwd, { ...options, toolName: "Edit", label: "Edit" });
+}
+
+export function createUppercaseEditTool(cwd: string, options?: EditToolOptions): AgentTool<typeof editSchema> {
+	return wrapToolDefinition(createUppercaseEditToolDefinition(cwd, options));
 }

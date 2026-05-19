@@ -21,6 +21,10 @@
 - Never hardcode key checks with, eg. `matchesKey(keyData, "ctrl+x")`. All keybindings must be configurable. Add default to matching object (`DEFAULT_EDITOR_KEYBINDINGS` or `DEFAULT_APP_KEYBINDINGS`)
 - NEVER modify `packages/ai/src/models.generated.ts` directly. Update `packages/ai/scripts/generate-models.ts` instead.
 
+## Pi Setup Registry
+
+Canonical setup registry lives in `~/Projects/personal/my-pi/docs/pi-setup/`, not this fork. Runtime/provider/cache/tool/fork-patch changes here should update the my-pi catalog/governed docs; generated registry files are refreshed from my-pi scanners and must not be hand-edited here.
+
 ## Commands
 
 - After code changes (not documentation changes): `npm run check` (get full output, no tail). Fix all errors, warnings, and infos before committing.

@@ -242,7 +242,10 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 		model: model.id,
 		input: messages,
 		stream: true,
-		prompt_cache_key: cacheRetention === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId),
+		prompt_cache_key:
+			cacheRetention === "none"
+				? undefined
+				: clampOpenAIPromptCacheKey(options?.cacheAffinityKey ?? options?.sessionId),
 		prompt_cache_retention: getPromptCacheRetention(compat, cacheRetention),
 		store: false,
 	};

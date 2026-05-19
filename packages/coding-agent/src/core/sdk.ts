@@ -5,6 +5,7 @@ import { getAgentDir } from "../config.js";
 import { AgentSession } from "./agent-session.js";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.js";
 import { AuthStorage } from "./auth-storage.js";
+import { createPromptCacheAffinityKey } from "./cache-affinity.js";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.js";
 import { convertToLlm } from "./messages.js";
@@ -27,6 +28,13 @@ import {
 	createReadTool,
 	createTaskTool,
 	createUppercaseAgentTool,
+	createUppercaseBashTool,
+	createUppercaseEditTool,
+	createUppercaseFindTool,
+	createUppercaseGrepTool,
+	createUppercaseLsTool,
+	createUppercaseReadTool,
+	createUppercaseWriteTool,
 	createWriteTool,
 	type ToolName,
 	withFileMutationQueue,
@@ -54,14 +62,14 @@ export interface CreateAgentSessionOptions {
 	 * Optional default tool suppression mode when no explicit allowlist is provided.
 	 *
 	 * - "all": start with no tools enabled
-	 * - "builtin": disable the default built-in tools (read, bash, edit, write, Agent, Task)
+	 * - "builtin": disable the default built-in tools (Read, Bash, Edit, Write, Agent, Task, Grep, Find, Ls)
 	 *   but keep extension/custom tools enabled
 	 */
 	noTools?: "all" | "builtin";
 	/**
 	 * Optional allowlist of tool names.
 	 *
-	 * When omitted, pi enables the default built-in tools (read, bash, edit, write, Agent, Task)
+	 * When omitted, pi enables the default built-in tools (Read, Bash, Edit, Write, Agent, Task, Grep, Find, Ls)
 	 * and leaves extension/custom tools enabled unless `noTools` changes that default.
 	 * When provided, only the listed tool names are enabled.
 	 */
@@ -121,6 +129,13 @@ export {
 	createLsTool,
 	createTaskTool,
 	createUppercaseAgentTool,
+	createUppercaseBashTool,
+	createUppercaseEditTool,
+	createUppercaseFindTool,
+	createUppercaseGrepTool,
+	createUppercaseLsTool,
+	createUppercaseReadTool,
+	createUppercaseWriteTool,
 };
 
 // Helper Functions
@@ -276,17 +291,17 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// Sessions without pi-tool-search (which would re-add them via alwaysActive)
 	// previously got `bash` without them, making run_in_background:true unusable.
 	const defaultActiveToolNames: ToolName[] = [
-		"read",
-		"bash",
+		"Read",
+		"Bash",
 		"bash_output",
 		"bash_kill",
-		"edit",
-		"write",
+		"Edit",
+		"Write",
 		"Agent",
 		"Task",
-		"grep",
-		"find",
-		"ls",
+		"Grep",
+		"Find",
+		"Ls",
 	];
 	const allowedToolNames = options.tools ?? (options.noTools === "all" ? [] : undefined);
 	const initialActiveToolNames: string[] = options.tools
@@ -406,6 +421,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		},
 		sessionId: sessionManager.getSessionId(),
+		cacheAffinityKey: model ? createPromptCacheAffinityKey(model, cwd) : undefined,
 		transformContext: async (messages) => {
 			const runner = extensionRunnerRef.current;
 			if (!runner) return messages;

@@ -94,6 +94,8 @@ interface RequestBody {
 	text?: { verbosity?: string };
 	include?: string[];
 	prompt_cache_key?: string;
+	prompt_cache_retention?: "24h";
+	max_output_tokens?: number;
 	[key: string]: unknown;
 }
 
@@ -373,6 +375,7 @@ function buildRequestBody(
 		includeSystemPrompt: false,
 	});
 
+	const cacheRetention = options?.cacheRetention ?? "short";
 	const body: RequestBody = {
 		model: model.id,
 		store: false,
@@ -383,10 +386,18 @@ function buildRequestBody(
 		input: messages,
 		text: { verbosity: options?.textVerbosity || "low" },
 		include: ["reasoning.encrypted_content"],
-		prompt_cache_key: clampOpenAIPromptCacheKey(options?.sessionId),
+		prompt_cache_key:
+			cacheRetention === "none"
+				? undefined
+				: clampOpenAIPromptCacheKey(options?.cacheAffinityKey ?? options?.sessionId),
+		prompt_cache_retention: cacheRetention === "long" ? "24h" : undefined,
 		tool_choice: "auto",
 		parallel_tool_calls: true,
 	};
+
+	if (options?.maxTokens !== undefined) {
+		body.max_output_tokens = options.maxTokens;
+	}
 
 	if (options?.temperature !== undefined) {
 		body.temperature = options.temperature;

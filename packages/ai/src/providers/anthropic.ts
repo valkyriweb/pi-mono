@@ -109,6 +109,8 @@ const fromClaudeCodeName = (name: string, tools?: Tool[]) => {
 /**
  * Convert content blocks to Anthropic API format
  */
+const ANTHROPIC_SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
 function convertContentBlocks(content: (TextContent | ImageContent | { type: "tool_reference"; name: string })[]):
 	| string
 	| Array<
@@ -148,6 +150,12 @@ function convertContentBlocks(content: (TextContent | ImageContent | { type: "to
 			return {
 				type: "tool_reference" as const,
 				tool_name: block.name,
+			};
+		}
+		if (!ANTHROPIC_SUPPORTED_IMAGE_MIME_TYPES.has(block.mimeType)) {
+			return {
+				type: "text" as const,
+				text: `[Unsupported image MIME ${block.mimeType}; image omitted from Anthropic request]`,
 			};
 		}
 		return {

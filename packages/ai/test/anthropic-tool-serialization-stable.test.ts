@@ -53,17 +53,21 @@ function emptySse(response: ServerResponse): void {
 	response.end();
 }
 
-async function captureToolBytes(context: Context): Promise<string> {
-	let toolsBytes = "";
+async function captureRequestBody(
+	context: Context,
+	options: { supportsImages?: boolean } = {},
+): Promise<Record<string, unknown>> {
+	let requestBody: Record<string, unknown> = {};
 	const server = createServer(async (request, response) => {
-		const body = await readBody(request);
-		toolsBytes = JSON.stringify(body.tools);
+		requestBody = await readBody(request);
 		emptySse(response);
 	});
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 	const address = server.address() as AddressInfo;
 	try {
-		const stream = streamAnthropic(createModel(`http://127.0.0.1:${address.port}`), context, {
+		const model = createModel(`http://127.0.0.1:${address.port}`);
+		if (options.supportsImages) model.input = ["text", "image"];
+		const stream = streamAnthropic(model, context, {
 			apiKey: "test-key",
 			cacheRetention: "none",
 		});
@@ -75,7 +79,12 @@ async function captureToolBytes(context: Context): Promise<string> {
 			server.close((error) => (error ? reject(error) : resolve()));
 		});
 	}
-	return toolsBytes;
+	return requestBody;
+}
+
+async function captureToolBytes(context: Context): Promise<string> {
+	const body = await captureRequestBody(context);
+	return JSON.stringify(body.tools);
 }
 
 describe("Anthropic convertTools — cache-stable serialization", () => {
@@ -140,6 +149,47 @@ describe("Anthropic convertTools — cache-stable serialization", () => {
 		const bytesA = await captureToolBytes(createContext([toolA]));
 		const bytesB = await captureToolBytes(createContext([toolB]));
 		expect(bytesB).toBe(bytesA);
+	});
+
+	it("downgrades unsupported image MIME tool results before Anthropic serialization", async () => {
+		const body = await captureRequestBody(
+			{
+				messages: [
+					{ role: "user", content: "use image tool", timestamp: Date.now() },
+					{
+						role: "assistant",
+						content: [{ type: "toolCall", id: "tool-1", name: "mcp_image", arguments: {} }],
+						api: "anthropic-messages",
+						provider: "test-anthropic",
+						model: "claude-opus-4-7",
+						usage: {
+							input: 0,
+							output: 0,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 0,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						stopReason: "toolUse",
+						timestamp: Date.now(),
+					},
+					{
+						role: "toolResult",
+						toolCallId: "tool-1",
+						toolName: "mcp_image",
+						content: [{ type: "image", data: "ZmFrZQ==", mimeType: "image/bmp" }],
+						isError: false,
+						timestamp: Date.now(),
+					},
+				],
+			},
+			{ supportsImages: true },
+		);
+
+		const serializedMessages = JSON.stringify(body.messages);
+		expect(serializedMessages).toContain("Unsupported image MIME image/bmp");
+		expect(serializedMessages).not.toContain('"media_type":"image/bmp"');
+		expect(serializedMessages).not.toContain('"type":"base64"');
 	});
 
 	it("emits byte-identical tools when required array order differs", async () => {

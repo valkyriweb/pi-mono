@@ -23,7 +23,15 @@ import type {
 	AgentTool,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Context, ImageContent, Message, Model, TextContent } from "@earendil-works/pi-ai";
+import type {
+	AssistantMessage,
+	Context,
+	ImageContent,
+	Message,
+	Model,
+	TextContent,
+	ToolReferenceContent,
+} from "@earendil-works/pi-ai";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
@@ -42,6 +50,7 @@ import { cancelAgentRecentRun, findAgentRecentRun, waitForAgentRecentRun } from 
 import type { AgentBackgroundCompletion, AgentToolDetails, AgentToolStatus } from "./agents/types.js";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.js";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
+import { createPromptCacheAffinityKey } from "./cache-affinity.js";
 import {
 	type CompactionResult,
 	calculateContextTokens,
@@ -294,6 +303,56 @@ interface ToolDefinitionEntry {
 
 /** Standard thinking levels */
 const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
+const SUPPORTED_INLINE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const TOOL_ARTIFACTS_DIR = ".pi/tool-artifacts";
+
+type ToolResultContentBlock = TextContent | ImageContent | ToolReferenceContent;
+
+function replaceUnsupportedToolResultImages(
+	content: ToolResultContentBlock[],
+	cwd: string,
+	toolCallId: string,
+): ToolResultContentBlock[] | undefined {
+	let changed = false;
+	const nextContent = content.map((block, index): ToolResultContentBlock => {
+		if (block.type !== "image" || SUPPORTED_INLINE_IMAGE_MIME_TYPES.has(block.mimeType)) {
+			return block;
+		}
+
+		changed = true;
+		const relativePath = `${TOOL_ARTIFACTS_DIR}/${sanitizeArtifactName(toolCallId)}-${index}${extensionForMimeType(block.mimeType)}`;
+		const absolutePath = resolve(cwd, relativePath);
+		try {
+			mkdirSync(dirname(absolutePath), { recursive: true });
+			writeFileSync(absolutePath, Buffer.from(block.data, "base64"));
+			return {
+				type: "text",
+				text: `[Unsupported image MIME ${block.mimeType}; saved artifact to ${relativePath}]`,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return {
+				type: "text",
+				text: `[Unsupported image MIME ${block.mimeType}; image omitted because artifact save failed: ${message}]`,
+			};
+		}
+	});
+
+	return changed ? nextContent : undefined;
+}
+
+function sanitizeArtifactName(value: string): string {
+	return value.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "tool-result";
+}
+
+function extensionForMimeType(mimeType: string): string {
+	const subtype =
+		mimeType
+			.split("/")[1]
+			?.toLowerCase()
+			.replace(/[^a-z0-9.+-]/g, "") || "bin";
+	return `.${subtype.replace("+", ".")}`;
+}
 
 // ============================================================================
 // AgentSession Class
@@ -478,9 +537,11 @@ export class AgentSession {
 		};
 
 		this.agent.afterToolCall = async ({ toolCall, args, result, isError }) => {
+			const normalizedContent = replaceUnsupportedToolResultImages(result.content, this._cwd, toolCall.id);
+			const currentResult = normalizedContent ? { ...result, content: normalizedContent } : result;
 			const runner = this._extensionRunner;
 			if (!runner.hasHandlers("tool_result")) {
-				return undefined;
+				return normalizedContent ? { content: normalizedContent, details: result.details, isError } : undefined;
 			}
 
 			const hookResult = await runner.emitToolResult({
@@ -488,13 +549,13 @@ export class AgentSession {
 				toolName: toolCall.name,
 				toolCallId: toolCall.id,
 				input: args as Record<string, unknown>,
-				content: result.content,
-				details: result.details,
+				content: currentResult.content,
+				details: currentResult.details,
 				isError,
 			});
 
 			if (!hookResult) {
-				return undefined;
+				return normalizedContent ? { content: normalizedContent, details: result.details, isError } : undefined;
 			}
 
 			return {
@@ -832,6 +893,7 @@ export class AgentSession {
 				maxRetryDelayMs: 0,
 				timeoutMs: providerRetrySettings.timeoutMs,
 				sessionId: context.sessionId,
+				cacheAffinityKey: createPromptCacheAffinityKey(model, this._cwd),
 				signal: abortController.signal,
 				transport: this.settingsManager.getTransport(),
 			});
@@ -3160,7 +3222,7 @@ export class AgentSession {
 		// run_in_background:true returns a bgId the model can never read or stop.
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "bash_output", "bash_kill", "edit", "write", "agent", "grep", "find", "ls"];
+			: ["Read", "Bash", "bash_output", "bash_kill", "Edit", "Write", "Agent", "Task", "Grep", "Find", "Ls"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,

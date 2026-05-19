@@ -94,7 +94,10 @@ function buildSSEPayload({
 	return `${events.join("\n\n")}\n\n`;
 }
 
-async function captureCodexRequestBody(context: Context): Promise<Record<string, unknown>> {
+async function captureCodexRequestBody(
+	context: Context,
+	options: Partial<Parameters<typeof streamOpenAICodexResponses>[2]> = {},
+): Promise<Record<string, unknown>> {
 	const tempDir = mkdtempSync(join(tmpdir(), "pi-codex-stream-"));
 	process.env.PI_CODING_AGENT_DIR = tempDir;
 	const token = mockToken();
@@ -123,6 +126,7 @@ async function captureCodexRequestBody(context: Context): Promise<Record<string,
 		apiKey: token,
 		transport: "sse",
 		sessionId: "cache-stability-test-session",
+		...options,
 	}).result();
 
 	if (!capturedBody) throw new Error("Codex request body was not captured");
@@ -200,6 +204,24 @@ describe("openai-codex streaming", () => {
 
 		expect(bodyB.instructions).toBe(bodyA.instructions);
 		expect(JSON.stringify(bodyB.tools)).toBe(JSON.stringify(bodyA.tools));
+	});
+
+	it("uses cache affinity and long-retention options for Codex requests", async () => {
+		const body = await captureCodexRequestBody(
+			{
+				systemPrompt: "Stable system prompt",
+				messages: [{ role: "user", content: "ping", timestamp: 1 }],
+			},
+			{
+				cacheAffinityKey: "shared-cache-affinity-key",
+				cacheRetention: "long",
+				maxTokens: 1,
+			},
+		);
+
+		expect(body.prompt_cache_key).toBe("shared-cache-affinity-key");
+		expect(body.prompt_cache_retention).toBe("24h");
+		expect(body.max_output_tokens).toBe(1);
 	});
 
 	it("streams SSE responses into AssistantMessageEventStream", async () => {

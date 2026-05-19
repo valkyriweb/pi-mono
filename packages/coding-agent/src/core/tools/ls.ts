@@ -44,6 +44,8 @@ const defaultLsOperations: LsOperations = {
 };
 
 export interface LsToolOptions {
+	toolName?: "ls" | "Ls";
+	label?: string;
 	/** Custom operations for directory listing. Default: local filesystem */
 	operations?: LsOperations;
 }
@@ -114,9 +116,11 @@ export function createLsToolDefinition(
 	options?: LsToolOptions,
 ): ToolDefinition<typeof lsSchema, LsToolDetails | undefined> {
 	const ops = options?.operations ?? defaultLsOperations;
+	const toolName = options?.toolName ?? "ls";
+	const label = options?.label ?? toolName;
 	return {
-		name: "ls",
-		label: "ls",
+		name: toolName,
+		label,
 		description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Use this tool for directory listings; do not invoke \`ls\` via bash — those calls are blocked at runtime. Output is truncated to ${DEFAULT_LIMIT} entries or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
 		promptSnippet: "List directory contents",
 		parameters: lsSchema,
@@ -239,4 +243,15 @@ export function createLsToolDefinition(
 
 export function createLsTool(cwd: string, options?: LsToolOptions): AgentTool<typeof lsSchema> {
 	return wrapToolDefinition(createLsToolDefinition(cwd, options));
+}
+
+export function createUppercaseLsToolDefinition(
+	cwd: string,
+	options?: LsToolOptions,
+): ToolDefinition<typeof lsSchema, LsToolDetails | undefined> {
+	return createLsToolDefinition(cwd, { ...options, toolName: "Ls", label: "Ls" });
+}
+
+export function createUppercaseLsTool(cwd: string, options?: LsToolOptions): AgentTool<typeof lsSchema> {
+	return wrapToolDefinition(createUppercaseLsToolDefinition(cwd, options));
 }

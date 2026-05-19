@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AgentTool, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, fauxToolCall, type Model } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
@@ -179,6 +181,48 @@ describe("AgentSession model and extension characterization", () => {
 		expect(
 			harness.session.messages.find((message) => message.role === "toolResult" && message.details?.patched === true),
 		).toBeDefined();
+	});
+
+	it("saves unsupported image tool results as artifacts before the next model call", async () => {
+		const bmpData = Buffer.from("fake-bmp-data").toString("base64");
+		const imageTool: AgentTool = {
+			name: "mcp_image",
+			label: "MCP Image",
+			description: "Returns an unsupported image MIME from an MCP-like tool",
+			parameters: Type.Object({}),
+			execute: async () => ({
+				content: [{ type: "image", data: bmpData, mimeType: "image/bmp" }],
+				details: {},
+			}),
+		};
+		const harness = await createHarness({ tools: [imageTool] });
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("mcp_image", {}, { id: "tool-1" })], { stopReason: "toolUse" }),
+			(context) => {
+				const toolResult = context.messages.find((message) => message.role === "toolResult");
+				const hasImageBlock =
+					toolResult?.role === "toolResult" && toolResult.content.some((part) => part.type === "image");
+				const text =
+					toolResult?.role === "toolResult"
+						? toolResult.content
+								.filter((part): part is { type: "text"; text: string } => part.type === "text")
+								.map((part) => part.text)
+								.join("\n")
+						: "";
+				return fauxAssistantMessage(`${hasImageBlock ? "has-image" : "no-image"}\n${text}`);
+			},
+		]);
+
+		await harness.session.prompt("get image");
+
+		const assistantText = getAssistantTexts(harness).join("\n");
+		expect(assistantText).toContain("no-image");
+		expect(assistantText).toContain("Unsupported image MIME image/bmp");
+		expect(assistantText).toContain(".pi/tool-artifacts/");
+		const artifactPath = join(harness.tempDir, ".pi", "tool-artifacts", "tool-1-0.bmp");
+		expect(existsSync(artifactPath)).toBe(true);
+		expect(readFileSync(artifactPath).toString()).toBe("fake-bmp-data");
 	});
 
 	it("allows extension context handlers to modify messages before the LLM call", async () => {

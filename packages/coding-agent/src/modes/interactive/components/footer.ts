@@ -222,7 +222,7 @@ export class FooterComponent implements Component {
 		} else {
 			ctxPct = theme.fg("success", percentLabel);
 		}
-		leftParts.push(ctxPct + " " + theme.fg("dim", tokensLabel));
+		leftParts.push(`${ctxPct} ${theme.fg("dim", tokensLabel)}`);
 
 		const statsLeft = leftParts.join(sep);
 		let statsLeftWidth = visibleWidth(statsLeft);
