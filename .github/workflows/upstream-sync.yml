@@ -89,11 +89,15 @@ jobs:
           BRANCH="sync/upstream-${DATE}"
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
 
-          # Reuse same-day branch if it already exists (idempotent re-runs).
+          # Reuse same-day branch when it still exists (idempotent re-runs).
           if git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
             echo "::notice::Sync branch ${BRANCH} already exists — refreshing."
-            git fetch origin "${BRANCH}"
-            git checkout -B "${BRANCH}" "origin/${BRANCH}"
+            if git fetch origin "${BRANCH}"; then
+              git checkout -B "${BRANCH}" "origin/${BRANCH}"
+            else
+              echo "::warning::Sync branch ${BRANCH} disappeared while refreshing; recreating from ${FORK_BRANCH}."
+              git checkout -B "${BRANCH}" "origin/${FORK_BRANCH}"
+            fi
           else
             git checkout -B "${BRANCH}" "origin/${FORK_BRANCH}"
           fi
