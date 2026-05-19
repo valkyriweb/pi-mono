@@ -10,6 +10,7 @@ import {
 	updateAgentRecentRunProgress,
 } from "../src/core/agents/status.js";
 import type { AgentToolDetails } from "../src/core/agents/types.js";
+import { createDeferredToolSearchTool } from "../src/core/deferred-tool-search-tool.js";
 import {
 	createAgentToolDefinition,
 	normalizeAgentToolAliases,
@@ -267,5 +268,26 @@ describe("agent tool", () => {
 				hasUI: false,
 			} as Parameters<typeof tool.execute>[4]),
 		).rejects.toThrow("agent tool is unavailable");
+	});
+
+	test("deferred tool search prefers Claude-compatible agent aliases in query matches", () => {
+		const tool = createDeferredToolSearchTool({
+			getToolDefinitions: () => createAllToolDefinitions(process.cwd()) as never,
+			getModel: () => undefined,
+			getDiscoveredToolNames: () => [],
+			setDiscoveredToolNames: () => undefined,
+			actions: { getActiveToolNames: () => [], setActiveTools: () => undefined },
+		});
+
+		const params = { query: "agent" } as Parameters<typeof tool.execute>[1];
+		return tool
+			.execute("tool-search", params, undefined, undefined, {
+				hasUI: false,
+			} as Parameters<typeof tool.execute>[4])
+			.then((result) => {
+				const detail = result.details as { matchedToolNames?: string[] } | undefined;
+				expect(detail?.matchedToolNames).toEqual(expect.arrayContaining(["Agent", "Task"]));
+				expect(detail?.matchedToolNames).not.toContain("agent");
+			});
 	});
 });
