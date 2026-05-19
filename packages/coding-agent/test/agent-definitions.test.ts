@@ -1,12 +1,20 @@
 import { describe, expect, test } from "vitest";
 import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.js";
+import { createAgentToolDefinition } from "../src/core/tools/agent.js";
 
-const READ_ONLY_AGENTS = new Set(["explore", "plan", "reviewer"]);
+const READ_ONLY_AGENTS = new Set(["decompose", "explore", "plan", "reviewer"]);
 
 describe("built-in agent definitions", () => {
 	test("include the MVP base agents with non-empty prompts", () => {
 		const agents = getBuiltinAgentDefinitions();
-		expect(agents.map((agent) => agent.id).sort()).toEqual(["explore", "general", "plan", "reviewer", "worker"]);
+		expect(agents.map((agent) => agent.id).sort()).toEqual([
+			"decompose",
+			"explore",
+			"general",
+			"plan",
+			"reviewer",
+			"worker",
+		]);
 		for (const agent of agents) {
 			expect(agent.description.trim()).not.toBe("");
 			expect(agent.prompt.trim()).not.toBe("");
@@ -21,13 +29,33 @@ describe("built-in agent definitions", () => {
 		}
 	});
 
+	test("stable agents use no dynamic child context", () => {
+		const agents = new Map(getBuiltinAgentDefinitions().map((agent) => [agent.id, agent]));
+		expect(agents.get("decompose")).toMatchObject({ cacheProfile: "stable", defaultContext: "none", model: "fast" });
+		expect(agents.get("explore")).toMatchObject({
+			cacheProfile: "stable",
+			defaultContext: "none",
+			model: "fast",
+			thinking: "off",
+		});
+	});
+
 	test("built-in prompts require structured output", () => {
 		const agents = new Map(getBuiltinAgentDefinitions().map((agent) => [agent.id, agent.prompt]));
+		expect(agents.get("decompose")).toContain("### Decomposition");
+		expect(agents.get("decompose")).toContain("### Execution Shape");
 		expect(agents.get("plan")).toContain("### Critical Files for Implementation");
 		expect(agents.get("explore")).toContain("### Findings");
-		expect(agents.get("explore")).toContain("### Files");
 		expect(agents.get("explore")).toContain("### Open Questions");
 		expect(agents.get("reviewer")).toContain("VERDICT: PASS|FAIL|PARTIAL");
+	});
+
+	test("agent tool system guidance keeps explore lightweight", () => {
+		const agentTool = createAgentToolDefinition("/tmp");
+		const exploreGuideline = agentTool.promptGuidelines?.find((line) => line.includes("prefer `explore`"));
+		expect(exploreGuideline).toContain("no transcript/project context/skills");
+		expect(exploreGuideline).toContain("extraContext");
+		expect(exploreGuideline).toContain('context:"slim"');
 	});
 
 	test("general and worker deny recursive agent", () => {

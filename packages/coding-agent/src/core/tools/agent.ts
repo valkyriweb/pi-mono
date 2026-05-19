@@ -54,7 +54,12 @@ const taskSchema = Type.Object({
 	task: Type.String({ description: "Task for the child agent" }),
 	description: Type.Optional(Type.String({ description: "Short UI label" })),
 	context: Type.Optional(contextModeSchema),
-	extraContext: Type.Optional(Type.String({ description: "Additional task-specific context" })),
+	extraContext: Type.Optional(
+		Type.String({
+			description:
+				"Additional task-specific context. For explore, prefer a short context packet here instead of inheriting the parent transcript/project context.",
+		}),
+	),
 	model: Type.Optional(Type.String()),
 	tools: Type.Optional(Type.Array(Type.String())),
 	thinking: Type.Optional(thinkingSchema),
@@ -79,7 +84,12 @@ export const agentToolSchema = Type.Object({
 	chain: Type.Optional(Type.Array(taskSchema, { minItems: 1 })),
 	concurrency: Type.Optional(Type.Number({ minimum: 1, maximum: 8, default: 4 })),
 	context: Type.Optional(contextModeSchema),
-	extraContext: Type.Optional(Type.String()),
+	extraContext: Type.Optional(
+		Type.String({
+			description:
+				"Additional task-specific context. For explore, prefer a short context packet here instead of inheriting the parent transcript/project context.",
+		}),
+	),
 	model: Type.Optional(Type.String()),
 	tools: Type.Optional(Type.Array(Type.String())),
 	thinking: Type.Optional(thinkingSchema),
@@ -393,8 +403,9 @@ export function createAgentToolDefinition(
 		promptSnippet: "Delegate a task to a child agent with bounded tools",
 		promptGuidelines: [
 			"Use agent for delegated work that benefits from an isolated child context.",
-			"For codebase research, file/symbol lookups, or 'find me X' / 'how does Y work?' questions, prefer the built-in `explore` agent \u2014 it is read-only, defaults to a fast cheap model (`fast` alias), and runs in a slim context. Use `general` only for delegated work that needs writes or the parent's full tool set.",
-			"For implementation strategy and risk analysis on a known requirement, prefer `plan` (read-only) before delegating to `worker`.",
+			"For codebase research, file/symbol lookups, logs, or 'find me X' / 'how does Y work?' questions, prefer `explore`: read-only, cheap model, no transcript/project context/skills, stable prompt. Put any needed briefing in `extraContext`; use `context:\"slim\"` only when project instructions are essential.",
+			"For broad/token-heavy work, use `decompose`; cheap workers read/scan, parent synthesizes.",
+			"For implementation strategy and risk analysis on a known requirement, prefer `plan` (read-only) before using `agent` for implementation.",
 			"When parallel exploration or review is needed, send multiple agent tool-use blocks in one assistant message; Pi runs those calls concurrently. Use tasks[] only for explicit batched fan-out inside one agent call.",
 			"Use background:true for long-running delegated work that should continue while the parent reports back; control it with action/status/interrupt/cancel/resume and runId.",
 			"When a background agent finishes you receive an automatic agent_completion message with runId, status, summary, result preview, outputPaths, and sessionPaths. Do NOT poll with `agent` action=status/detail while waiting — work on other things, sleep with goal_wait, or hand back to the user. Read sessionPaths or outputPaths on demand if you need the full transcript.",

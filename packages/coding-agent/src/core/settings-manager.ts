@@ -69,6 +69,21 @@ export interface WarningSettings {
 	anthropicExtraUsage?: boolean; // default: true
 }
 
+export interface CacheHeartbeatWorkingHoursSettings {
+	start?: string; // local HH:mm, default: "08:00"
+	end?: string; // local HH:mm, default: "18:00"
+	days?: number[]; // local day numbers, 0=Sunday; default: Monday-Friday
+}
+
+export interface CacheHeartbeatSettings {
+	enabled?: boolean; // default: false - paid background LLM calls must be opt-in
+	intervalMs?: number; // default: 55 minutes
+	basePrompt?: boolean; // default: true - keep a tiny base-system-prompt cache warm
+	sessionPrompt?: boolean; // default: true - refresh each active session once per idle turn
+	workingHours?: CacheHeartbeatWorkingHoursSettings;
+	maxTokens?: number; // default: 1
+}
+
 export type TransportSetting = Transport;
 
 /**
@@ -135,6 +150,7 @@ export interface Settings {
 	showHardwareCursor?: boolean; // Show terminal cursor while still positioning it for IME
 	markdown?: MarkdownSettings;
 	warnings?: WarningSettings;
+	cacheHeartbeat?: CacheHeartbeatSettings;
 	sessionDir?: string; // Custom session storage directory (same format as --session-dir CLI flag)
 }
 
@@ -781,6 +797,29 @@ export class SettingsManager {
 			timeoutMs: this.settings.retry?.provider?.timeoutMs,
 			maxRetries: this.settings.retry?.provider?.maxRetries,
 			maxRetryDelayMs: this.settings.retry?.provider?.maxRetryDelayMs ?? 60000,
+		};
+	}
+
+	getCacheHeartbeatSettings(): {
+		enabled: boolean;
+		intervalMs: number;
+		basePrompt: boolean;
+		sessionPrompt: boolean;
+		workingHours: Required<CacheHeartbeatWorkingHoursSettings>;
+		maxTokens: number;
+	} {
+		const settings = this.settings.cacheHeartbeat;
+		return {
+			enabled: settings?.enabled ?? false,
+			intervalMs: settings?.intervalMs ?? 55 * 60 * 1000,
+			basePrompt: settings?.basePrompt ?? true,
+			sessionPrompt: settings?.sessionPrompt ?? true,
+			workingHours: {
+				start: settings?.workingHours?.start ?? "08:00",
+				end: settings?.workingHours?.end ?? "18:00",
+				days: settings?.workingHours?.days ?? [1, 2, 3, 4, 5],
+			},
+			maxTokens: settings?.maxTokens ?? 1,
 		};
 	}
 

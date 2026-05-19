@@ -14,6 +14,7 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "../types.js";
+import { stripSystemPromptDynamicBoundary } from "../types.js";
 import { createAssistantMessageEventStream } from "../utils/event-stream.js";
 
 const DEFAULT_API = "faux";
@@ -183,7 +184,7 @@ function messageToText(message: Message): string {
 function serializeContext(context: Context): string {
 	const parts: string[] = [];
 	if (context.systemPrompt) {
-		parts.push(`system:${context.systemPrompt}`);
+		parts.push(`system:${stripSystemPromptDynamicBoundary(context.systemPrompt)}`);
 	}
 	for (const message of context.messages) {
 		parts.push(`${message.role}:${messageToText(message)}`);

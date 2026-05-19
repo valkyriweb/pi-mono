@@ -33,6 +33,7 @@ import type {
 	StreamOptions,
 	Usage,
 } from "../types.js";
+import { stripSystemPromptDynamicBoundary } from "../types.js";
 import {
 	appendAssistantMessageDiagnostic,
 	createAssistantMessageDiagnostic,
@@ -375,7 +376,9 @@ function buildRequestBody(
 		model: model.id,
 		store: false,
 		stream: true,
-		instructions: context.systemPrompt || "You are a helpful assistant.",
+		instructions: context.systemPrompt
+			? stripSystemPromptDynamicBoundary(context.systemPrompt)
+			: "You are a helpful assistant.",
 		input: messages,
 		text: { verbosity: options?.textVerbosity || "low" },
 		include: ["reasoning.encrypted_content"],

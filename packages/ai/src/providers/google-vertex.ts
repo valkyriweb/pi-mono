@@ -22,6 +22,7 @@ import type {
 	ThinkingContent,
 	ToolCall,
 } from "../types.js";
+import { stripSystemPromptDynamicBoundary } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import type { GoogleThinkingLevel } from "./google-shared.js";
@@ -446,7 +447,9 @@ function buildParams(
 
 	const config: GenerateContentConfig = {
 		...(Object.keys(generationConfig).length > 0 && generationConfig),
-		...(context.systemPrompt && { systemInstruction: sanitizeSurrogates(context.systemPrompt) }),
+		...(context.systemPrompt && {
+			systemInstruction: sanitizeSurrogates(stripSystemPromptDynamicBoundary(context.systemPrompt)),
+		}),
 		...(context.tools && context.tools.length > 0 && { tools: convertTools(context.tools) }),
 	};
 

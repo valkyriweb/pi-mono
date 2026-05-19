@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Context, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildAgentSystemAppend } from "../../src/core/agents/context.js";
+import { getBuiltinAgentDefinitions } from "../../src/core/agents/definitions.js";
 import { executeAgentTool } from "../../src/core/agents/executor.js";
 import { createHarness, type Harness } from "./harness.js";
 
@@ -25,6 +27,35 @@ describe("agent tool suite: context modes", () => {
 	const harnesses: Harness[] = [];
 	afterEach(() => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
+	});
+
+	it("stable-profile agents use byte-stable agent prompt only", async () => {
+		const childPrompts: Array<string | undefined> = [];
+		const harness = await createHarness();
+		harnesses.push(harness);
+		mkdirSync(join(harness.tempDir, ".pi"), { recursive: true });
+		writeFileSync(join(harness.tempDir, ".pi", "APPEND_SYSTEM.md"), "PROJECT APPEND");
+		harness.setResponses([
+			(context: Context) => {
+				childPrompts.push(context.systemPrompt);
+				return fauxAssistantMessage("decompose done");
+			},
+		]);
+
+		await executeAgentTool(
+			{
+				mode: "single",
+				tasks: [{ agent: "decompose", task: "split this broad task" }],
+			},
+			executorOptions(harness),
+		);
+
+		const decompose = getBuiltinAgentDefinitions().find((agent) => agent.id === "decompose");
+		expect(decompose).toBeDefined();
+		expect(childPrompts).toEqual([buildAgentSystemAppend(decompose!)]);
+		expect(childPrompts[0]).not.toContain("PROJECT APPEND");
+		expect(childPrompts[0]).not.toContain(harness.tempDir);
+		expect(childPrompts[0]).not.toContain("Current date:");
 	});
 
 	it("renders different child system prompts for slim and none", async () => {

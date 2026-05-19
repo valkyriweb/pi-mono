@@ -27,6 +27,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 } from "../types.js";
+import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.js";
@@ -938,6 +939,37 @@ function createClient(
 	return { client, isOAuthToken: false };
 }
 
+function splitSystemPromptForCache(systemPrompt: string, cacheControl?: CacheControlEphemeral) {
+	const boundaryIndex = systemPrompt.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
+	if (boundaryIndex === -1) {
+		return [
+			{
+				type: "text" as const,
+				text: sanitizeSurrogates(systemPrompt),
+				...(cacheControl ? { cache_control: cacheControl } : {}),
+			},
+		];
+	}
+
+	const stable = systemPrompt.slice(0, boundaryIndex).trimEnd();
+	const dynamic = systemPrompt.slice(boundaryIndex + SYSTEM_PROMPT_DYNAMIC_BOUNDARY.length).trimStart();
+	return [
+		stable
+			? {
+					type: "text" as const,
+					text: sanitizeSurrogates(stable),
+					...(cacheControl ? { cache_control: cacheControl } : {}),
+				}
+			: undefined,
+		dynamic
+			? {
+					type: "text" as const,
+					text: sanitizeSurrogates(dynamic),
+				}
+			: undefined,
+	].filter((block): block is Exclude<typeof block, undefined> => Boolean(block));
+}
+
 function buildParams(
 	model: Model<"anthropic-messages">,
 	context: Context,
@@ -963,21 +995,11 @@ function buildParams(
 			},
 		];
 		if (context.systemPrompt) {
-			params.system.push({
-				type: "text",
-				text: sanitizeSurrogates(context.systemPrompt),
-				...(cacheControl ? { cache_control: cacheControl } : {}),
-			});
+			params.system.push(...splitSystemPromptForCache(context.systemPrompt, cacheControl));
 		}
 	} else if (context.systemPrompt) {
-		// Add cache control to system prompt for non-OAuth tokens
-		params.system = [
-			{
-				type: "text",
-				text: sanitizeSurrogates(context.systemPrompt),
-				...(cacheControl ? { cache_control: cacheControl } : {}),
-			},
-		];
+		// Add cache control to the stable system-prompt section only when a dynamic boundary is present.
+		params.system = splitSystemPromptForCache(context.systemPrompt, cacheControl);
 	}
 
 	// Temperature is incompatible with extended thinking (adaptive or budget-based).

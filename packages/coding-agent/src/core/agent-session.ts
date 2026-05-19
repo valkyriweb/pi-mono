@@ -23,7 +23,7 @@ import type {
 	AgentTool,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ImageContent, Message, Model, TextContent } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context, ImageContent, Message, Model, TextContent } from "@earendil-works/pi-ai";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
@@ -31,6 +31,7 @@ import {
 	isContextOverflow,
 	modelsAreEqual,
 	resetApiProviders,
+	SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
 	streamSimple,
 } from "@earendil-works/pi-ai";
 import { theme } from "../modes/interactive/theme/theme.js";
@@ -87,7 +88,7 @@ import {
 } from "./extensions/index.js";
 import { emitSessionShutdownEvent } from "./extensions/runner.js";
 import type { AgentHandle, ForkAgentOptions, ForkAgentResult, TranscriptEntry } from "./extensions/types.js";
-import type { BashExecutionMessage, CustomMessage } from "./messages.js";
+import { type BashExecutionMessage, type CustomMessage, convertToLlm } from "./messages.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.js";
@@ -132,6 +133,18 @@ function estimateSystemPromptTokens(systemPrompt: string): number {
 	return Math.ceil(systemPrompt.length / 4);
 }
 
+const IDLE_CACHE_HINT_MS = 55 * 60 * 1000;
+const BASE_HEARTBEAT_SESSION_ID = "pi-base-system-prompt-heartbeat";
+const CACHE_HEARTBEAT_MESSAGE = "<system-reminder>Cache heartbeat only. Reply with a single '.'</system-reminder>";
+
+const globalCacheHeartbeat: {
+	timer: ReturnType<typeof setTimeout> | undefined;
+	running: boolean;
+} = {
+	timer: undefined,
+	running: false,
+};
+
 /** Session-specific events that extend the core AgentEvent */
 export type AgentSessionEvent =
 	| AgentEvent
@@ -152,7 +165,8 @@ export type AgentSessionEvent =
 			errorMessage?: string;
 	  }
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
-	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string };
+	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
+	| { type: "idle_cache_hint"; idleMs: number; cacheTtlMs: number; message: string };
 
 /** Listener function for agent session events */
 export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
@@ -281,6 +295,12 @@ export class AgentSession {
 	private _compactionAbortController: AbortController | undefined = undefined;
 	private _autoCompactionAbortController: AbortController | undefined = undefined;
 	private _overflowRecoveryAttempted = false;
+	private _lastIdleCacheHintAssistantTimestamp: number | undefined = undefined;
+	private _cacheHeartbeatTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+	private _cacheHeartbeatAbortController: AbortController | undefined = undefined;
+	private _sessionHeartbeatTargetTimestamp: number | undefined = undefined;
+	private _sessionHeartbeatUsedTimestamp: number | undefined = undefined;
+	private _disposed = false;
 
 	// Branch summarization state
 	private _branchSummaryAbortController: AbortController | undefined = undefined;
@@ -617,7 +637,9 @@ export class AgentSession {
 			}
 
 			this._resolveRetry();
-			await this._checkCompaction(msg);
+			this._sessionHeartbeatTargetTimestamp = msg.timestamp;
+			this._noteCacheHeartbeatActivity();
+			await this._checkCompaction(msg, true, "defer");
 		}
 	}
 
@@ -649,6 +671,169 @@ export class AgentSession {
 			}
 		}
 		return undefined;
+	}
+
+	private _emitIdleCacheHintIfNeeded(assistantMessage: AssistantMessage): void {
+		if (assistantMessage.stopReason === "aborted" || assistantMessage.stopReason === "error") return;
+		if (this._lastIdleCacheHintAssistantTimestamp === assistantMessage.timestamp) return;
+
+		const cacheTokens = assistantMessage.usage.cacheRead + assistantMessage.usage.cacheWrite;
+		if (cacheTokens <= 0) return;
+
+		const idleMs = Date.now() - assistantMessage.timestamp;
+		if (idleMs < IDLE_CACHE_HINT_MS) return;
+
+		this._lastIdleCacheHintAssistantTimestamp = assistantMessage.timestamp;
+		this._emit({
+			type: "idle_cache_hint",
+			idleMs,
+			cacheTtlMs: IDLE_CACHE_HINT_MS,
+			message:
+				"This session has been idle long enough that prompt-cache warmth may be gone. For broad follow-up work, prefer cache-efficient forks (`explore`/`decompose`) or compact first if you need a handoff summary.",
+		});
+	}
+
+	private _isWithinCacheHeartbeatHours(now = new Date()): boolean {
+		const { workingHours } = this.settingsManager.getCacheHeartbeatSettings();
+		if (!workingHours.days.includes(now.getDay())) return false;
+
+		const minutes = now.getHours() * 60 + now.getMinutes();
+		const start = this._parseTimeOfDay(workingHours.start, 8 * 60);
+		const end = this._parseTimeOfDay(workingHours.end, 18 * 60);
+		return start <= end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
+	}
+
+	private _parseTimeOfDay(value: string, fallback: number): number {
+		const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+		if (!match) return fallback;
+		const hours = Number(match[1]);
+		const minutes = Number(match[2]);
+		if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return fallback;
+		return hours * 60 + minutes;
+	}
+
+	private _noteCacheHeartbeatActivity(scope: "base" | "session" | "all" = "all"): void {
+		if (this._disposed) return;
+		const settings = this.settingsManager.getCacheHeartbeatSettings();
+		if (!settings.enabled || !this.model || !this._isWithinCacheHeartbeatHours()) return;
+
+		if ((scope === "base" || scope === "all") && settings.basePrompt) {
+			this._scheduleBaseCacheHeartbeat(settings.intervalMs);
+		}
+		if ((scope === "session" || scope === "all") && settings.sessionPrompt) {
+			this._scheduleSessionCacheHeartbeat(settings.intervalMs);
+		}
+	}
+
+	private _scheduleBaseCacheHeartbeat(intervalMs: number): void {
+		if (globalCacheHeartbeat.timer) {
+			clearTimeout(globalCacheHeartbeat.timer);
+		}
+		globalCacheHeartbeat.timer = setTimeout(() => {
+			void this._runBaseCacheHeartbeat();
+		}, intervalMs);
+	}
+
+	private _scheduleSessionCacheHeartbeat(intervalMs: number): void {
+		if (this._cacheHeartbeatTimer) {
+			clearTimeout(this._cacheHeartbeatTimer);
+		}
+		this._cacheHeartbeatTimer = setTimeout(() => {
+			void this._runSessionCacheHeartbeat();
+		}, intervalMs);
+	}
+
+	private _baseSystemPromptForHeartbeat(): string {
+		const boundary = this.systemPrompt.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
+		return boundary === -1 ? this.systemPrompt : this.systemPrompt.slice(0, boundary).trimEnd();
+	}
+
+	private async _runBaseCacheHeartbeat(): Promise<void> {
+		if (this._disposed || globalCacheHeartbeat.running) return;
+		const settings = this.settingsManager.getCacheHeartbeatSettings();
+		if (!settings.enabled || !settings.basePrompt || !this.model || !this._isWithinCacheHeartbeatHours()) return;
+
+		globalCacheHeartbeat.running = true;
+		try {
+			await this._sendCacheHeartbeat({
+				systemPrompt: this._baseSystemPromptForHeartbeat(),
+				messages: [],
+				tools: [],
+				sessionId: BASE_HEARTBEAT_SESSION_ID,
+			});
+		} finally {
+			globalCacheHeartbeat.running = false;
+			const latest = this.settingsManager.getCacheHeartbeatSettings();
+			if (latest.enabled && latest.basePrompt && this._isWithinCacheHeartbeatHours()) {
+				this._scheduleBaseCacheHeartbeat(latest.intervalMs);
+			}
+		}
+	}
+
+	private async _runSessionCacheHeartbeat(): Promise<void> {
+		if (this._disposed) return;
+		const settings = this.settingsManager.getCacheHeartbeatSettings();
+		const targetTimestamp = this._sessionHeartbeatTargetTimestamp;
+		if (
+			!settings.enabled ||
+			!settings.sessionPrompt ||
+			!this.model ||
+			!targetTimestamp ||
+			this._sessionHeartbeatUsedTimestamp === targetTimestamp ||
+			!this._isWithinCacheHeartbeatHours()
+		) {
+			return;
+		}
+
+		const lastAssistant = this._findLastAssistantMessage();
+		if (!lastAssistant || lastAssistant.timestamp !== targetTimestamp) return;
+
+		this._sessionHeartbeatUsedTimestamp = targetTimestamp;
+		await this._sendCacheHeartbeat({
+			systemPrompt: this.systemPrompt,
+			messages: await convertToLlm(this.agent.state.messages),
+			tools: this.agent.state.tools,
+			sessionId: this.sessionId,
+		});
+	}
+
+	private async _sendCacheHeartbeat(context: Context & { sessionId: string }): Promise<void> {
+		if (this._disposed || !this.model) return;
+		this._cacheHeartbeatAbortController?.abort();
+		const abortController = new AbortController();
+		this._cacheHeartbeatAbortController = abortController;
+
+		const heartbeatContext: Context = {
+			...context,
+			messages: [
+				...context.messages,
+				{ role: "user", content: [{ type: "text", text: CACHE_HEARTBEAT_MESSAGE }], timestamp: Date.now() },
+			],
+		};
+
+		const settings = this.settingsManager.getCacheHeartbeatSettings();
+		const providerRetrySettings = this.settingsManager.getProviderRetrySettings();
+		try {
+			const stream = await this.agent.streamFn(this.model, heartbeatContext, {
+				cacheRetention: "long",
+				maxTokens: settings.maxTokens,
+				maxRetries: 0,
+				maxRetryDelayMs: 0,
+				timeoutMs: providerRetrySettings.timeoutMs,
+				sessionId: context.sessionId,
+				signal: abortController.signal,
+				transport: this.settingsManager.getTransport(),
+			});
+			for await (const event of stream) {
+				if (event.type === "done" || event.type === "error") break;
+			}
+		} catch {
+			// Heartbeats are opportunistic. Never surface background cache-refresh failures to the user.
+		} finally {
+			if (this._cacheHeartbeatAbortController === abortController) {
+				this._cacheHeartbeatAbortController = undefined;
+			}
+		}
 	}
 
 	private _replaceMessageInPlace(target: AgentMessage, replacement: AgentMessage): void {
@@ -784,11 +969,17 @@ export class AgentSession {
 	 * Call this when completely done with the session.
 	 */
 	dispose(): void {
+		this._disposed = true;
 		this._extensionRunner.invalidate(
 			"This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
 		);
 		this._disconnectFromAgent();
 		this._eventListeners = [];
+		if (this._cacheHeartbeatTimer) {
+			clearTimeout(this._cacheHeartbeatTimer);
+			this._cacheHeartbeatTimer = undefined;
+		}
+		this._cacheHeartbeatAbortController?.abort();
 		cleanupSessionResources(this.sessionId);
 		// Reap any background bash jobs so they don't leak across /clear,
 		// fork, switchSession, reload, or final session shutdown.
@@ -1151,9 +1342,10 @@ export class AgentSession {
 				throw new Error(formatNoApiKeyFoundMessage(this.model.provider));
 			}
 
-			// Check if we need to compact before sending (catches aborted responses)
+			// Check if we should warn or compact before sending (catches aborted responses).
 			const lastAssistant = this._findLastAssistantMessage();
 			if (lastAssistant) {
+				this._emitIdleCacheHintIfNeeded(lastAssistant);
 				await this._checkCompaction(lastAssistant, false);
 			}
 
@@ -1225,6 +1417,9 @@ export class AgentSession {
 		}
 
 		preflightResult?.(true);
+		const heartbeatTarget = this._findLastAssistantMessage()?.timestamp;
+		this._sessionHeartbeatTargetTimestamp = heartbeatTarget;
+		this._noteCacheHeartbeatActivity();
 		await this.agent.prompt(messages);
 		await this.waitForRetry();
 	}
@@ -1866,6 +2061,11 @@ export class AgentSession {
 					this._compactionAbortController.signal,
 					this.thinkingLevel,
 					this.agent.streamFn,
+					{
+						systemPrompt: this.systemPrompt,
+						messages: await convertToLlm(this.agent.state.messages),
+						tools: this.agent.state.tools,
+					},
 				);
 				summary = result.summary;
 				firstKeptEntryId = result.firstKeptEntryId;
@@ -1943,17 +2143,22 @@ export class AgentSession {
 	}
 
 	/**
-	 * Check if compaction is needed and run it.
+	 * Check if compaction is needed.
 	 * Called after agent_end and before prompt submission.
 	 *
 	 * Two cases:
 	 * 1. Overflow: LLM returned context overflow error, remove error message from agent state, compact, auto-retry
-	 * 2. Threshold: Context over threshold, compact, NO auto-retry (user continues manually)
+	 * 2. Threshold: Context over threshold, compact before the next user prompt. After agent_end, only mark it pending.
 	 *
 	 * @param assistantMessage The assistant message to check
 	 * @param skipAbortedCheck If false, include aborted messages (for pre-prompt check). Default: true
+	 * @param thresholdMode Whether threshold compaction should run now or wait for the next prompt
 	 */
-	private async _checkCompaction(assistantMessage: AssistantMessage, skipAbortedCheck = true): Promise<void> {
+	private async _checkCompaction(
+		assistantMessage: AssistantMessage,
+		skipAbortedCheck = true,
+		thresholdMode: "run" | "defer" = "run",
+	): Promise<void> {
 		const settings = this.settingsManager.getCompactionSettings(this.model?.contextWindow);
 		if (!settings.enabled) return;
 
@@ -2029,6 +2234,7 @@ export class AgentSession {
 			contextTokens = calculateContextTokens(assistantMessage.usage);
 		}
 		if (shouldCompact(contextTokens, contextWindow, settings)) {
+			if (thresholdMode === "defer") return;
 			await this._runAutoCompaction("threshold", false);
 		}
 	}
@@ -2139,6 +2345,11 @@ export class AgentSession {
 					this._autoCompactionAbortController.signal,
 					this.thinkingLevel,
 					this.agent.streamFn,
+					{
+						systemPrompt: this.systemPrompt,
+						messages: await convertToLlm(this.agent.state.messages),
+						tools: this.agent.state.tools,
+					},
 				);
 				summary = compactResult.summary;
 				firstKeptEntryId = compactResult.firstKeptEntryId;

@@ -2,7 +2,14 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseFrontmatter } from "../../utils/frontmatter.js";
-import type { AgentDefinition, AgentLoadDiagnostic, AgentSource, AgentToolList, ContextMode } from "./types.js";
+import type {
+	AgentCacheProfile,
+	AgentDefinition,
+	AgentLoadDiagnostic,
+	AgentSource,
+	AgentToolList,
+	ContextMode,
+} from "./types.js";
 
 interface RawAgentFrontmatter extends Record<string, unknown> {
 	name?: unknown;
@@ -13,11 +20,13 @@ interface RawAgentFrontmatter extends Record<string, unknown> {
 	thinking?: unknown;
 	context?: unknown;
 	defaultContext?: unknown;
+	cacheProfile?: unknown;
 	inheritProjectContext?: unknown;
 	inheritSkills?: unknown;
 }
 
 const CONTEXT_MODES = new Set<ContextMode>(["default", "fork", "slim", "none"]);
+const CACHE_PROFILES = new Set<AgentCacheProfile>(["normal", "stable"]);
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "adaptive", "inherit"]);
 
 export function getUserAgentsDir(): string {
@@ -79,6 +88,19 @@ function parseContext(value: unknown, path: string, diagnostics: AgentLoadDiagno
 		return value as ContextMode;
 	}
 	diagnostics.push({ level: "warning", message: `Ignoring invalid context "${String(value)}"`, path });
+	return undefined;
+}
+
+function parseCacheProfile(
+	value: unknown,
+	path: string,
+	diagnostics: AgentLoadDiagnostic[],
+): AgentCacheProfile | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value === "string" && CACHE_PROFILES.has(value as AgentCacheProfile)) {
+		return value as AgentCacheProfile;
+	}
+	diagnostics.push({ level: "warning", message: `Ignoring invalid cacheProfile "${String(value)}"`, path });
 	return undefined;
 }
 
@@ -150,6 +172,7 @@ function parseAgentFile(
 			model: typeof frontmatter.model === "string" ? frontmatter.model.trim() : undefined,
 			thinking,
 			defaultContext,
+			cacheProfile: parseCacheProfile(frontmatter.cacheProfile, filePath, diagnostics),
 			inheritProjectContext: parseBoolean(
 				frontmatter.inheritProjectContext,
 				"inheritProjectContext",

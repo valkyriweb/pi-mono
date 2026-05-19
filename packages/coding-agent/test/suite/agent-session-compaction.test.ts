@@ -1,5 +1,6 @@
 import {
 	type AssistantMessage,
+	type Context,
 	createAssistantMessageEventStream,
 	fauxAssistantMessage,
 	type Model,
@@ -8,15 +9,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, type Harness } from "./harness.js";
 
 type SessionWithCompactionInternals = {
-	_checkCompaction: (assistantMessage: AssistantMessage, skipAbortedCheck?: boolean) => Promise<void>;
+	_checkCompaction: (
+		assistantMessage: AssistantMessage,
+		skipAbortedCheck?: boolean,
+		thresholdMode?: "run" | "defer",
+	) => Promise<void>;
 	_runAutoCompaction: (reason: "overflow" | "threshold", willRetry: boolean) => Promise<void>;
+	_runSessionCacheHeartbeat: () => Promise<void>;
+	_sessionHeartbeatTargetTimestamp?: number;
+	_sessionHeartbeatUsedTimestamp?: number;
 };
 
-function createUsage(totalTokens: number) {
+function createUsage(totalTokens: number, cacheTokens = 0) {
 	return {
 		input: totalTokens,
 		output: 0,
-		cacheRead: 0,
+		cacheRead: cacheTokens,
 		cacheWrite: 0,
 		totalTokens,
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
@@ -29,6 +37,7 @@ function createAssistant(
 		stopReason?: AssistantMessage["stopReason"];
 		errorMessage?: string;
 		totalTokens?: number;
+		cacheTokens?: number;
 		timestamp?: number;
 	},
 ): AssistantMessage {
@@ -42,7 +51,7 @@ function createAssistant(
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: createUsage(options.totalTokens ?? 0),
+		usage: createUsage(options.totalTokens ?? 0, options.cacheTokens ?? 0),
 	};
 }
 
@@ -147,6 +156,36 @@ describe("AgentSession compaction characterization", () => {
 
 		expect(result.summary).toBe("summary from custom stream");
 		expect(getStreamCallCount()).toBe(1);
+	});
+
+	it("generates manual compaction summaries with the parent prompt and message prefix", async () => {
+		const harness = await createHarness({ withConfiguredAuth: false, systemPrompt: "parent system prompt" });
+		harnesses.push(harness);
+		seedCompactableSession(harness);
+		let capturedContext: Context | undefined;
+		harness.session.agent.streamFn = (model, context) => {
+			capturedContext = context;
+			const stream = createAssistantMessageEventStream();
+			queueMicrotask(() => {
+				const message: AssistantMessage = {
+					...fauxAssistantMessage("cache safe summary"),
+					api: model.api,
+					provider: model.provider,
+					model: model.id,
+					usage: createUsage(10),
+				};
+				stream.push({ type: "done", reason: "stop", message });
+			});
+			return stream;
+		};
+
+		await harness.session.compact();
+
+		expect(capturedContext?.systemPrompt).toBe(harness.session.systemPrompt);
+		expect(capturedContext?.systemPrompt).not.toContain("context summarization assistant");
+		expect(capturedContext?.messages.at(0)?.role).toBe("user");
+		expect(capturedContext?.messages.at(-1)?.role).toBe("user");
+		expect(JSON.stringify(capturedContext?.messages.at(-1))).toContain("active session context");
 	});
 
 	it("auto-compacts with a custom streamFn when registry auth is absent", async () => {
@@ -288,6 +327,98 @@ describe("AgentSession compaction characterization", () => {
 		await sessionInternals._checkCompaction(staleAssistant, false);
 
 		expect(runAutoCompactionSpy).not.toHaveBeenCalled();
+	});
+
+	it("refreshes a session cache heartbeat once for an idle target turn", async () => {
+		const now = Date.now();
+		const harness = await createHarness({
+			settings: {
+				cacheHeartbeat: {
+					enabled: true,
+					workingHours: { days: [new Date().getDay()], start: "00:00", end: "23:59" },
+				},
+			},
+		});
+		harnesses.push(harness);
+		const assistant = createAssistant(harness, {
+			stopReason: "stop",
+			totalTokens: 10_000,
+			cacheTokens: 5_000,
+			timestamp: now,
+		});
+		harness.session.agent.state.messages = [
+			{ role: "user", content: [{ type: "text", text: "before idle" }], timestamp: now - 1000 },
+			assistant,
+		];
+
+		const calls: Array<{ context: unknown; options: unknown }> = [];
+		harness.session.agent.streamFn = (model, context, options) => {
+			calls.push({ context, options });
+			const stream = createAssistantMessageEventStream();
+			queueMicrotask(() => {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: {
+						...fauxAssistantMessage("."),
+						api: model.api,
+						provider: model.provider,
+						model: model.id,
+						usage: createUsage(1),
+					},
+				});
+			});
+			return stream;
+		};
+		const sessionInternals = harness.session as unknown as SessionWithCompactionInternals;
+		sessionInternals._sessionHeartbeatTargetTimestamp = now;
+
+		await sessionInternals._runSessionCacheHeartbeat();
+		await sessionInternals._runSessionCacheHeartbeat();
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.options).toMatchObject({ cacheRetention: "long", maxTokens: 1, maxRetries: 0 });
+	});
+
+	it("emits an idle cache hint once when continuing after a long idle gap", async () => {
+		const now = Date.now();
+		const harness = await createHarness();
+		harnesses.push(harness);
+		harness.setResponses([fauxAssistantMessage("next")]);
+		harness.session.agent.state.messages = [
+			{ role: "user", content: [{ type: "text", text: "before idle" }], timestamp: now - 60 * 60 * 1000 - 1000 },
+			createAssistant(harness, {
+				stopReason: "stop",
+				totalTokens: 10_000,
+				cacheTokens: 5_000,
+				timestamp: now - 60 * 60 * 1000,
+			}),
+		];
+
+		await harness.session.prompt("continue");
+		await harness.session.prompt("continue again");
+
+		const hints = harness.eventsOfType("idle_cache_hint");
+		expect(hints).toHaveLength(1);
+		expect(hints[0]?.message).toContain("prompt-cache warmth may be gone");
+	});
+
+	it("defers threshold compaction until the next prompt check", async () => {
+		const harness = await createHarness({ models: [{ id: "faux-1", contextWindow: 200_000 }] });
+		harnesses.push(harness);
+		const sessionInternals = harness.session as unknown as SessionWithCompactionInternals;
+		const assistant = createAssistant(harness, {
+			stopReason: "stop",
+			totalTokens: 190_000,
+			timestamp: Date.now(),
+		});
+		const runAutoCompactionSpy = vi.spyOn(sessionInternals, "_runAutoCompaction").mockResolvedValue();
+
+		await sessionInternals._checkCompaction(assistant, true, "defer");
+		await sessionInternals._checkCompaction(assistant, false, "run");
+
+		expect(runAutoCompactionSpy).toHaveBeenCalledTimes(1);
+		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false);
 	});
 
 	it("triggers threshold compaction for error messages using the last successful usage", async () => {

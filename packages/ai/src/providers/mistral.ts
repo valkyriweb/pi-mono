@@ -22,6 +22,7 @@ import type {
 	Tool,
 	ToolCall,
 } from "../types.js";
+import { stripSystemPromptDynamicBoundary } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { shortHash } from "../utils/hash.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
@@ -260,7 +261,7 @@ function buildChatPayload(
 	if (context.systemPrompt) {
 		payload.messages.unshift({
 			role: "system",
-			content: sanitizeSurrogates(context.systemPrompt),
+			content: sanitizeSurrogates(stripSystemPromptDynamicBoundary(context.systemPrompt)),
 		});
 	}
 

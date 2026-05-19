@@ -27,6 +27,7 @@ import type {
 	ToolCall,
 	Usage,
 } from "../types.js";
+import { stripSystemPromptDynamicBoundary } from "../types.js";
 import type { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { shortHash } from "../utils/hash.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
@@ -129,7 +130,7 @@ export function convertResponsesMessages<TApi extends Api>(
 		const role = model.reasoning ? "developer" : "system";
 		messages.push({
 			role,
-			content: sanitizeSurrogates(context.systemPrompt),
+			content: sanitizeSurrogates(stripSystemPromptDynamicBoundary(context.systemPrompt)),
 		});
 	}
 

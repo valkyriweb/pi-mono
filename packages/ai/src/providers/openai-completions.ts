@@ -30,6 +30,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 } from "../types.js";
+import { stripSystemPromptDynamicBoundary } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
@@ -765,7 +766,7 @@ export function convertMessages(
 	if (context.systemPrompt) {
 		const useDeveloperRole = model.reasoning && compat.supportsDeveloperRole;
 		const role = useDeveloperRole ? "developer" : "system";
-		params.push({ role: role, content: sanitizeSurrogates(context.systemPrompt) });
+		params.push({ role: role, content: sanitizeSurrogates(stripSystemPromptDynamicBoundary(context.systemPrompt)) });
 	}
 
 	let lastRole: string | null = null;

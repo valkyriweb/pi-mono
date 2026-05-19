@@ -1,3 +1,4 @@
+import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import { buildSystemPrompt } from "../src/core/system-prompt.js";
 
@@ -77,6 +78,23 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).not.toContain("dynamic_tool");
+		});
+	});
+
+	describe("cache boundary", () => {
+		test("places dynamic context after the stable boundary", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: [],
+				contextFiles: [{ path: "/repo/AGENTS.md", content: "Project rules" }],
+				skills: [],
+				cwd: "/repo",
+			});
+
+			const boundary = prompt.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
+			expect(boundary).toBeGreaterThan(0);
+			expect(prompt.indexOf("# Project Context")).toBeGreaterThan(boundary);
+			expect(prompt.indexOf("Current date:")).toBeGreaterThan(boundary);
+			expect(prompt.indexOf("Current working directory:")).toBeGreaterThan(boundary);
 		});
 	});
 

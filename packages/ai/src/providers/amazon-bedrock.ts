@@ -41,6 +41,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 } from "../types.js";
+import { stripSystemPromptDynamicBoundary } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
 import { createHttpProxyAgentsForTarget } from "../utils/node-http-proxy.js";
@@ -589,7 +590,7 @@ function buildSystemPrompt(
 ): SystemContentBlock[] | undefined {
 	if (!systemPrompt) return undefined;
 
-	const blocks: SystemContentBlock[] = [{ text: sanitizeSurrogates(systemPrompt) }];
+	const blocks: SystemContentBlock[] = [{ text: sanitizeSurrogates(stripSystemPromptDynamicBoundary(systemPrompt)) }];
 
 	// Add cache point for supported Claude models when caching is enabled
 	if (cacheRetention !== "none" && supportsPromptCaching(model)) {

@@ -22,6 +22,7 @@ export const fastModelPerProvider: Record<string, string> = {
 	anthropic: "claude-haiku-4-5",
 	"amazon-bedrock": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 	openai: "gpt-5.4-mini",
+	"openai-codex": "gpt-5.4-mini",
 	"azure-openai-responses": "gpt-5.4-mini",
 	"github-copilot": "gpt-5.4-mini",
 	google: "gemini-3.1-flash-lite",

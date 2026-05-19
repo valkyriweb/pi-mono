@@ -11,6 +11,7 @@ import { type ReadonlySessionManager, SessionManager } from "../session-manager.
 import type { SettingsManager } from "../settings-manager.js";
 import { appendTaskMessage } from "../tasks/messages.js";
 import {
+	buildAgentSystemAppend,
 	buildChildTaskPrompt,
 	clampThinkingForModel,
 	formatModelForDetails,
@@ -130,7 +131,11 @@ function normalizeTask(
 	input: AgentToolExecutionInput,
 	definition?: AgentDefinition,
 ): NormalizedAgentTaskConfig {
-	const context = task.context ?? input.context ?? definition?.defaultContext ?? "default";
+	const context =
+		task.context ??
+		input.context ??
+		definition?.defaultContext ??
+		(definition?.cacheProfile === "stable" ? "none" : "default");
 	return {
 		...task,
 		extraContext: task.extraContext ?? input.extraContext,
@@ -607,13 +612,17 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 	// System-prompt override priority:
 	//   1. Task-level `systemPrompt` (explicit caller-supplied bytes)
 	//   2. Fork-mode parentSystemPrompt (cache-share with parent's API request)
-	//   3. Otherwise: keep the freshly-built prompt from session creation.
+	//   3. Stable-profile agent prompt when running with context:"none"
+	//      (cross-session/cross-cwd byte stability)
+	//   4. Otherwise: keep the freshly-built prompt from session creation.
 	// Must run after session creation (which builds a fresh prompt) and after
 	// message assignment (order doesn't matter for the prompt).
 	if (options.task.systemPrompt) {
 		session.overrideBaseSystemPrompt(options.task.systemPrompt);
 	} else if (isForkMode && options.parentSystemPrompt) {
 		session.overrideBaseSystemPrompt(options.parentSystemPrompt);
+	} else if (agent.cacheProfile === "stable" && policy.mode === "none") {
+		session.overrideBaseSystemPrompt(buildAgentSystemAppend(agent));
 	}
 
 	details.loadedSkills = childServices.resourceLoader.getSkills().skills.map((skill) => skill.name);

@@ -329,6 +329,13 @@ export interface AssistantImages {
 
 import type { TSchema } from "typebox";
 
+/** Marker used to split stable and dynamic system-prompt sections for providers that support block-level cache control. */
+export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY = "__PI_SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
+
+export function stripSystemPromptDynamicBoundary(systemPrompt: string): string {
+	return systemPrompt.replaceAll(SYSTEM_PROMPT_DYNAMIC_BOUNDARY, "");
+}
+
 export interface Tool<TParameters extends TSchema = TSchema> {
 	name: string;
 	description: string;

@@ -6,7 +6,15 @@
  */
 
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Context, Model, SimpleStreamOptions, Usage } from "@earendil-works/pi-ai";
+import type {
+	AssistantMessage,
+	Context,
+	Message,
+	Model,
+	SimpleStreamOptions,
+	Tool,
+	Usage,
+} from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai";
 import {
 	convertToLlm,
@@ -484,6 +492,41 @@ Use this EXACT format:
 
 Keep each section concise. Preserve exact file paths, function names, and error messages.`;
 
+const CACHE_SAFE_SUMMARIZATION_PROMPT = `The conversation above is the active session context. Create a structured context checkpoint summary that another LLM will use to continue the work.
+
+If an earlier compaction summary appears in the conversation, preserve it and update it with later progress. Recent messages may remain in context after compaction, but the summary must still capture durable goals, decisions, constraints, files, errors, and current next steps.
+
+Use this EXACT format:
+
+## Goal
+[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+
+## Constraints & Preferences
+- [Any constraints, preferences, or requirements mentioned by user]
+- [Or "(none)" if none were mentioned]
+
+## Progress
+### Done
+- [x] [Completed tasks/changes]
+
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Issues preventing progress, if any]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Next Steps
+1. [Ordered list of what should happen next]
+
+## Critical Context
+- [Any data, examples, or references needed to continue]
+- [Or "(none)" if not applicable]
+
+Keep each section concise. Preserve exact file paths, function names, and error messages.`;
+
 const UPDATE_SUMMARIZATION_PROMPT = `The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.
 
 Update the existing structured summary with new information. RULES:
@@ -531,11 +574,25 @@ function createSummarizationOptions(
 	signal: AbortSignal | undefined,
 	thinkingLevel: ThinkingLevel | undefined,
 ): SimpleStreamOptions {
-	const options: SimpleStreamOptions = { maxTokens, signal, apiKey, headers };
+	const options: SimpleStreamOptions = { maxTokens, signal, apiKey, headers, cacheRetention: "long" };
 	if (model.reasoning && thinkingLevel && thinkingLevel !== "off") {
 		options.reasoning = thinkingLevel;
 	}
 	return options;
+}
+
+function createSummaryUserMessage(promptText: string): Message {
+	return {
+		role: "user",
+		content: [{ type: "text", text: promptText }],
+		timestamp: Date.now(),
+	};
+}
+
+function buildCacheSafeSummaryPrompt(customInstructions?: string): string {
+	return customInstructions
+		? `${CACHE_SAFE_SUMMARIZATION_PROMPT}\n\nAdditional focus: ${customInstructions}`
+		: CACHE_SAFE_SUMMARIZATION_PROMPT;
 }
 
 async function completeSummarization(
@@ -566,6 +623,7 @@ export async function generateSummary(
 	previousSummary?: string,
 	thinkingLevel?: ThinkingLevel,
 	streamFn?: StreamFn,
+	cacheSafeContext?: CacheSafeCompactionContext,
 ): Promise<string> {
 	const maxTokens = Math.min(
 		Math.floor(0.8 * reserveTokens),
@@ -578,34 +636,34 @@ export async function generateSummary(
 		basePrompt = `${basePrompt}\n\nAdditional focus: ${customInstructions}`;
 	}
 
-	// Serialize conversation to text so model doesn't try to continue it
-	// Convert to LLM messages first (handles custom types like bashExecution, custom, etc.)
-	const llmMessages = convertToLlm(currentMessages);
-	const conversationText = serializeConversation(llmMessages);
-
-	// Build the prompt with conversation wrapped in tags
-	let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
-	if (previousSummary) {
-		promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
-	}
-	promptText += basePrompt;
-
-	const summarizationMessages = [
-		{
-			role: "user" as const,
-			content: [{ type: "text" as const, text: promptText }],
-			timestamp: Date.now(),
-		},
-	];
-
 	const completionOptions = createSummarizationOptions(model, maxTokens, apiKey, headers, signal, thinkingLevel);
+	let context: Context;
 
-	const response = await completeSummarization(
-		model,
-		{ systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages },
-		completionOptions,
-		streamFn,
-	);
+	if (cacheSafeContext) {
+		context = {
+			systemPrompt: cacheSafeContext.systemPrompt,
+			messages: [
+				...cacheSafeContext.messages,
+				createSummaryUserMessage(buildCacheSafeSummaryPrompt(customInstructions)),
+			],
+			tools: cacheSafeContext.tools,
+		};
+	} else {
+		// Serialize conversation to text so model doesn't try to continue it.
+		// Convert to LLM messages first (handles custom types like bashExecution, custom, etc.)
+		const llmMessages = convertToLlm(currentMessages);
+		const conversationText = serializeConversation(llmMessages);
+
+		// Build the prompt with conversation wrapped in tags.
+		let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
+		if (previousSummary) {
+			promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
+		}
+		promptText += basePrompt;
+		context = { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: [createSummaryUserMessage(promptText)] };
+	}
+
+	const response = await completeSummarization(model, context, completionOptions, streamFn);
 
 	if (response.stopReason === "error") {
 		throw new Error(`Summarization failed: ${response.errorMessage || "Unknown error"}`);
@@ -622,6 +680,12 @@ export async function generateSummary(
 // ============================================================================
 // Compaction Preparation (for extensions)
 // ============================================================================
+
+export interface CacheSafeCompactionContext {
+	systemPrompt: string;
+	messages: Message[];
+	tools: Tool[];
+}
 
 export interface CompactionPreparation {
 	/** UUID of first entry to keep */
@@ -753,6 +817,7 @@ export async function compact(
 	signal?: AbortSignal,
 	thinkingLevel?: ThinkingLevel,
 	streamFn?: StreamFn,
+	cacheSafeContext?: CacheSafeCompactionContext,
 ): Promise<CompactionResult> {
 	const {
 		firstKeptEntryId,
@@ -811,6 +876,7 @@ export async function compact(
 			previousSummary,
 			thinkingLevel,
 			streamFn,
+			cacheSafeContext,
 		);
 	}
 

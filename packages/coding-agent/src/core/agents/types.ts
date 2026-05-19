@@ -11,6 +11,7 @@ export type AgentScope = "user" | "project" | "both";
 export type AgentToolList = string[] | "*";
 export type AgentThinkingLevel = ThinkingLevel | "inherit";
 export type AgentModelPreference = string | "inherit";
+export type AgentCacheProfile = "normal" | "stable";
 
 /**
  * Default model/thinking selection for a child agent, sourced from
@@ -33,6 +34,7 @@ export interface AgentDefinition {
 	model?: AgentModelPreference;
 	thinking?: AgentThinkingLevel;
 	defaultContext?: ContextMode;
+	cacheProfile?: AgentCacheProfile;
 	inheritProjectContext?: boolean;
 	inheritSkills?: boolean;
 }

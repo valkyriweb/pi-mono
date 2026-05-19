@@ -87,6 +87,31 @@ Set `PI_SKIP_VERSION_CHECK=1` to disable the Pi version update check. Use `--off
 }
 ```
 
+### Cache Heartbeat
+
+Optional paid background requests can keep prompt-cache prefixes warm during local working hours. Disabled by default. The first real prompt starts scheduling; each session gets at most one idle refresh for its last turn, then naturally expires unless work continues.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `cacheHeartbeat.enabled` | boolean | `false` | Enable cache heartbeat requests |
+| `cacheHeartbeat.intervalMs` | number | `3300000` | Idle interval before refresh (55 minutes) |
+| `cacheHeartbeat.basePrompt` | boolean | `true` | Refresh a tiny base-system-prompt cache under a shared heartbeat session id |
+| `cacheHeartbeat.sessionPrompt` | boolean | `true` | Refresh active session context once per idle turn |
+| `cacheHeartbeat.maxTokens` | number | `1` | Max output tokens for heartbeat calls |
+| `cacheHeartbeat.workingHours.start` | string | `"08:00"` | Local start time |
+| `cacheHeartbeat.workingHours.end` | string | `"18:00"` | Local end time |
+| `cacheHeartbeat.workingHours.days` | number[] | `[1,2,3,4,5]` | Local days, Sunday = 0 |
+
+```json
+{
+  "cacheHeartbeat": {
+    "enabled": true,
+    "intervalMs": 3300000,
+    "workingHours": { "start": "08:00", "end": "18:00", "days": [1, 2, 3, 4, 5] }
+  }
+}
+```
+
 ### Compaction
 
 | Setting | Type | Default | Description |

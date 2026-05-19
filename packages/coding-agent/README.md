@@ -266,9 +266,13 @@ Long sessions can exhaust context windows. Compaction summarizes older messages 
 
 **Manual:** `/compact` or `/compact <custom instructions>`
 
-**Automatic:** Enabled by default. Triggers on context overflow (recovers and retries) or when approaching the limit (proactive). Configure via `/settings` or `settings.json`.
+**Automatic:** Enabled by default. Context overflow compacts immediately and retries. Threshold compaction is lazy: Pi waits until the next prompt before compacting, so finishing a session does not spend tokens on a summary you may never use. Configure via `/settings` or `settings.json`.
 
 Compaction is lossy. The full history remains in the JSONL file; use `/tree` to revisit. Customize compaction behavior via [extensions](#extensions). See [docs/compaction.md](docs/compaction.md) for internals.
+
+### Cache Heartbeat
+
+Optional cache heartbeats can keep prompt-cache prefixes warm during working hours. They are disabled by default because each heartbeat is a paid background LLM call. When enabled, the first real prompt starts scheduling; each active session gets at most one idle refresh for its last turn, then naturally expires unless work continues. Configure `cacheHeartbeat` in [docs/settings.md](docs/settings.md).
 
 ---
 
@@ -353,9 +357,9 @@ Pi includes a built-in `agent` tool for child-agent delegation. It supports:
 - background: `{ agent, task, background: true }`
 - control: `{ action: "status" | "detail" | "interrupt" | "cancel" | "resume", runId, message? }`
 
-Built-in agents: `general`, `worker`, `explore`, `plan`, `scout`, `reviewer`, and `statusline-setup`. User agents can be added as Markdown files in `~/.pi/agent/agents/*.md`; project agents in `.pi/agents/*.md` require explicit `agentScope: "project"` or `"both"` and confirmation.
+Built-in agents: `general`, `worker`, `explore`, `decompose`, `plan`, and `reviewer`. User agents can be added as Markdown files in `~/.pi/agent/agents/*.md`; project agents in `.pi/agents/*.md` require explicit `agentScope: "project"` or `"both"` and confirmation.
 
-Context modes: `default` loads normal project context without the parent transcript, `fork` includes a filtered parent transcript, `slim` omits project context and skills, and `none` keeps only Pi's base prompt plus the selected agent prompt. Child tools are bounded by the parent's active tools and recursive `agent` calls are denied.
+Context modes: `default` loads normal project context without the parent transcript, `fork` includes a filtered parent transcript, `slim` omits project context and skills, and `none` keeps only Pi's base prompt plus the selected agent prompt. Agents with `cacheProfile: "stable"` use only their agent prompt as the system prompt so cheap specialists can share a cross-session/cross-cwd cache. Child tools are bounded by the parent's active tools and recursive `agent` calls are denied.
 
 Use `/agents` to list agents and insert a prompt scaffold. Native slash ergonomics also cover:
 
