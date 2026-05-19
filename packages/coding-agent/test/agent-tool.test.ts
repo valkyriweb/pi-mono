@@ -10,7 +10,12 @@ import {
 	updateAgentRecentRunProgress,
 } from "../src/core/agents/status.js";
 import type { AgentToolDetails } from "../src/core/agents/types.js";
-import { createAgentToolDefinition, normalizeAgentToolMode } from "../src/core/tools/agent.js";
+import {
+	createAgentToolDefinition,
+	normalizeAgentToolAliases,
+	normalizeAgentToolMode,
+} from "../src/core/tools/agent.js";
+import { createAllToolDefinitions } from "../src/core/tools/index.js";
 import { theme } from "../src/modes/interactive/theme/theme.js";
 
 const tempDirs: string[] = [];
@@ -43,6 +48,61 @@ describe("agent tool", () => {
 			maxOutputTokens: 1200,
 		});
 		expect(result.tasks[0].maxOutputTokens).toBe(1200);
+	});
+
+	test("Claude-style single-agent aliases normalize to Pi fields", () => {
+		const normalized = normalizeAgentToolAliases({
+			subagent_type: "Explore",
+			prompt: "find config",
+			run_in_background: true,
+		} as Parameters<typeof normalizeAgentToolAliases>[0]);
+		expect(normalized).toMatchObject({ agent: "Explore", task: "find config", background: true });
+		expect(normalizeAgentToolMode(normalized)).toMatchObject({
+			mode: "single",
+			tasks: [expect.objectContaining({ agent: "Explore", task: "find config" })],
+		});
+	});
+
+	test("Claude-style aliases reject conflicts clearly", () => {
+		expect(() =>
+			normalizeAgentToolAliases({ agent: "explore", subagent_type: "plan", task: "find" } as Parameters<
+				typeof normalizeAgentToolAliases
+			>[0]),
+		).toThrow("agent and subagent_type differ");
+		expect(() =>
+			normalizeAgentToolAliases({ agent: "explore", task: "find", prompt: "plan" } as Parameters<
+				typeof normalizeAgentToolAliases
+			>[0]),
+		).toThrow("task and prompt differ");
+		expect(() =>
+			normalizeAgentToolAliases({
+				agent: "explore",
+				task: "find",
+				background: true,
+				run_in_background: false,
+			} as Parameters<typeof normalizeAgentToolAliases>[0]),
+		).toThrow("background and run_in_background differ");
+	});
+
+	test("future Claude fields reject instead of being silently ignored", () => {
+		expect(() =>
+			normalizeAgentToolAliases({ agent: "explore", task: "find", cwd: "/tmp" } as Parameters<
+				typeof normalizeAgentToolAliases
+			>[0]),
+		).toThrow("cwd is not supported yet");
+	});
+
+	test("all-tool registry includes agent, Agent, and Task with Claude-style fields", () => {
+		const tools = createAllToolDefinitions(process.cwd());
+		expect(Object.keys(tools)).toEqual(expect.arrayContaining(["agent", "Agent", "Task"]));
+		expect(tools.Agent.name).toBe("Agent");
+		expect(tools.Task.name).toBe("Task");
+		for (const tool of [tools.Agent, tools.Task]) {
+			const properties = tool.parameters.properties;
+			expect(properties).toHaveProperty("prompt");
+			expect(properties).toHaveProperty("subagent_type");
+			expect(properties).toHaveProperty("run_in_background");
+		}
 	});
 
 	test("output/outputMode writes parent-owned file", async () => {

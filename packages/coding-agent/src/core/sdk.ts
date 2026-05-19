@@ -25,6 +25,8 @@ import {
 	createLsTool,
 	createReadOnlyTools,
 	createReadTool,
+	createTaskTool,
+	createUppercaseAgentTool,
 	createWriteTool,
 	type ToolName,
 	withFileMutationQueue,
@@ -52,14 +54,14 @@ export interface CreateAgentSessionOptions {
 	 * Optional default tool suppression mode when no explicit allowlist is provided.
 	 *
 	 * - "all": start with no tools enabled
-	 * - "builtin": disable the default built-in tools (read, bash, edit, write, agent)
+	 * - "builtin": disable the default built-in tools (read, bash, edit, write, Agent, Task)
 	 *   but keep extension/custom tools enabled
 	 */
 	noTools?: "all" | "builtin";
 	/**
 	 * Optional allowlist of tool names.
 	 *
-	 * When omitted, pi enables the default built-in tools (read, bash, edit, write, agent)
+	 * When omitted, pi enables the default built-in tools (read, bash, edit, write, Agent, Task)
 	 * and leaves extension/custom tools enabled unless `noTools` changes that default.
 	 * When provided, only the listed tool names are enabled.
 	 */
@@ -117,6 +119,8 @@ export {
 	createGrepTool,
 	createFindTool,
 	createLsTool,
+	createTaskTool,
+	createUppercaseAgentTool,
 };
 
 // Helper Functions
@@ -278,7 +282,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		"bash_kill",
 		"edit",
 		"write",
-		"agent",
+		"Agent",
+		"Task",
 		"grep",
 		"find",
 		"ls",

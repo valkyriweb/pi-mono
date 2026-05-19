@@ -5,6 +5,10 @@ export {
 	agentToolSchema,
 	createAgentTool,
 	createAgentToolDefinition,
+	createTaskTool,
+	createTaskToolDefinition,
+	createUppercaseAgentTool,
+	createUppercaseAgentToolDefinition,
 } from "./agent.js";
 export {
 	type BashBgDetails,
@@ -86,7 +90,15 @@ export {
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.js";
-import { type AgentToolOptions, createAgentTool, createAgentToolDefinition } from "./agent.js";
+import {
+	type AgentToolOptions,
+	createAgentTool,
+	createAgentToolDefinition,
+	createTaskTool,
+	createTaskToolDefinition,
+	createUppercaseAgentTool,
+	createUppercaseAgentToolDefinition,
+} from "./agent.js";
 import {
 	type BashToolOptions,
 	createBashKillTool,
@@ -117,7 +129,9 @@ export type ToolName =
 	| "grep"
 	| "find"
 	| "ls"
-	| "agent";
+	| "agent"
+	| "Agent"
+	| "Task";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
@@ -129,6 +143,8 @@ export const allToolNames: Set<ToolName> = new Set([
 	"find",
 	"ls",
 	"agent",
+	"Agent",
+	"Task",
 ]);
 
 export interface ToolsOptions {
@@ -164,6 +180,10 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createLsToolDefinition(cwd, options?.ls);
 		case "agent":
 			return createAgentToolDefinition(cwd, options?.agent);
+		case "Agent":
+			return createUppercaseAgentToolDefinition(cwd, options?.agent);
+		case "Task":
+			return createTaskToolDefinition(cwd, options?.agent);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -191,6 +211,10 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createLsTool(cwd, options?.ls);
 		case "agent":
 			return createAgentTool(cwd, options?.agent);
+		case "Agent":
+			return createUppercaseAgentTool(cwd, options?.agent);
+		case "Task":
+			return createTaskTool(cwd, options?.agent);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -228,6 +252,8 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
 		agent: createAgentToolDefinition(cwd, options?.agent),
+		Agent: createUppercaseAgentToolDefinition(cwd, options?.agent),
+		Task: createTaskToolDefinition(cwd, options?.agent),
 	};
 }
 
@@ -263,5 +289,7 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
 		agent: createAgentTool(cwd, options?.agent),
+		Agent: createUppercaseAgentTool(cwd, options?.agent),
+		Task: createTaskTool(cwd, options?.agent),
 	};
 }
