@@ -73,30 +73,61 @@ Source/test coverage:
 
 The worktree already contained merge conflicts in other packages. For Slice A verification, coding-agent conflicted files were resolved to the Slice A side so targeted tests and build could run. Unrelated non-coding-agent conflicts remain outside this handoff.
 
-## Exact next prompt for Slice B
+## Slice B: tool-search compatibility
+
+Status: verified.
+
+### Verified behavior
+
+- Deferred tool search keeps lowercase `agent` compatibility while preferring Claude-compatible aliases for agent-like deferred tools.
+- Query matches that include `agent` no longer surface redundant lowercase `agent` when `Agent` and `Task` are present.
+- `Agent`/`Task` registry/schema behavior remains unchanged.
+
+### Evidence
+
+Commands run:
+
+```bash
+npm --prefix packages/coding-agent run test -- test/agent-tool.test.ts
+```
+
+Result: `14 passed (14)`.
+
+```bash
+npm --prefix packages/coding-agent run build
+```
+
+Result: build completed successfully and copied assets.
+
+Source/test coverage:
+
+- `packages/coding-agent/src/core/deferred-tool-search-tool.ts`
+  - Claude-compatible alias preference for deferred tool queries
+- `packages/coding-agent/test/agent-tool.test.ts`
+  - regression for agent-like deferred query matches
+
+### Exact next prompt for Slice C
 
 ```text
 Working directory:
 - /Users/luke/Projects/personal/pi-mono-fork
 
-Implement and verify Slice B: native slash-command/tool-search compatibility for Agent/Task parity.
+Implement and verify Slice C: slash/help/tool-listing parity for native Agent/Task surfaces.
 
-Start from Slice A evidence in:
+Start from Slice A and Slice B evidence in:
 packages/coding-agent/docs/tool-parity-slice-handoff.md
 
 Goals:
-- Ensure tool search/deferred-tool activation prefers native uppercase `Agent` and legacy `Task` where Claude-compatible names are expected.
-- Preserve lowercase `agent` compatibility for existing Pi prompts, config, and extensions.
-- Confirm slash/help/tool listing surfaces do not show redundant confusing `agent`/`Agent` duplicates unless explicitly listing all registered aliases.
-- Confirm `Agent`/`Task` descriptions and schemas remain Claude-compatible in generated prompt/tool docs.
-- Add or update targeted tests for tool search, slash/help output, and active tool activation.
+- Confirm slash/help/tool listing surfaces present native Agent/Task ergonomics without redundant confusing duplicates.
+- Confirm generated prompt/tool docs remain Claude-compatible for Agent/Task.
+- Add or update targeted tests for slash/help output and active tool listing.
 - Keep `agent`, `Agent`, and `Task` registered; do not remove lowercase `agent`.
 
 Run:
-- targeted tool-search/slash/help tests
-- targeted agent tool parity tests from Slice A
+- targeted slash/help/listing tests
+- targeted agent and tool-search parity tests from Slices A/B
 - `npm --prefix packages/coding-agent run build`
-- built-dist smoke covering tool search/listing behavior
+- built-dist smoke covering tool listing behavior
 
-Then update this handoff file with Slice B evidence and the exact next prompt for Slice C.
+Then update this handoff file with Slice C evidence and the exact next prompt for the final slice.
 ```
