@@ -272,7 +272,7 @@ Compaction is lossy. The full history remains in the JSONL file; use `/tree` to 
 
 ### Cache Heartbeat
 
-Optional cache heartbeats can keep prompt-cache prefixes warm during working hours. They are disabled by default because each heartbeat is a paid background LLM call. When enabled, the first real prompt starts scheduling; each active session gets at most one idle refresh for its last turn, then naturally expires unless work continues. Configure `cacheHeartbeat` in [docs/settings.md](docs/settings.md).
+Optional cache heartbeats can keep prompt-cache prefixes warm during working hours. They are disabled by default because each heartbeat is a paid background LLM call. When enabled, only configured provider/model prefixes are eligible (`openai-codex/` and `claude-bridge/` by default): real prompts mark the base prompt warm, a shared base heartbeat refreshes it after `intervalMs` of idle time, active sessions get one idle refresh for their latest turn, and rate-limit failures pause further heartbeat calls for that provider/model. Configure `cacheHeartbeat` in [docs/settings.md](docs/settings.md).
 
 ---
 

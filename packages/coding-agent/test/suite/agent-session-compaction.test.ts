@@ -15,7 +15,9 @@ type SessionWithCompactionInternals = {
 		thresholdMode?: "run" | "defer",
 	) => Promise<boolean>;
 	_runAutoCompaction: (reason: "overflow" | "threshold", willRetry: boolean) => Promise<boolean>;
+	_runBaseCacheHeartbeat: () => Promise<void>;
 	_runSessionCacheHeartbeat: () => Promise<void>;
+	_noteCacheHeartbeatActivity: () => void;
 	_sessionHeartbeatTargetTimestamp?: number;
 	_sessionHeartbeatUsedTimestamp?: number;
 };
@@ -328,6 +330,7 @@ describe("AgentSession compaction characterization", () => {
 	it("refreshes a session cache heartbeat once for an idle target turn", async () => {
 		const now = Date.now();
 		const harness = await createHarness({
+			provider: "openai-codex",
 			settings: {
 				cacheHeartbeat: {
 					enabled: true,
@@ -374,6 +377,114 @@ describe("AgentSession compaction characterization", () => {
 
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.options).toMatchObject({ cacheRetention: "long", maxTokens: 1, maxRetries: 0 });
+	});
+
+	it("skips cache heartbeats for providers outside the allowlist", async () => {
+		const now = Date.now();
+		const harness = await createHarness({
+			provider: "faux-provider",
+			settings: {
+				cacheHeartbeat: {
+					enabled: true,
+					workingHours: { days: [new Date().getDay()], start: "00:00", end: "23:59" },
+				},
+			},
+		});
+		harnesses.push(harness);
+		harness.session.agent.state.messages = [
+			{ role: "user", content: [{ type: "text", text: "before idle" }], timestamp: now - 1000 },
+			createAssistant(harness, { timestamp: now }),
+		];
+
+		const calls: unknown[] = [];
+		harness.session.agent.streamFn = (_model, context) => {
+			calls.push(context);
+			return createAssistantMessageEventStream();
+		};
+		const sessionInternals = harness.session as unknown as SessionWithCompactionInternals;
+		sessionInternals._sessionHeartbeatTargetTimestamp = now;
+
+		await sessionInternals._runSessionCacheHeartbeat();
+
+		expect(calls).toHaveLength(0);
+	});
+
+	it("tracks base cache warmth and refreshes it only after the heartbeat interval", async () => {
+		const harness = await createHarness({
+			provider: "openai-codex",
+			settings: {
+				cacheHeartbeat: {
+					enabled: true,
+					intervalMs: 60_000,
+					workingHours: { days: [new Date().getDay()], start: "00:00", end: "23:59" },
+				},
+			},
+		});
+		harnesses.push(harness);
+
+		const calls: unknown[] = [];
+		harness.session.agent.streamFn = (model) => {
+			calls.push(model);
+			const stream = createAssistantMessageEventStream();
+			queueMicrotask(() => {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: {
+						...fauxAssistantMessage("."),
+						provider: model.provider,
+						model: model.id,
+						usage: createUsage(10, 8),
+					},
+				});
+			});
+			return stream;
+		};
+		const sessionInternals = harness.session as unknown as SessionWithCompactionInternals;
+
+		sessionInternals._noteCacheHeartbeatActivity();
+		await sessionInternals._runBaseCacheHeartbeat();
+
+		expect(calls).toHaveLength(1);
+		expect(harness.eventsOfType("cache_heartbeat")[0]).toMatchObject({
+			type: "cache_heartbeat",
+			scope: "base",
+			provider: "openai-codex",
+			cacheRead: 8,
+			input: 10,
+		});
+	});
+
+	it("backs off cache heartbeats after rate-limit errors", async () => {
+		const now = Date.now();
+		const harness = await createHarness({
+			provider: "openai-codex",
+			settings: {
+				cacheHeartbeat: {
+					enabled: true,
+					rateLimitCooldownMs: 60_000,
+					workingHours: { days: [new Date().getDay()], start: "00:00", end: "23:59" },
+				},
+			},
+		});
+		harnesses.push(harness);
+		harness.session.agent.state.messages = [
+			{ role: "user", content: [{ type: "text", text: "before idle" }], timestamp: now - 1000 },
+			createAssistant(harness, { timestamp: now }),
+		];
+		let calls = 0;
+		harness.session.agent.streamFn = () => {
+			calls++;
+			throw new Error("429 rate limit");
+		};
+		const sessionInternals = harness.session as unknown as SessionWithCompactionInternals;
+		sessionInternals._sessionHeartbeatTargetTimestamp = now;
+
+		await sessionInternals._runSessionCacheHeartbeat();
+		sessionInternals._sessionHeartbeatUsedTimestamp = undefined;
+		await sessionInternals._runSessionCacheHeartbeat();
+
+		expect(calls).toBe(1);
 	});
 
 	it("emits an idle cache hint once when continuing after a long idle gap", async () => {

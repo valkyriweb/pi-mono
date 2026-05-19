@@ -140,10 +140,22 @@ const CACHE_HEARTBEAT_MESSAGE = "<system-reminder>Cache heartbeat only. Reply wi
 const globalCacheHeartbeat: {
 	timer: ReturnType<typeof setTimeout> | undefined;
 	running: boolean;
+	baseWarmAt: Map<string, number>;
+	rateLimitedUntil: Map<string, number>;
 } = {
 	timer: undefined,
 	running: false,
+	baseWarmAt: new Map(),
+	rateLimitedUntil: new Map(),
 };
+
+function modelCacheKey(model: Model<any>): string {
+	return `${model.provider}/${model.id}`;
+}
+
+function isRateLimitErrorText(text: string | undefined): boolean {
+	return /\b429\b|rate.?limit|quota|too many requests/i.test(text ?? "");
+}
 
 /** Session-specific events that extend the core AgentEvent */
 export type AgentSessionEvent =
@@ -171,7 +183,17 @@ export type AgentSessionEvent =
 	  }
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
-	| { type: "idle_cache_hint"; idleMs: number; cacheTtlMs: number; message: string };
+	| { type: "idle_cache_hint"; idleMs: number; cacheTtlMs: number; message: string }
+	| {
+			type: "cache_heartbeat";
+			scope: "base" | "session";
+			model: string;
+			provider: string;
+			cacheRead: number;
+			cacheWrite: number;
+			input: number;
+			cacheHitRate: number | undefined;
+	  };
 
 /** Listener function for agent session events */
 export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
@@ -658,8 +680,11 @@ export class AgentSession {
 		if (this._disposed) return;
 		const settings = this.settingsManager.getCacheHeartbeatSettings();
 		if (!settings.enabled || !this.model || !this._isWithinCacheHeartbeatHours()) return;
+		if (!this._isCacheHeartbeatProviderAllowed()) return;
+		if (this._isCacheHeartbeatRateLimited()) return;
 
 		if ((scope === "base" || scope === "all") && settings.basePrompt) {
+			this._markBaseCacheWarm();
 			this._scheduleBaseCacheHeartbeat(settings.intervalMs);
 		}
 		if ((scope === "session" || scope === "all") && settings.sessionPrompt) {
@@ -667,13 +692,43 @@ export class AgentSession {
 		}
 	}
 
+	private _isCacheHeartbeatProviderAllowed(): boolean {
+		if (!this.model) return false;
+		const modelName = modelCacheKey(this.model);
+		return this.settingsManager
+			.getCacheHeartbeatSettings()
+			.providers.some(
+				(prefix) => modelName.startsWith(prefix) || this.model?.provider === prefix.replace(/\/$/, ""),
+			);
+	}
+
+	private _isCacheHeartbeatRateLimited(): boolean {
+		if (!this.model) return true;
+		const until = globalCacheHeartbeat.rateLimitedUntil.get(modelCacheKey(this.model));
+		return until !== undefined && until > Date.now();
+	}
+
+	private _markCacheHeartbeatRateLimited(errorText: string | undefined): void {
+		if (!this.model || !isRateLimitErrorText(errorText)) return;
+		const cooldownMs = this.settingsManager.getCacheHeartbeatSettings().rateLimitCooldownMs;
+		globalCacheHeartbeat.rateLimitedUntil.set(modelCacheKey(this.model), Date.now() + cooldownMs);
+	}
+
+	private _markBaseCacheWarm(): void {
+		if (!this.model) return;
+		globalCacheHeartbeat.baseWarmAt.set(modelCacheKey(this.model), Date.now());
+	}
+
 	private _scheduleBaseCacheHeartbeat(intervalMs: number): void {
+		if (!this.model) return;
+		const lastWarmAt = globalCacheHeartbeat.baseWarmAt.get(modelCacheKey(this.model)) ?? Date.now();
+		const delayMs = Math.max(0, intervalMs - (Date.now() - lastWarmAt));
 		if (globalCacheHeartbeat.timer) {
 			clearTimeout(globalCacheHeartbeat.timer);
 		}
 		globalCacheHeartbeat.timer = setTimeout(() => {
 			void this._runBaseCacheHeartbeat();
-		}, intervalMs);
+		}, delayMs);
 	}
 
 	private _scheduleSessionCacheHeartbeat(intervalMs: number): void {
@@ -694,16 +749,21 @@ export class AgentSession {
 		if (this._disposed || globalCacheHeartbeat.running) return;
 		const settings = this.settingsManager.getCacheHeartbeatSettings();
 		if (!settings.enabled || !settings.basePrompt || !this.model || !this._isWithinCacheHeartbeatHours()) return;
+		if (!this._isCacheHeartbeatProviderAllowed() || this._isCacheHeartbeatRateLimited()) return;
 
 		globalCacheHeartbeat.running = true;
 		try {
-			await this._sendCacheHeartbeat({
-				systemPrompt: this._baseSystemPromptForHeartbeat(),
-				messages: [],
-				tools: [],
-				sessionId: BASE_HEARTBEAT_SESSION_ID,
-			});
+			await this._sendCacheHeartbeat(
+				{
+					systemPrompt: this._baseSystemPromptForHeartbeat(),
+					messages: [],
+					tools: [],
+					sessionId: BASE_HEARTBEAT_SESSION_ID,
+				},
+				"base",
+			);
 		} finally {
+			this._markBaseCacheWarm();
 			globalCacheHeartbeat.running = false;
 			const latest = this.settingsManager.getCacheHeartbeatSettings();
 			if (latest.enabled && latest.basePrompt && this._isWithinCacheHeartbeatHours()) {
@@ -722,7 +782,9 @@ export class AgentSession {
 			!this.model ||
 			!targetTimestamp ||
 			this._sessionHeartbeatUsedTimestamp === targetTimestamp ||
-			!this._isWithinCacheHeartbeatHours()
+			!this._isWithinCacheHeartbeatHours() ||
+			!this._isCacheHeartbeatProviderAllowed() ||
+			this._isCacheHeartbeatRateLimited()
 		) {
 			return;
 		}
@@ -731,15 +793,21 @@ export class AgentSession {
 		if (!lastAssistant || lastAssistant.timestamp !== targetTimestamp) return;
 
 		this._sessionHeartbeatUsedTimestamp = targetTimestamp;
-		await this._sendCacheHeartbeat({
-			systemPrompt: this.systemPrompt,
-			messages: await convertToLlm(this.agent.state.messages),
-			tools: this.agent.state.tools,
-			sessionId: this.sessionId,
-		});
+		await this._sendCacheHeartbeat(
+			{
+				systemPrompt: this.systemPrompt,
+				messages: await convertToLlm(this.agent.state.messages),
+				tools: this.agent.state.tools,
+				sessionId: this.sessionId,
+			},
+			"session",
+		);
 	}
 
-	private async _sendCacheHeartbeat(context: Context & { sessionId: string }): Promise<void> {
+	private async _sendCacheHeartbeat(
+		context: Context & { sessionId: string },
+		scope: "base" | "session",
+	): Promise<void> {
 		if (this._disposed || !this.model) return;
 		this._cacheHeartbeatAbortController?.abort();
 		const abortController = new AbortController();
@@ -756,7 +824,8 @@ export class AgentSession {
 		const settings = this.settingsManager.getCacheHeartbeatSettings();
 		const providerRetrySettings = this.settingsManager.getProviderRetrySettings();
 		try {
-			const stream = await this.agent.streamFn(this.model, heartbeatContext, {
+			const model = this.model;
+			const stream = await this.agent.streamFn(model, heartbeatContext, {
 				cacheRetention: "long",
 				maxTokens: settings.maxTokens,
 				maxRetries: 0,
@@ -767,15 +836,38 @@ export class AgentSession {
 				transport: this.settingsManager.getTransport(),
 			});
 			for await (const event of stream) {
-				if (event.type === "done" || event.type === "error") break;
+				if (event.type === "done") {
+					this._emitCacheHeartbeatEvent(scope, model, event.message as AssistantMessage);
+					break;
+				}
+				if (event.type === "error") {
+					this._markCacheHeartbeatRateLimited("message" in event ? String(event.message) : undefined);
+					break;
+				}
 			}
-		} catch {
+		} catch (error) {
+			this._markCacheHeartbeatRateLimited(error instanceof Error ? error.message : String(error));
 			// Heartbeats are opportunistic. Never surface background cache-refresh failures to the user.
 		} finally {
 			if (this._cacheHeartbeatAbortController === abortController) {
 				this._cacheHeartbeatAbortController = undefined;
 			}
 		}
+	}
+
+	private _emitCacheHeartbeatEvent(scope: "base" | "session", model: Model<any>, message: AssistantMessage): void {
+		const usage = message.usage;
+		const cacheableInput = usage.input + usage.cacheRead;
+		this._emit({
+			type: "cache_heartbeat",
+			scope,
+			model: model.id,
+			provider: model.provider,
+			cacheRead: usage.cacheRead,
+			cacheWrite: usage.cacheWrite,
+			input: usage.input,
+			cacheHitRate: cacheableInput > 0 ? usage.cacheRead / cacheableInput : undefined,
+		});
 	}
 
 	private _replaceMessageInPlace(target: AgentMessage, replacement: AgentMessage): void {
