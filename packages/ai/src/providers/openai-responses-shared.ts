@@ -84,6 +84,13 @@ export interface ConvertResponsesToolsOptions {
 	strict?: boolean | null;
 	/** Sort tools and JSON Schema object keys for byte-stable prompt-cache prefixes. */
 	deterministic?: boolean;
+	/**
+	 * Emit native `defer_loading: true` on tools with `deferLoading && !alwaysLoad`,
+	 * matching Codex CLI's `ResponsesApiTool` shape. The Codex backend honors this
+	 * field; the public OpenAI Responses API is not known to honor it, so callers
+	 * (i.e. `openai-codex-responses`) opt in explicitly.
+	 */
+	emitDeferLoading?: boolean;
 }
 
 // =============================================================================
@@ -285,16 +292,23 @@ function sortJsonSchemaForCache(value: unknown): unknown {
 
 export function convertResponsesTools(tools: Tool[], options?: ConvertResponsesToolsOptions): OpenAITool[] {
 	const strict = options?.strict === undefined ? false : options.strict;
+	const emitDeferLoading = options?.emitDeferLoading === true;
 	const sourceTools = options?.deterministic
 		? tools.slice().sort((a, b) => a.name.localeCompare(b.name) || a.description.localeCompare(b.description))
 		: tools;
-	return sourceTools.map((tool) => ({
-		type: "function",
-		name: tool.name,
-		description: tool.description,
-		parameters: (options?.deterministic ? sortJsonSchemaForCache(tool.parameters) : tool.parameters) as any, // TypeBox already generates JSON Schema
-		strict,
-	}));
+	return sourceTools.map((tool) => {
+		const converted: OpenAITool & { defer_loading?: boolean } = {
+			type: "function",
+			name: tool.name,
+			description: tool.description,
+			parameters: (options?.deterministic ? sortJsonSchemaForCache(tool.parameters) : tool.parameters) as any, // TypeBox already generates JSON Schema
+			strict,
+		};
+		if (emitDeferLoading && tool.deferLoading === true && tool.alwaysLoad !== true) {
+			converted.defer_loading = true;
+		}
+		return converted;
+	});
 }
 
 // =============================================================================

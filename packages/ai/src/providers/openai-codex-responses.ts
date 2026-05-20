@@ -408,7 +408,17 @@ function buildRequestBody(
 	}
 
 	if (context.tools && context.tools.length > 0) {
-		body.tools = convertResponsesTools(context.tools, { strict: null, deterministic: true });
+		// Codex backend understands `defer_loading: true` natively (see Codex CLI
+		// `ResponsesApiTool` in codex-rs/tools/src/responses_api.rs). Emission is
+		// byte-stable per tool definition so prompt-cache prefix bytes are
+		// unaffected; deferred tools that activate later are surfaced via Pi's
+		// `tool_search` fallback active-list mutation (no client-side roundtrip
+		// via the OpenAI API).
+		body.tools = convertResponsesTools(context.tools, {
+			strict: null,
+			deterministic: true,
+			emitDeferLoading: true,
+		});
 	}
 
 	if (options?.reasoningEffort !== undefined) {

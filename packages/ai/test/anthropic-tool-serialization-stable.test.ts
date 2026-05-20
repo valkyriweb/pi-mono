@@ -20,12 +20,12 @@ import { describe, expect, it } from "vitest";
 import { streamAnthropic } from "../src/providers/anthropic.js";
 import type { Context, Model, Tool } from "../src/types.js";
 
-function createModel(baseUrl: string): Model<"anthropic-messages"> {
+function createModel(baseUrl: string, provider = "test-anthropic"): Model<"anthropic-messages"> {
 	return {
 		id: "claude-opus-4-7",
 		name: "Claude Opus 4.7",
 		api: "anthropic-messages",
-		provider: "test-anthropic",
+		provider,
 		baseUrl,
 		reasoning: true,
 		input: ["text"],
@@ -55,7 +55,7 @@ function emptySse(response: ServerResponse): void {
 
 async function captureRequestBody(
 	context: Context,
-	options: { supportsImages?: boolean } = {},
+	options: { supportsImages?: boolean; provider?: string; apiKey?: string } = {},
 ): Promise<Record<string, unknown>> {
 	let requestBody: Record<string, unknown> = {};
 	const server = createServer(async (request, response) => {
@@ -65,10 +65,10 @@ async function captureRequestBody(
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 	const address = server.address() as AddressInfo;
 	try {
-		const model = createModel(`http://127.0.0.1:${address.port}`);
+		const model = createModel(`http://127.0.0.1:${address.port}`, options.provider);
 		if (options.supportsImages) model.input = ["text", "image"];
 		const stream = streamAnthropic(model, context, {
-			apiKey: "test-key",
+			apiKey: options.apiKey ?? "test-key",
 			cacheRetention: "none",
 		});
 		for await (const event of stream) {
@@ -149,6 +149,70 @@ describe("Anthropic convertTools — cache-stable serialization", () => {
 		const bytesA = await captureToolBytes(createContext([toolA]));
 		const bytesB = await captureToolBytes(createContext([toolB]));
 		expect(bytesB).toBe(bytesA);
+	});
+
+	it("emits native WebSearch for claude-bridge only", async () => {
+		const webSearch: Tool = {
+			name: "WebSearch",
+			description: "Search the web",
+			parameters: Type.Object({
+				query: Type.String(),
+				allowed_domains: Type.Optional(Type.Array(Type.String())),
+				blocked_domains: Type.Optional(Type.Array(Type.String())),
+			}),
+		};
+
+		const claudeBridgeBody = await captureRequestBody(createContext([webSearch]), { provider: "claude-bridge" });
+		expect(claudeBridgeBody.tools).toEqual([
+			{
+				name: "web_search",
+				type: "web_search_20250305",
+				allowed_domains: null,
+				blocked_domains: null,
+			},
+		]);
+
+		const anthropicBody = await captureRequestBody(createContext([webSearch]));
+		expect(anthropicBody.tools).toEqual([
+			expect.objectContaining({
+				name: "WebSearch",
+				input_schema: expect.objectContaining({
+					required: ["query"],
+				}),
+			}),
+		]);
+	});
+
+	it("deduplicates final Anthropic tool names after OAuth and native-tool conversion", async () => {
+		const bashLower: Tool = {
+			name: "bash",
+			description: "Run a command",
+			parameters: Type.Object({ command: Type.String() }),
+		};
+		const bashUpper: Tool = {
+			name: "Bash",
+			description: "Run a command",
+			parameters: Type.Object({ command: Type.String() }),
+		};
+		const webSearchUpper: Tool = {
+			name: "WebSearch",
+			description: "Search the web",
+			parameters: Type.Object({ query: Type.String() }),
+		};
+		const webSearchLower: Tool = {
+			name: "web_search",
+			description: "Search the web",
+			parameters: Type.Object({ query: Type.String() }),
+		};
+
+		const body = await captureRequestBody(createContext([bashLower, bashUpper, webSearchUpper, webSearchLower]), {
+			provider: "claude-bridge",
+			apiKey: "sk-ant-oat-test",
+		});
+		const names = (body.tools as Array<{ name: string }>).map((tool) => tool.name);
+
+		expect(names).toEqual(["Bash", "web_search"]);
+		expect(new Set(names).size).toBe(names.length);
 	});
 
 	it("downgrades unsupported image MIME tool results before Anthropic serialization", async () => {

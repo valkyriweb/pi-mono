@@ -1024,6 +1024,7 @@ function buildParams(
 		// defer_loading tools (the API rejects both on the same tool definition).
 		params.tools = convertTools(
 			context.tools,
+			model,
 			isOAuthToken,
 			compat.supportsEagerToolInputStreaming,
 			compat.supportsDeferredTools,
@@ -1313,14 +1314,47 @@ function sortObjectKeysDeep(value: unknown): unknown {
  * risk; just no caching benefit until the rebuild cycle itself is fixed
  * (Fix #3 in the cache-break investigation doc).
  */
-const convertedToolCache = new WeakMap<object, Map<string, Anthropic.Messages.Tool>>();
+const convertedToolCache = new WeakMap<object, Map<string, Anthropic.Messages.ToolUnion>>();
 
 function convertOneTool(
 	tool: Tool,
+	model: Model<any>,
 	isOAuthToken: boolean,
 	supportsEagerToolInputStreaming: boolean,
 	deferLoading: boolean,
-): Anthropic.Messages.Tool {
+): Anthropic.Messages.ToolUnion {
+	if (model.provider === "claude-bridge" && (tool.name === "WebFetch" || tool.name === "web_fetch")) {
+		const schema = tool.parameters as {
+			properties?: {
+				allowed_domains?: { default?: string[] };
+				blocked_domains?: { default?: string[] };
+				max_content_tokens?: { default?: number };
+				use_cache?: { default?: boolean };
+			};
+		};
+		return {
+			name: "web_fetch",
+			type: "web_fetch_20260309",
+			allowed_domains: schema.properties?.allowed_domains?.default ?? null,
+			blocked_domains: schema.properties?.blocked_domains?.default ?? null,
+			max_content_tokens: schema.properties?.max_content_tokens?.default ?? null,
+			use_cache: schema.properties?.use_cache?.default,
+		};
+	}
+	if (model.provider === "claude-bridge" && (tool.name === "WebSearch" || tool.name === "web_search")) {
+		const schema = tool.parameters as {
+			properties?: {
+				allowed_domains?: { default?: string[] };
+				blocked_domains?: { default?: string[] };
+			};
+		};
+		return {
+			name: "web_search",
+			type: "web_search_20250305",
+			allowed_domains: schema.properties?.allowed_domains?.default ?? null,
+			blocked_domains: schema.properties?.blocked_domains?.default ?? null,
+		};
+	}
 	const schema = tool.parameters as { properties?: unknown; required?: string[] };
 	const properties = sortObjectKeysDeep(schema.properties ?? {}) as Record<string, unknown>;
 	const required = (schema.required ?? []).slice().sort();
@@ -1339,15 +1373,18 @@ function convertOneTool(
 
 function convertTools(
 	tools: Tool[],
+	model: Model<any>,
 	isOAuthToken: boolean,
 	supportsEagerToolInputStreaming: boolean,
 	supportsDeferredTools: boolean,
-): Anthropic.Messages.Tool[] {
+): Anthropic.Messages.ToolUnion[] {
 	if (!tools) return [];
 
-	return tools.map((tool) => {
+	const convertedTools: Anthropic.Messages.ToolUnion[] = [];
+	const seenNames = new Set<string>();
+	for (const tool of tools) {
 		const deferLoading = !!(supportsDeferredTools && tool.deferLoading && !tool.alwaysLoad);
-		const flagKey = `${isOAuthToken ? 1 : 0}|${supportsEagerToolInputStreaming ? 1 : 0}|${deferLoading ? 1 : 0}`;
+		const flagKey = `${model.provider}|${isOAuthToken ? 1 : 0}|${supportsEagerToolInputStreaming ? 1 : 0}|${deferLoading ? 1 : 0}`;
 		let perToolMap = convertedToolCache.get(tool);
 		if (!perToolMap) {
 			perToolMap = new Map();
@@ -1355,11 +1392,14 @@ function convertTools(
 		}
 		let cached = perToolMap.get(flagKey);
 		if (!cached) {
-			cached = convertOneTool(tool, isOAuthToken, supportsEagerToolInputStreaming, deferLoading);
+			cached = convertOneTool(tool, model, isOAuthToken, supportsEagerToolInputStreaming, deferLoading);
 			perToolMap.set(flagKey, cached);
 		}
-		return cached;
-	});
+		if (seenNames.has(cached.name)) continue;
+		seenNames.add(cached.name);
+		convertedTools.push(cached);
+	}
+	return convertedTools;
 }
 
 function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReason {
