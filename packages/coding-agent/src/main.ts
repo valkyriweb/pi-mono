@@ -10,6 +10,7 @@ import { createInterface } from "node:readline";
 import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
 import { ProcessTerminal, setKeybindings, TUI } from "@earendil-works/pi-tui";
 import chalk from "chalk";
+import { runAgentViewCommand } from "./cli/agent-view-command.js";
 import { type Args, type Mode, parseArgs, printHelp } from "./cli/args.js";
 import { processFileArguments } from "./cli/file-processor.js";
 import { buildInitialMessage } from "./cli/initial-message.js";
@@ -440,6 +441,12 @@ export async function main(args: string[], options?: MainOptions) {
 	if (await handleConfigCommand(args)) {
 		return;
 	}
+
+	const agentViewCommand = await runAgentViewCommand(args);
+	if (agentViewCommand.handled) {
+		return;
+	}
+	args = agentViewCommand.args;
 
 	const parsed = parseArgs(args);
 	if (parsed.diagnostics.length > 0) {
