@@ -173,6 +173,7 @@ export interface FindToolOptions {
 function formatFindCall(
 	args: { pattern: string; path?: string; limit?: number } | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	label: string,
 ): string {
 	const pattern = str(args?.pattern);
 	const rawPath = str(args?.path);
@@ -180,7 +181,7 @@ function formatFindCall(
 	const limit = args?.limit;
 	const invalidArg = invalidArgText(theme);
 	let text =
-		theme.fg("toolTitle", theme.bold("find")) +
+		theme.fg("toolTitle", theme.bold(label)) +
 		" " +
 		(pattern === null ? invalidArg : theme.fg("accent", pattern || "")) +
 		theme.fg("toolOutput", ` in ${path === null ? invalidArg : path}`);
@@ -235,7 +236,7 @@ export function createFindToolDefinition(
 	const customOps = options?.operations;
 	const preferredBackend = options?.backend ?? "auto";
 	const toolName = options?.toolName ?? "find";
-	const label = options?.label ?? toolName;
+	const label = options?.label ?? "Find";
 	return {
 		name: toolName,
 		label,
@@ -534,7 +535,7 @@ export function createFindToolDefinition(
 		},
 		renderCall(args, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatFindCall(args, theme));
+			text.setText(formatFindCall(args, theme, label));
 			return text;
 		},
 		renderResult(result, options, theme, context) {

@@ -290,6 +290,7 @@ function colorGrepLine(line: string, theme: typeof import("../../modes/interacti
 function formatGrepCall(
 	args: { pattern: string; path?: string; glob?: string; limit?: number } | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	label: string,
 ): string {
 	const pattern = str(args?.pattern);
 	const rawPath = str(args?.path);
@@ -298,7 +299,7 @@ function formatGrepCall(
 	const limit = args?.limit;
 	const invalidArg = invalidArgText(theme);
 	let text =
-		theme.fg("toolTitle", theme.bold("grep")) +
+		theme.fg("toolTitle", theme.bold(label)) +
 		" " +
 		(pattern === null ? invalidArg : theme.fg("accent", `/${pattern || ""}/`)) +
 		theme.fg("toolOutput", ` in ${path === null ? invalidArg : path}`);
@@ -356,7 +357,7 @@ export function createGrepToolDefinition(
 ): ToolDefinition<typeof grepSchema, GrepToolDetails | undefined> {
 	const customOps = options?.operations;
 	const toolName = options?.toolName ?? "grep";
-	const label = options?.label ?? toolName;
+	const label = options?.label ?? "Grep";
 	return {
 		name: toolName,
 		label,
@@ -793,7 +794,7 @@ export function createGrepToolDefinition(
 		},
 		renderCall(args, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatGrepCall(args, theme));
+			text.setText(formatGrepCall(args, theme, label));
 			return text;
 		},
 		renderResult(result, options, theme, context) {

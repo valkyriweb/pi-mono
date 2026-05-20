@@ -73,12 +73,12 @@ function formatReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): st
 	return theme.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
 }
 
-function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme): string {
+function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme, label: string): string {
 	const rawPath = str(args?.file_path ?? args?.path);
 	const path = rawPath !== null ? shortenPath(rawPath) : null;
 	const invalidArg = invalidArgText(theme);
 	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
-	return `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
+	return `${theme.fg("toolTitle", theme.bold(label))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
 }
 
 function trimTrailingEmptyLines(lines: string[]): string[] {
@@ -146,6 +146,7 @@ function formatCompactReadCall(
 	classification: CompactReadClassification,
 	args: ReadRenderArgs | undefined,
 	theme: Theme,
+	label: string,
 ): string {
 	const expandHint = theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
 	if (classification.kind === "skill") {
@@ -158,7 +159,7 @@ function formatCompactReadCall(
 	}
 
 	return (
-		theme.fg("toolTitle", theme.bold(`read ${classification.kind}`)) +
+		theme.fg("toolTitle", theme.bold(`${label} ${classification.kind}`)) +
 		" " +
 		theme.fg("accent", classification.label) +
 		formatReadLineRange(args, theme) +
@@ -212,7 +213,7 @@ export function createReadToolDefinition(
 	const autoResizeImages = options?.autoResizeImages ?? true;
 	const ops = options?.operations ?? defaultReadOperations;
 	const toolName = options?.toolName ?? "read";
-	const label = options?.label ?? toolName;
+	const label = options?.label ?? "Read";
 	return {
 		name: toolName,
 		label,
@@ -348,7 +349,9 @@ export function createReadToolDefinition(
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
 			const classification = !context.expanded ? getCompactReadClassification(args, context.cwd) : undefined;
 			text.setText(
-				classification ? formatCompactReadCall(classification, args, theme) : formatReadCall(args, theme),
+				classification
+					? formatCompactReadCall(classification, args, theme, label)
+					: formatReadCall(args, theme, label),
 			);
 			return text;
 		},

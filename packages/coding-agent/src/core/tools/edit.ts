@@ -241,12 +241,13 @@ function getRenderablePreviewInput(args: RenderableEditArgs | undefined): { path
 function formatEditCall(
 	args: RenderableEditArgs | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	label: string,
 ): string {
 	const invalidArg = invalidArgText(theme);
 	const rawPath = str(args?.file_path ?? args?.path);
 	const path = rawPath !== null ? shortenPath(rawPath) : null;
 	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
-	return `${theme.fg("toolTitle", theme.bold("edit"))} ${pathDisplay}`;
+	return `${theme.fg("toolTitle", theme.bold(label))} ${pathDisplay}`;
 }
 
 function formatEditResult(
@@ -303,10 +304,11 @@ function buildEditCallComponent(
 	component: EditCallRenderComponent,
 	args: RenderableEditArgs | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	label: string,
 ): EditCallRenderComponent {
 	component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme));
 	component.clear();
-	component.addChild(new Text(formatEditCall(args, theme), 0, 0));
+	component.addChild(new Text(formatEditCall(args, theme, label), 0, 0));
 
 	if (!component.preview) {
 		return component;
@@ -354,7 +356,7 @@ export function createEditToolDefinition(
 ): ToolDefinition<typeof editSchema, EditToolDetails | undefined, EditRenderState> {
 	const ops = options?.operations ?? defaultEditOperations;
 	const toolName = options?.toolName ?? "edit";
-	const label = options?.label ?? toolName;
+	const label = options?.label ?? "Edit";
 	return {
 		name: toolName,
 		label,
@@ -512,7 +514,7 @@ export function createEditToolDefinition(
 				});
 			}
 
-			return buildEditCallComponent(component, args, theme);
+			return buildEditCallComponent(component, args, theme, label);
 		},
 		renderResult(result, _options, theme, context) {
 			const callComponent = context.state.callComponent;
@@ -542,7 +544,7 @@ export function createEditToolDefinition(
 					changed = true;
 				}
 				if (changed) {
-					buildEditCallComponent(callComponent, context.args as RenderableEditArgs | undefined, theme);
+					buildEditCallComponent(callComponent, context.args as RenderableEditArgs | undefined, theme, label);
 				}
 			}
 

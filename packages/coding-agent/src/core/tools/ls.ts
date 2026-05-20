@@ -53,12 +53,13 @@ export interface LsToolOptions {
 function formatLsCall(
 	args: { path?: string; limit?: number } | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	label: string,
 ): string {
 	const rawPath = str(args?.path);
 	const path = rawPath !== null ? shortenPath(rawPath || ".") : null;
 	const limit = args?.limit;
 	const invalidArg = invalidArgText(theme);
-	let text = `${theme.fg("toolTitle", theme.bold("ls"))} ${path === null ? invalidArg : theme.fg("accent", path)}`;
+	let text = `${theme.fg("toolTitle", theme.bold(label))} ${path === null ? invalidArg : theme.fg("accent", path)}`;
 	if (limit !== undefined) {
 		text += theme.fg("toolOutput", ` (limit ${limit})`);
 	}
@@ -117,7 +118,7 @@ export function createLsToolDefinition(
 ): ToolDefinition<typeof lsSchema, LsToolDetails | undefined> {
 	const ops = options?.operations ?? defaultLsOperations;
 	const toolName = options?.toolName ?? "ls";
-	const label = options?.label ?? toolName;
+	const label = options?.label ?? "Ls";
 	return {
 		name: toolName,
 		label,
@@ -230,7 +231,7 @@ export function createLsToolDefinition(
 		},
 		renderCall(args, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatLsCall(args, theme));
+			text.setText(formatLsCall(args, theme, label));
 			return text;
 		},
 		renderResult(result, options, theme, context) {

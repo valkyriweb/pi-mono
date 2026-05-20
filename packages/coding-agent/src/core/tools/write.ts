@@ -135,12 +135,13 @@ function formatWriteCall(
 	options: ToolRenderResultOptions,
 	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
 	cache: WriteHighlightCache | undefined,
+	label: string,
 ): string {
 	const rawPath = str(args?.file_path ?? args?.path);
 	const fileContent = str(args?.content);
 	const path = rawPath !== null ? shortenPath(rawPath) : null;
 	const invalidArg = invalidArgText(theme);
-	let text = `${theme.fg("toolTitle", theme.bold("write"))} ${path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...")}`;
+	let text = `${theme.fg("toolTitle", theme.bold(label))} ${path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...")}`;
 
 	if (fileContent === null) {
 		text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;
@@ -186,7 +187,7 @@ export function createWriteToolDefinition(
 ): ToolDefinition<typeof writeSchema, undefined> {
 	const ops = options?.operations ?? defaultWriteOperations;
 	const toolName = options?.toolName ?? "write";
-	const label = options?.label ?? toolName;
+	const label = options?.label ?? "Write";
 	return {
 		name: toolName,
 		label,
@@ -262,6 +263,7 @@ export function createWriteToolDefinition(
 					{ expanded: context.expanded, isPartial: context.isPartial },
 					theme,
 					component.cache,
+					label,
 				),
 			);
 			return component;
