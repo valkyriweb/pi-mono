@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, type Harness } from "./harness.js";
 
 function normalizeEventOrder(events: Harness["events"]): string[] {
@@ -254,6 +254,32 @@ describe("AgentSession retry and event characterization", () => {
 			"turn_end",
 			"agent_end",
 		]);
+	});
+
+	it("keeps agent runs alive when a session listener throws", async () => {
+		const harness = await createHarness();
+		harnesses.push(harness);
+		const observedEvents: string[] = [];
+		const loggedErrors: unknown[][] = [];
+		const consoleError = vi.spyOn(console, "error").mockImplementation((...args) => {
+			loggedErrors.push(args);
+		});
+		harness.session.subscribe(() => {
+			throw new Error("listener failed");
+		});
+		harness.session.subscribe((event) => {
+			observedEvents.push(event.type);
+		});
+		harness.setResponses([fauxAssistantMessage("hello")]);
+
+		try {
+			await harness.session.prompt("hi");
+			expect(loggedErrors).toContainEqual(["AgentSession event listener failed", expect.any(Error)]);
+			expect(observedEvents).toContain("agent_end");
+			expect(harness.faux.state.callCount).toBe(1);
+		} finally {
+			consoleError.mockRestore();
+		}
 	});
 
 	it("emits the expected event order for a tool call turn", async () => {
