@@ -131,6 +131,21 @@ Add a `pi` manifest to `package.json` or use conventional directories. Include t
 
 Paths are relative to the package root. Arrays support glob patterns and `!exclusions`.
 
+Extension entries can also use object form to choose when the extension factory imports:
+
+```json
+{
+  "pi": {
+    "extensions": [
+      "./extensions/provider.ts",
+      { "path": "./extensions/review-ui.ts", "load": "deferred" }
+    ]
+  }
+}
+```
+
+`load` defaults to `"eager"`. Use `"deferred"` only for optional UI, commands, telemetry, or other non-critical extensions. Deferred tools are registered but not auto-activated when the background load finishes, which avoids silently changing the model-facing tool schema. Provider registration, permission gates, model/tool policy, prompt/context hooks, and startup resource discovery should stay eager.
+
 ### Gallery Metadata
 
 The [package gallery](https://pi.dev/packages) displays packages tagged with `pi-package`. Add `video` or `image` fields to show a preview:
@@ -199,7 +214,8 @@ Filter what a package loads using the object form in settings:
       "extensions": ["extensions/*.ts", "!extensions/legacy.ts"],
       "skills": [],
       "prompts": ["prompts/review.md"],
-      "themes": ["+themes/legacy.json"]
+      "themes": ["+themes/legacy.json"],
+      "load": "deferred"
     }
   ]
 }
@@ -213,6 +229,7 @@ Filter what a package loads using the object form in settings:
 - `+path` force-includes an exact path.
 - `-path` force-excludes an exact path.
 - Filters layer on top of the manifest. They narrow down what is already allowed.
+- `load: "deferred"` sets the default extension load mode for that package; manifest entries with `{ "load": "eager" }` or `{ "load": "deferred" }` override it per entry.
 
 ## Enable and Disable Resources
 
