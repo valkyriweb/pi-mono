@@ -109,7 +109,7 @@ describe("InteractiveMode footer nav — Phase 2a state machine", () => {
 		call(ctx, "footerFocusPrev");
 		// A task should be selected (last in sorted order).
 		expect(ctx.footerSelectedTaskId).toBeDefined();
-		expect([r1.id, r2.id]).toContain(ctx.footerSelectedTaskId);
+		expect([`agent:${r1.id}`, `agent:${r2.id}`]).toContain(ctx.footerSelectedTaskId);
 	});
 
 	test("footerFocusNext selects a task when nothing selected", () => {
@@ -119,14 +119,14 @@ describe("InteractiveMode footer nav — Phase 2a state machine", () => {
 		call(ctx, "footerFocusNext");
 		// A task should be selected (first in sorted order).
 		expect(ctx.footerSelectedTaskId).toBeDefined();
-		expect([r1.id, r2.id]).toContain(ctx.footerSelectedTaskId);
+		expect([`agent:${r1.id}`, `agent:${r2.id}`]).toContain(ctx.footerSelectedTaskId);
 	});
 
 	test("cycling prev/next with 2 tasks wraps around", () => {
 		const ctx = makeContext();
 		const r1 = startRun("task 1");
 		const r2 = startRun("task 2");
-		const ids = new Set([r1.id, r2.id]);
+		const ids = new Set([`agent:${r1.id}`, `agent:${r2.id}`]);
 
 		call(ctx, "footerFocusNext"); // selects first
 		const first = ctx.footerSelectedTaskId!;
@@ -156,7 +156,7 @@ describe("InteractiveMode footer nav — Phase 2a state machine", () => {
 		const ctx = makeContext();
 		const run = startRun("zoom-me");
 		call(ctx, "footerFocusNext");
-		expect(ctx.footerSelectedTaskId).toBe(run.id);
+		expect(ctx.footerSelectedTaskId).toBe(`agent:${run.id}`);
 
 		call(ctx, "enterZoomFromFooter");
 

@@ -45,6 +45,44 @@ describe("bash run_in_background", () => {
 		expect(getText(killResult)).toMatch(/already exited/);
 	});
 
+	it("bash_output collapses vertically wrapped TUI prompt fragments", async () => {
+		const bash = createBashToolDefinition(process.cwd());
+		const out = createBashOutputToolDefinition();
+		const verticalPrompt = [
+			"before",
+			"\u001b",
+			"[",
+			"9",
+			"0",
+			"m",
+			..."Paste the auth code:".split(""),
+			"\u001b",
+			"[",
+			"3",
+			"9",
+			"m",
+			"after",
+		].join("\r\n");
+
+		const script = `process.stdout.write(${JSON.stringify(`${verticalPrompt}\n`)})`;
+		const r = await bash.execute(
+			"t1",
+			{ command: `node -e ${JSON.stringify(script)}`, run_in_background: true },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const bgId = (r.details as any).bgId as string;
+		await new Promise((res) => setTimeout(res, 500));
+
+		const readText = getText(await out.execute("t2", { bgId, mode: "all" }, undefined, undefined, ctx));
+		expect(readText).toContain("before");
+		expect(readText).toContain("Paste the auth code:");
+		expect(readText).toContain("after");
+		expect(readText).not.toContain("\nP\n");
+		expect(readText).not.toContain("[90m");
+	});
+
 	it("bash_output reports unknown bgId clearly", async () => {
 		const out = createBashOutputToolDefinition();
 		const r = await out.execute("t1", { bgId: "bg_does_not_exist" }, undefined, undefined, ctx);
