@@ -94,7 +94,10 @@ function buildSSEPayload({
 	return `${events.join("\n\n")}\n\n`;
 }
 
-async function captureCodexRequestBody(context: Context): Promise<Record<string, unknown>> {
+async function captureCodexRequestBody(
+	context: Context,
+	options: Partial<Parameters<typeof streamOpenAICodexResponses>[2]> = {},
+): Promise<Record<string, unknown>> {
 	const tempDir = mkdtempSync(join(tmpdir(), "pi-codex-stream-"));
 	process.env.PI_CODING_AGENT_DIR = tempDir;
 	const token = mockToken();
@@ -123,6 +126,7 @@ async function captureCodexRequestBody(context: Context): Promise<Record<string,
 		apiKey: token,
 		transport: "sse",
 		sessionId: "cache-stability-test-session",
+		...options,
 	}).result();
 
 	if (!capturedBody) throw new Error("Codex request body was not captured");
@@ -200,6 +204,24 @@ describe("openai-codex streaming", () => {
 
 		expect(bodyB.instructions).toBe(bodyA.instructions);
 		expect(JSON.stringify(bodyB.tools)).toBe(JSON.stringify(bodyA.tools));
+	});
+
+	it("uses cache affinity and long-retention options for Codex requests", async () => {
+		const body = await captureCodexRequestBody(
+			{
+				systemPrompt: "Stable system prompt",
+				messages: [{ role: "user", content: "ping", timestamp: 1 }],
+			},
+			{
+				cacheAffinityKey: "shared-cache-affinity-key",
+				cacheRetention: "long",
+				maxTokens: 1,
+			},
+		);
+
+		expect(body.prompt_cache_key).toBe("shared-cache-affinity-key");
+		expect(body.prompt_cache_retention).toBe("24h");
+		expect(body.max_output_tokens).toBe(1);
 	});
 
 	it("streams SSE responses into AssistantMessageEventStream", async () => {
@@ -531,6 +553,56 @@ describe("openai-codex streaming", () => {
 
 		const streamResult = streamOpenAICodexResponses(model, context, { apiKey: token, sessionId });
 		await streamResult.result();
+	});
+
+	it("clamps prompt_cache_key to OpenAI's 64-character limit", async () => {
+		const token = mockToken();
+		const sessionId = "x".repeat(67);
+		let capturedPayload: { prompt_cache_key?: string } | undefined;
+		const encoder = new TextEncoder();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(
+						new ReadableStream<Uint8Array>({
+							start(controller) {
+								controller.enqueue(encoder.encode(buildSSEPayload({ status: "completed" })));
+								controller.close();
+							},
+						}),
+						{ status: 200, headers: { "content-type": "text/event-stream" } },
+					),
+			),
+		);
+
+		const model: Model<"openai-codex-responses"> = {
+			id: "gpt-5.1-codex",
+			name: "GPT-5.1 Codex",
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			baseUrl: "https://chatgpt.com/backend-api",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 400000,
+			maxTokens: 128000,
+		};
+		const context: Context = {
+			systemPrompt: "You are a helpful assistant.",
+			messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }],
+		};
+
+		await streamOpenAICodexResponses(model, context, {
+			apiKey: token,
+			transport: "sse",
+			sessionId,
+			onPayload: (payload) => {
+				capturedPayload = payload as { prompt_cache_key?: string };
+			},
+		}).result();
+
+		expect(capturedPayload?.prompt_cache_key).toBe("x".repeat(64));
 	});
 
 	it("preserves gpt-5.5 xhigh reasoning effort from simple options", async () => {

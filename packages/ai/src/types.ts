@@ -103,6 +103,12 @@ export interface StreamOptions {
 	 */
 	sessionId?: string;
 	/**
+	 * Optional provider prompt-cache affinity key. Unlike sessionId, this may be
+	 * shared across sessions so background heartbeats can warm a stable prefix.
+	 * Providers that do not expose prompt-cache routing ignore it.
+	 */
+	cacheAffinityKey?: string;
+	/**
 	 * Optional callback for inspecting or replacing provider payloads before sending.
 	 * Return undefined to keep the payload unchanged.
 	 */

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.js";
+import { findAgentDefinition } from "../src/core/agents/registry.js";
 import { createAgentToolDefinition } from "../src/core/tools/agent.js";
 
 const READ_ONLY_AGENTS = new Set(["decompose", "explore", "plan", "reviewer"]);
@@ -56,6 +57,21 @@ describe("built-in agent definitions", () => {
 		expect(exploreGuideline).toContain("no transcript/project context/skills");
 		expect(exploreGuideline).toContain("extraContext");
 		expect(exploreGuideline).toContain('context:"slim"');
+	});
+
+	test("built-in agent casing aliases resolve when unique", () => {
+		const registry = { agents: getBuiltinAgentDefinitions(), diagnostics: [] };
+		expect(findAgentDefinition(registry, "Explore")?.id).toBe("explore");
+		expect(findAgentDefinition(registry, "Plan")?.id).toBe("plan");
+	});
+
+	test("exact agent id wins before case-insensitive fallback", () => {
+		const agents = [
+			...getBuiltinAgentDefinitions(),
+			{ ...getBuiltinAgentDefinitions()[0], id: "Explore", source: "project" as const },
+		];
+		const registry = { agents, diagnostics: [] };
+		expect(findAgentDefinition(registry, "Explore")?.id).toBe("Explore");
 	});
 
 	test("general and worker deny recursive agent", () => {

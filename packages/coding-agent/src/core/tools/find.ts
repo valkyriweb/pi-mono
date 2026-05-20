@@ -162,6 +162,8 @@ const defaultFindOperations: FindOperations = {
 };
 
 export interface FindToolOptions {
+	toolName?: "find" | "Find";
+	label?: string;
 	/** Custom operations for find. Default: local filesystem plus bfs/fd */
 	operations?: FindOperations;
 	/** Internal backend override for deterministic tests and fallback verification. */
@@ -232,9 +234,11 @@ export function createFindToolDefinition(
 ): ToolDefinition<typeof findSchema, FindToolDetails | undefined> {
 	const customOps = options?.operations;
 	const preferredBackend = options?.backend ?? "auto";
+	const toolName = options?.toolName ?? "find";
+	const label = options?.label ?? toolName;
 	return {
-		name: "find",
-		label: "find",
+		name: toolName,
+		label,
 		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Use this tool for file discovery; do not invoke \`find\` via bash — those calls are blocked at runtime. Prefers bfs when available, falling back to fd. The fd fallback respects .gitignore; bfs matches Claude Code Glob behavior and does not filter .gitignore. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
 		promptSnippet: "Find files by glob pattern",
 		parameters: findSchema,
@@ -543,4 +547,15 @@ export function createFindToolDefinition(
 
 export function createFindTool(cwd: string, options?: FindToolOptions): AgentTool<typeof findSchema> {
 	return wrapToolDefinition(createFindToolDefinition(cwd, options));
+}
+
+export function createUppercaseFindToolDefinition(
+	cwd: string,
+	options?: FindToolOptions,
+): ToolDefinition<typeof findSchema, FindToolDetails | undefined> {
+	return createFindToolDefinition(cwd, { ...options, toolName: "Find", label: "Find" });
+}
+
+export function createUppercaseFindTool(cwd: string, options?: FindToolOptions): AgentTool<typeof findSchema> {
+	return wrapToolDefinition(createUppercaseFindToolDefinition(cwd, options));
 }

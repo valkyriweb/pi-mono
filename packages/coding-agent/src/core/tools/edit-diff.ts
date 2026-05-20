@@ -24,52 +24,6 @@ export function restoreLineEndings(text: string, ending: "\r\n" | "\n"): string 
 	return ending === "\r\n" ? text.replace(/\n/g, "\r\n") : text;
 }
 
-/**
- * Normalize text for fuzzy matching. Applies progressive transformations:
- * - Strip trailing whitespace from each line
- * - Normalize smart quotes to ASCII equivalents
- * - Normalize Unicode dashes/hyphens to ASCII hyphen
- * - Normalize special Unicode spaces to regular space
- */
-export function normalizeForFuzzyMatch(text: string): string {
-	return (
-		text
-			.normalize("NFKC")
-			// Strip trailing whitespace per line
-			.split("\n")
-			.map((line) => line.trimEnd())
-			.join("\n")
-			// Smart single quotes → '
-			.replace(/[\u2018\u2019\u201A\u201B]/g, "'")
-			// Smart double quotes → "
-			.replace(/[\u201C\u201D\u201E\u201F]/g, '"')
-			// Various dashes/hyphens → -
-			// U+2010 hyphen, U+2011 non-breaking hyphen, U+2012 figure dash,
-			// U+2013 en-dash, U+2014 em-dash, U+2015 horizontal bar, U+2212 minus
-			.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")
-			// Special spaces → regular space
-			// U+00A0 NBSP, U+2002-U+200A various spaces, U+202F narrow NBSP,
-			// U+205F medium math space, U+3000 ideographic space
-			.replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ")
-	);
-}
-
-export interface FuzzyMatchResult {
-	/** Whether a match was found */
-	found: boolean;
-	/** The index where the match starts (in the content that should be used for replacement) */
-	index: number;
-	/** Length of the matched text */
-	matchLength: number;
-	/** Whether fuzzy matching was used (false = exact match) */
-	usedFuzzyMatch: boolean;
-	/**
-	 * The content to use for replacement operations.
-	 * When exact match: original content. When fuzzy match: normalized content.
-	 */
-	contentForReplacement: string;
-}
-
 export interface Edit {
 	oldText: string;
 	newText: string;
@@ -87,61 +41,19 @@ export interface AppliedEditsResult {
 	newContent: string;
 }
 
-/**
- * Find oldText in content, trying exact match first, then fuzzy match.
- * When fuzzy matching is used, the returned contentForReplacement is the
- * fuzzy-normalized version of the content (trailing whitespace stripped,
- * Unicode quotes/dashes normalized to ASCII).
- */
-export function fuzzyFindText(content: string, oldText: string): FuzzyMatchResult {
-	// Try exact match first
-	const exactIndex = content.indexOf(oldText);
-	if (exactIndex !== -1) {
-		return {
-			found: true,
-			index: exactIndex,
-			matchLength: oldText.length,
-			usedFuzzyMatch: false,
-			contentForReplacement: content,
-		};
-	}
-
-	// Try fuzzy match - work entirely in normalized space
-	const fuzzyContent = normalizeForFuzzyMatch(content);
-	const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-	const fuzzyIndex = fuzzyContent.indexOf(fuzzyOldText);
-
-	if (fuzzyIndex === -1) {
-		return {
-			found: false,
-			index: -1,
-			matchLength: 0,
-			usedFuzzyMatch: false,
-			contentForReplacement: content,
-		};
-	}
-
-	// When fuzzy matching, we work in the normalized space for replacement.
-	// This means the output will have normalized whitespace/quotes/dashes,
-	// which is acceptable since we're fixing minor formatting differences anyway.
-	return {
-		found: true,
-		index: fuzzyIndex,
-		matchLength: fuzzyOldText.length,
-		usedFuzzyMatch: true,
-		contentForReplacement: fuzzyContent,
-	};
-}
-
 /** Strip UTF-8 BOM if present, return both the BOM (if any) and the text without it */
 export function stripBom(content: string): { bom: string; text: string } {
 	return content.startsWith("\uFEFF") ? { bom: "\uFEFF", text: content.slice(1) } : { bom: "", text: content };
 }
 
 function countOccurrences(content: string, oldText: string): number {
-	const fuzzyContent = normalizeForFuzzyMatch(content);
-	const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-	return fuzzyContent.split(fuzzyOldText).length - 1;
+	let occurrences = 0;
+	let index = content.indexOf(oldText);
+	while (index !== -1) {
+		occurrences++;
+		index = content.indexOf(oldText, index + 1);
+	}
+	return occurrences;
 }
 
 function getNotFoundError(path: string, editIndex: number, totalEdits: number): Error {
@@ -186,9 +98,8 @@ function getNoChangeError(path: string, totalEdits: number): Error {
  * Apply one or more exact-text replacements to LF-normalized content.
  *
  * All edits are matched against the same original content. Replacements are
- * then applied in reverse order so offsets remain stable. If any edit needs
- * fuzzy matching, the operation runs in fuzzy-normalized content space to
- * preserve current single-edit behavior.
+ * then applied in reverse order so offsets remain stable. Matching is exact:
+ * oldText must appear byte-for-byte after line-ending normalization.
  */
 export function applyEditsToNormalizedContent(
 	normalizedContent: string,
@@ -206,16 +117,13 @@ export function applyEditsToNormalizedContent(
 		}
 	}
 
-	const initialMatches = normalizedEdits.map((edit) => fuzzyFindText(normalizedContent, edit.oldText));
-	const baseContent = initialMatches.some((match) => match.usedFuzzyMatch)
-		? normalizeForFuzzyMatch(normalizedContent)
-		: normalizedContent;
+	const baseContent = normalizedContent;
 
 	const matchedEdits: MatchedEdit[] = [];
 	for (let i = 0; i < normalizedEdits.length; i++) {
 		const edit = normalizedEdits[i];
-		const matchResult = fuzzyFindText(baseContent, edit.oldText);
-		if (!matchResult.found) {
+		const matchIndex = baseContent.indexOf(edit.oldText);
+		if (matchIndex === -1) {
 			throw getNotFoundError(path, i, normalizedEdits.length);
 		}
 
@@ -226,8 +134,8 @@ export function applyEditsToNormalizedContent(
 
 		matchedEdits.push({
 			editIndex: i,
-			matchIndex: matchResult.index,
-			matchLength: matchResult.matchLength,
+			matchIndex,
+			matchLength: edit.oldText.length,
 			newText: edit.newText,
 		});
 	}

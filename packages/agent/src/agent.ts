@@ -109,6 +109,7 @@ export interface AgentOptions {
 	steeringMode?: QueueMode;
 	followUpMode?: QueueMode;
 	sessionId?: string;
+	cacheAffinityKey?: string;
 	thinkingBudgets?: ThinkingBudgets;
 	transport?: Transport;
 	maxRetryDelayMs?: number;
@@ -117,8 +118,11 @@ export interface AgentOptions {
 
 class PendingMessageQueue {
 	private messages: AgentMessage[] = [];
+	public mode: QueueMode;
 
-	constructor(public mode: QueueMode) {}
+	constructor(mode: QueueMode) {
+		this.mode = mode;
+	}
 
 	enqueue(message: AgentMessage): void {
 		this.messages.push(message);
@@ -186,6 +190,8 @@ export class Agent {
 	private activeRun?: ActiveRun;
 	/** Session identifier forwarded to providers for cache-aware backends. */
 	public sessionId?: string;
+	/** Stable prompt-cache key forwarded to providers for cross-session cache affinity. */
+	public cacheAffinityKey?: string;
 	/** Optional per-level thinking token budgets forwarded to the stream function. */
 	public thinkingBudgets?: ThinkingBudgets;
 	/** Preferred transport forwarded to the stream function. */
@@ -209,6 +215,7 @@ export class Agent {
 		this.steeringQueue = new PendingMessageQueue(options.steeringMode ?? "one-at-a-time");
 		this.followUpQueue = new PendingMessageQueue(options.followUpMode ?? "one-at-a-time");
 		this.sessionId = options.sessionId;
+		this.cacheAffinityKey = options.cacheAffinityKey;
 		this.thinkingBudgets = options.thinkingBudgets;
 		this.transport = options.transport ?? "auto";
 		this.maxRetryDelayMs = options.maxRetryDelayMs;
@@ -437,6 +444,7 @@ export class Agent {
 				tools: this._state.tools.slice(),
 			}),
 			sessionId: this.sessionId,
+			cacheAffinityKey: this.cacheAffinityKey,
 			onPayload: this.onPayload,
 			onResponse: this.onResponse,
 			transport: this.transport,

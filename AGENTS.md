@@ -16,10 +16,15 @@
 - Check node_modules for external API type definitions instead of guessing
 - **NEVER use inline imports** - no `await import("./foo.js")`, no `import("pkg").Type` in type positions, no dynamic imports for types. Always use standard top-level imports.
 - NEVER remove or downgrade code to fix type errors from outdated dependencies; upgrade the dependency instead
+- In core source packages (`packages/ai/src`, `packages/agent/src`, `packages/coding-agent/src`), use only erasable TypeScript syntax compatible with Node strip-only mode. Do not use constructor parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other TypeScript constructs that require JavaScript emit. Use explicit fields and constructor assignments instead of parameter properties.
 - Always ask before removing functionality or code that appears to be intentional
 - Do not preserve backward compatibility unless the user explicitly asks for it
 - Never hardcode key checks with, eg. `matchesKey(keyData, "ctrl+x")`. All keybindings must be configurable. Add default to matching object (`DEFAULT_EDITOR_KEYBINDINGS` or `DEFAULT_APP_KEYBINDINGS`)
 - NEVER modify `packages/ai/src/models.generated.ts` directly. Update `packages/ai/scripts/generate-models.ts` instead.
+
+## Pi Setup Registry
+
+Canonical setup registry lives in `~/Projects/personal/my-pi/docs/pi-setup/`, not this fork. Runtime/provider/cache/tool/fork-patch changes here should update the my-pi catalog/governed docs; generated registry files are refreshed from my-pi scanners and must not be hand-edited here.
 
 ## Commands
 

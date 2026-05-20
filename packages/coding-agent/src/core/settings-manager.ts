@@ -78,10 +78,12 @@ export interface CacheHeartbeatWorkingHoursSettings {
 export interface CacheHeartbeatSettings {
 	enabled?: boolean; // default: false - paid background LLM calls must be opt-in
 	intervalMs?: number; // default: 55 minutes
-	basePrompt?: boolean; // default: true - keep a tiny base-system-prompt cache warm
+	providers?: string[]; // default: ["openai-codex/", "claude-bridge/"]
+	basePrompt?: boolean; // default: true - warm the base-system-prompt cache once per provider/model per process
 	sessionPrompt?: boolean; // default: true - refresh each active session once per idle turn
 	workingHours?: CacheHeartbeatWorkingHoursSettings;
 	maxTokens?: number; // default: 1
+	rateLimitCooldownMs?: number; // default: 5 minutes
 }
 
 export type TransportSetting = Transport;
@@ -803,15 +805,18 @@ export class SettingsManager {
 	getCacheHeartbeatSettings(): {
 		enabled: boolean;
 		intervalMs: number;
+		providers: string[];
 		basePrompt: boolean;
 		sessionPrompt: boolean;
 		workingHours: Required<CacheHeartbeatWorkingHoursSettings>;
 		maxTokens: number;
+		rateLimitCooldownMs: number;
 	} {
 		const settings = this.settings.cacheHeartbeat;
 		return {
 			enabled: settings?.enabled ?? false,
 			intervalMs: settings?.intervalMs ?? 55 * 60 * 1000,
+			providers: settings?.providers ?? ["openai-codex/", "claude-bridge/"],
 			basePrompt: settings?.basePrompt ?? true,
 			sessionPrompt: settings?.sessionPrompt ?? true,
 			workingHours: {
@@ -820,6 +825,7 @@ export class SettingsManager {
 				days: settings?.workingHours?.days ?? [1, 2, 3, 4, 5],
 			},
 			maxTokens: settings?.maxTokens ?? 1,
+			rateLimitCooldownMs: settings?.rateLimitCooldownMs ?? 5 * 60 * 1000,
 		};
 	}
 

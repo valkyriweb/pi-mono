@@ -102,6 +102,7 @@ import {
 	LocalAgentTask,
 } from "../../core/tasks/index.js";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.js";
+import { getBashBgJob, getRunningBashBgJobsSorted, subscribeBashBgJobs } from "../../core/tools/bash.js";
 import type { TruncationResult } from "../../core/tools/truncate.js";
 import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.js";
 import { copyToClipboard } from "../../utils/clipboard.js";
@@ -111,7 +112,7 @@ import { getCwdRelativePath } from "../../utils/paths.js";
 import { getPiUserAgent } from "../../utils/pi-user-agent.js";
 import { killTrackedDetachedChildren } from "../../utils/shell.js";
 import { ensureTool } from "../../utils/tools-manager.js";
-import { checkForNewPiVersion } from "../../utils/version-check.js";
+import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.js";
 import { type AgentRunsSelectorAction, AgentRunsSelectorComponent } from "./components/agent-runs-selector.js";
 import { AgentsSelectorComponent } from "./components/agents-selector.js";
 import { ArminComponent } from "./components/armin.js";
@@ -143,6 +144,7 @@ import { ToolExecutionComponent } from "./components/tool-execution.js";
 import { TreeSelectorComponent } from "./components/tree-selector.js";
 import { UserMessageComponent } from "./components/user-message.js";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.js";
+import { ZoomedBashComponent } from "./components/zoomed-bash.js";
 import type { ZoomedSessionConfig } from "./components/zoomed-session-transcript.js";
 import { ZoomedTaskComponent } from "./components/zoomed-task.js";
 import {
@@ -172,14 +174,19 @@ function isExpandable(obj: unknown): obj is Expandable {
 }
 
 class ExpandableText extends Text implements Expandable {
+	private readonly getCollapsedText: () => string;
+	private readonly getExpandedText: () => string;
+
 	constructor(
-		private readonly getCollapsedText: () => string,
-		private readonly getExpandedText: () => string,
+		getCollapsedText: () => string,
+		getExpandedText: () => string,
 		expanded = false,
 		paddingX = 0,
 		paddingY = 0,
 	) {
 		super(expanded ? getExpandedText() : getCollapsedText(), paddingX, paddingY);
+		this.getCollapsedText = getCollapsedText;
+		this.getExpandedText = getExpandedText;
 	}
 
 	setExpanded(expanded: boolean): void {
@@ -310,6 +317,7 @@ export class InteractiveMode {
 	// Agent subscription unsubscribe function
 	private unsubscribe?: () => void;
 	private unsubscribeAgentRuns?: () => void;
+	private unsubscribeBashBgJobs?: () => void;
 	private signalCleanupHandlers: Array<() => void> = [];
 
 	// Track if editor is in bash mode (text starts with !)
@@ -342,7 +350,9 @@ export class InteractiveMode {
 	// Enter routes to `LocalAgentTask.injectMessage` instead of the parent
 	// session. Auto-pop fires `STOPPED_DISPLAY_MS` after a terminal status.
 	private zoomedTaskId: string | undefined = undefined;
+	private zoomedBashBgId: string | undefined = undefined;
 	private zoomedComponent: ZoomedTaskComponent | undefined = undefined;
+	private zoomedBashComponent: ZoomedBashComponent | undefined = undefined;
 	private preZoomChatChildren: Component[] = [];
 	private zoomAutoPopTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	private unsubscribeZoomStatus?: () => void;
@@ -377,6 +387,8 @@ export class InteractiveMode {
 	// Custom header from extension (undefined = use built-in header)
 	private customHeader: (Component & { dispose?(): void }) | undefined = undefined;
 
+	private options: InteractiveModeOptions;
+
 	// Convenience accessors
 	private get session(): AgentSession {
 		return this.runtimeHost.session;
@@ -391,11 +403,9 @@ export class InteractiveMode {
 		return this.session.settingsManager;
 	}
 
-	constructor(
-		runtimeHost: AgentSessionRuntime,
-		private options: InteractiveModeOptions = {},
-	) {
+	constructor(runtimeHost: AgentSessionRuntime, options: InteractiveModeOptions = {}) {
 		this.runtimeHost = runtimeHost;
+		this.options = options;
 		this.runtimeHost.setBeforeSessionInvalidate(() => {
 			this.resetExtensionUI();
 		});
@@ -730,9 +740,20 @@ export class InteractiveMode {
 		});
 
 		this.unsubscribeAgentRuns = subscribeAgentRecentRuns(() => {
-			// If the footer-selected task just terminated, clear the selection.
-			if (this.footerSelectedTaskId) {
-				const still = getRunningTasksSorted().find((t) => t.id === this.footerSelectedTaskId);
+			// If the footer-selected agent just terminated, clear the selection.
+			if (this.footerSelectedTaskId?.startsWith("agent:")) {
+				const taskId = this.footerSelectedTaskId.slice("agent:".length);
+				const still = getRunningTasksSorted().find((t) => t.id === taskId);
+				if (!still) this.clearFooterFocus();
+			}
+			this.footer.invalidate();
+			this.ui.requestRender();
+		});
+
+		this.unsubscribeBashBgJobs = subscribeBashBgJobs(() => {
+			if (this.footerSelectedTaskId?.startsWith("bash:")) {
+				const bgId = this.footerSelectedTaskId.slice("bash:".length);
+				const still = getRunningBashBgJobsSorted().find((job) => job.id === bgId);
 				if (!still) this.clearFooterFocus();
 			}
 			this.footer.invalidate();
@@ -764,9 +785,9 @@ export class InteractiveMode {
 		await this.init();
 
 		// Start version check asynchronously
-		checkForNewPiVersion(this.version).then((newVersion) => {
-			if (newVersion) {
-				this.showNewVersionNotification(newVersion);
+		checkForNewPiVersion(this.version).then((newRelease) => {
+			if (newRelease) {
+				this.showNewVersionNotification(newRelease);
 			}
 		});
 
@@ -1531,6 +1552,9 @@ export class InteractiveMode {
 		const uiContext = this.createExtensionUIContext();
 		await this.session.bindExtensions({
 			uiContext,
+			abortHandler: () => {
+				this.restoreQueuedMessagesToEditor({ abort: true });
+			},
 			commandContextActions: {
 				waitForIdle: () => this.session.agent.waitForIdle(),
 				newSession: async (options) => {
@@ -1686,7 +1710,9 @@ export class InteractiveMode {
 				model: session.model,
 				isIdle: () => !session.isStreaming,
 				signal: session.agent.signal,
-				abort: () => session.abort(),
+				abort: () => {
+					this.restoreQueuedMessagesToEditor({ abort: true });
+				},
 				hasPendingMessages: () => session.pendingMessageCount > 0,
 				shutdown: () => {
 					this.shutdownRequested = true;
@@ -2551,6 +2577,11 @@ export class InteractiveMode {
 				this.injectIntoZoomedTask(text);
 				return;
 			}
+			if (this.zoomedBashBgId) {
+				this.editor.setText("");
+				if (text === "/exit-zoom") this.exitZoom();
+				return;
+			}
 
 			// Handle commands
 			if (text === "/settings") {
@@ -3376,14 +3407,14 @@ export class InteractiveMode {
 	 */
 	private handleFooterNavInput(data: string): boolean {
 		if (this.keybindings.matches(data, "app.agents.footer.focusPrev")) {
-			if (this.defaultEditor.getText().length === 0 && getRunningTasksSorted().length > 0) {
+			if (this.defaultEditor.getText().length === 0 && this.getFooterNavItemIds().length > 0) {
 				this.footerFocusPrev();
 				return true;
 			}
 			return false;
 		}
 		if (this.keybindings.matches(data, "app.agents.footer.focusNext")) {
-			if (this.defaultEditor.getText().length === 0 && getRunningTasksSorted().length > 0) {
+			if (this.defaultEditor.getText().length === 0 && this.getFooterNavItemIds().length > 0) {
 				this.footerFocusNext();
 				return true;
 			}
@@ -3399,36 +3430,43 @@ export class InteractiveMode {
 		return false;
 	}
 
-	/** Highlight the previous running task pill (wraps around). */
-	private footerFocusPrev(): void {
-		const tasks = getRunningTasksSorted();
-		if (tasks.length === 0) {
-			this.clearFooterFocus();
-			return;
-		}
-		if (!this.footerSelectedTaskId) {
-			this.setFooterSelectedTaskId(tasks[tasks.length - 1]!.id);
-			return;
-		}
-		const idx = tasks.findIndex((t) => t.id === this.footerSelectedTaskId);
-		const prevIdx = idx <= 0 ? tasks.length - 1 : idx - 1;
-		this.setFooterSelectedTaskId(tasks[prevIdx]!.id);
+	private getFooterNavItemIds(): string[] {
+		return [
+			...getRunningTasksSorted().map((task) => `agent:${task.id}`),
+			...getRunningBashBgJobsSorted().map((job) => `bash:${job.id}`),
+		];
 	}
 
-	/** Highlight the next running task pill (wraps around). */
-	private footerFocusNext(): void {
-		const tasks = getRunningTasksSorted();
-		if (tasks.length === 0) {
+	/** Highlight the previous running footer item pill (wraps around). */
+	private footerFocusPrev(): void {
+		const ids = this.getFooterNavItemIds();
+		if (ids.length === 0) {
 			this.clearFooterFocus();
 			return;
 		}
 		if (!this.footerSelectedTaskId) {
-			this.setFooterSelectedTaskId(tasks[0]!.id);
+			this.setFooterSelectedTaskId(ids[ids.length - 1]);
 			return;
 		}
-		const idx = tasks.findIndex((t) => t.id === this.footerSelectedTaskId);
-		const nextIdx = idx < 0 || idx >= tasks.length - 1 ? 0 : idx + 1;
-		this.setFooterSelectedTaskId(tasks[nextIdx]!.id);
+		const idx = ids.indexOf(this.footerSelectedTaskId);
+		const prevIdx = idx <= 0 ? ids.length - 1 : idx - 1;
+		this.setFooterSelectedTaskId(ids[prevIdx]);
+	}
+
+	/** Highlight the next running footer item pill (wraps around). */
+	private footerFocusNext(): void {
+		const ids = this.getFooterNavItemIds();
+		if (ids.length === 0) {
+			this.clearFooterFocus();
+			return;
+		}
+		if (!this.footerSelectedTaskId) {
+			this.setFooterSelectedTaskId(ids[0]);
+			return;
+		}
+		const idx = ids.indexOf(this.footerSelectedTaskId);
+		const nextIdx = idx < 0 || idx >= ids.length - 1 ? 0 : idx + 1;
+		this.setFooterSelectedTaskId(ids[nextIdx]);
 	}
 
 	private setFooterSelectedTaskId(id: string | undefined): void {
@@ -3445,10 +3483,14 @@ export class InteractiveMode {
 
 	/** Zoom into the currently highlighted footer pill and clear the selection. */
 	private enterZoomFromFooter(): void {
-		const taskId = this.footerSelectedTaskId;
-		if (!taskId) return;
+		const selectedId = this.footerSelectedTaskId;
+		if (!selectedId) return;
 		this.clearFooterFocus();
-		this.enterZoom(taskId);
+		if (selectedId.startsWith("bash:")) {
+			this.enterBashZoom(selectedId.slice("bash:".length));
+			return;
+		}
+		this.enterZoom(selectedId.startsWith("agent:") ? selectedId.slice("agent:".length) : selectedId);
 	}
 
 	// -------------------------------------------------------------------------
@@ -3483,11 +3525,12 @@ export class InteractiveMode {
 	private enterZoom(taskId: string): void {
 		if (this.zoomedTaskId === taskId) return;
 		const sessionConfig = this.makeZoomedSessionConfig();
-		// If already zoomed into a different task, swap component in place to
+		// If already zoomed into a different item, swap component in place to
 		// avoid restoring + re-clearing the chat container twice.
-		if (this.zoomedTaskId) {
+		if (this.zoomedTaskId || this.zoomedBashBgId) {
 			this.disposeZoomedComponent();
 			this.zoomedTaskId = taskId;
+			this.zoomedBashBgId = undefined;
 			this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui, sessionConfig);
 			this.chatContainer.addChild(this.zoomedComponent);
 			this.scheduleZoomTerminalCheck();
@@ -3507,8 +3550,39 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private enterBashZoom(bgId: string): void {
+		if (this.zoomedBashBgId === bgId) return;
+		if (!getBashBgJob(bgId)) {
+			this.showWarning(`No background shell job with id ${bgId}.`);
+			return;
+		}
+		if (this.zoomedTaskId || this.zoomedBashBgId) {
+			this.disposeZoomedComponent();
+			this.unsubscribeZoomStatus?.();
+			this.unsubscribeZoomStatus = undefined;
+			if (this.zoomAutoPopTimer) {
+				clearTimeout(this.zoomAutoPopTimer);
+				this.zoomAutoPopTimer = undefined;
+			}
+			this.zoomedTaskId = undefined;
+			this.zoomedBashBgId = bgId;
+			this.zoomedBashComponent = new ZoomedBashComponent(bgId, this.ui);
+			this.chatContainer.addChild(this.zoomedBashComponent);
+			this.footer.invalidate();
+			this.ui.requestRender();
+			return;
+		}
+		this.zoomedBashBgId = bgId;
+		this.preZoomChatChildren = [...this.chatContainer.children];
+		this.chatContainer.clear();
+		this.zoomedBashComponent = new ZoomedBashComponent(bgId, this.ui);
+		this.chatContainer.addChild(this.zoomedBashComponent);
+		this.footer.invalidate();
+		this.ui.requestRender();
+	}
+
 	private exitZoom(): void {
-		if (!this.zoomedTaskId) return;
+		if (!this.zoomedTaskId && !this.zoomedBashBgId) return;
 		this.disposeZoomedComponent();
 		this.unsubscribeZoomStatus?.();
 		this.unsubscribeZoomStatus = undefined;
@@ -3517,6 +3591,7 @@ export class InteractiveMode {
 			this.zoomAutoPopTimer = undefined;
 		}
 		this.zoomedTaskId = undefined;
+		this.zoomedBashBgId = undefined;
 		// Restore the chat container's pre-zoom children plus anything that may
 		// have been appended while zoomed (we currently drop those — chat
 		// appends during zoom are rare; if it becomes a problem, capture them
@@ -3533,6 +3608,11 @@ export class InteractiveMode {
 			this.zoomedComponent.dispose();
 			this.chatContainer.removeChild(this.zoomedComponent);
 			this.zoomedComponent = undefined;
+		}
+		if (this.zoomedBashComponent) {
+			this.zoomedBashComponent.dispose();
+			this.chatContainer.removeChild(this.zoomedBashComponent);
+			this.zoomedBashComponent = undefined;
 		}
 	}
 
@@ -3946,24 +4026,31 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	showNewVersionNotification(newVersion: string): void {
+	showNewVersionNotification(release: LatestPiRelease): void {
 		const action = theme.fg("accent", `${APP_NAME} update`);
-		const updateInstruction = theme.fg("muted", `New version ${newVersion} is available. Run `) + action;
-		const changelogUrl = "https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/CHANGELOG.md";
+		const updateInstruction = theme.fg("muted", `New version ${release.version} is available. Run `) + action;
+		const changelogUrl = "https://pi.dev/changelog";
 		const changelogLink = getCapabilities().hyperlinks
 			? hyperlink(theme.fg("accent", "open changelog"), changelogUrl)
 			: theme.fg("accent", changelogUrl);
 		const changelogLine = theme.fg("muted", "Changelog: ") + changelogLink;
+		const note = release.note?.trim();
 
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
 		this.chatContainer.addChild(
-			new Text(
-				`${theme.bold(theme.fg("warning", "Update Available"))}\n${updateInstruction}\n${changelogLine}`,
-				1,
-				0,
-			),
+			new Text(`${theme.bold(theme.fg("warning", "Update Available"))}\n${updateInstruction}`, 1, 0),
 		);
+		if (note) {
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(
+				new Markdown(note, 1, 0, this.getMarkdownThemeWithSettings(), {
+					color: (text) => theme.fg("muted", text),
+				}),
+			);
+			this.chatContainer.addChild(new Spacer(1));
+		}
+		this.chatContainer.addChild(new Text(changelogLine, 1, 0));
 		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
 		this.ui.requestRender();
 	}
@@ -6062,6 +6149,11 @@ export class InteractiveMode {
 			this.unsubscribeAgentRuns();
 			this.unsubscribeAgentRuns = undefined;
 		}
+		if (this.unsubscribeBashBgJobs) {
+			this.unsubscribeBashBgJobs();
+			this.unsubscribeBashBgJobs = undefined;
+		}
+		this.disposeZoomedComponent();
 		if (this.unsubscribe) {
 			this.unsubscribe();
 		}

@@ -8,17 +8,23 @@ import { keyHint, rawKeyHint } from "./keybinding-hints.js";
 export type AgentRunsSelectorAction = "detail" | "interrupt" | "cancel" | "resume";
 
 export class AgentRunsSelectorComponent extends Container {
+	private readonly getRuns: () => AgentRecentRun[];
+	private readonly onAction: (action: AgentRunsSelectorAction, run: AgentRecentRun) => void;
+	private readonly onCancel: () => void;
 	private selectedIndex = 0;
 	private displayedRuns: AgentRecentRun[] = [];
 	private readonly listContainer = new Container();
 	private readonly detailText = new Text("", 1, 0);
 
 	constructor(
-		private readonly getRuns: () => AgentRecentRun[],
-		private readonly onAction: (action: AgentRunsSelectorAction, run: AgentRecentRun) => void,
-		private readonly onCancel: () => void,
+		getRuns: () => AgentRecentRun[],
+		onAction: (action: AgentRunsSelectorAction, run: AgentRecentRun) => void,
+		onCancel: () => void,
 	) {
 		super();
+		this.getRuns = getRuns;
+		this.onAction = onAction;
+		this.onCancel = onCancel;
 		this.rebuild();
 	}
 

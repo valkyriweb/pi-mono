@@ -20,6 +20,18 @@ export interface DeferredToolSearchToolOptions {
 	actions: DeferredToolSearchRuntimeActions;
 }
 
+function preferClaudeCompatibleToolNames(toolNames: string[]): string[] {
+	if (!toolNames.some((name) => name.toLowerCase().includes("agent"))) {
+		return toolNames;
+	}
+
+	const preferred = new Set(toolNames);
+	if (preferred.has("Agent") && preferred.has("Task")) {
+		preferred.delete("agent");
+	}
+	return Array.from(preferred);
+}
+
 export function createDeferredToolSearchTool(
 	options: DeferredToolSearchToolOptions,
 ): ToolDefinition<typeof toolSearchSchema> {
@@ -35,7 +47,7 @@ export function createDeferredToolSearchTool(
 			const queryMatches = params.query
 				? searchDeferredTools(definitions, params.query).map((tool) => tool.name)
 				: [];
-			const requestedNames = Array.from(new Set([...exactNames, ...queryMatches]));
+			const requestedNames = Array.from(new Set([...exactNames, ...preferClaudeCompatibleToolNames(queryMatches)]));
 			const plan = executeDeferredToolSearchForModel(
 				definitions,
 				requestedNames,

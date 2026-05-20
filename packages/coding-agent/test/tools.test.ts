@@ -7,6 +7,7 @@ import { type BashOperations, createBashTool, createLocalBashOperations } from "
 import { computeEditsDiff } from "../src/core/tools/edit-diff.js";
 import { buildBfsArgs, buildFdArgs } from "../src/core/tools/find.js";
 import { buildRgArgs, buildUgrepArgs } from "../src/core/tools/grep.js";
+import { createAllToolDefinitions } from "../src/core/tools/index.js";
 import {
 	createEditTool,
 	createFindTool,
@@ -15,6 +16,7 @@ import {
 	createGrepToolDefinition,
 	createLsTool,
 	createReadTool,
+	createUppercaseGrepToolDefinition,
 	createWriteTool,
 } from "../src/index.js";
 import * as shellModule from "../src/utils/shell.js";
@@ -26,6 +28,20 @@ const bashTool = createBashTool(process.cwd());
 const grepTool = createGrepTool(process.cwd());
 const findTool = createFindTool(process.cwd());
 const lsTool = createLsTool(process.cwd());
+
+describe("capitalized built-in tool aliases", () => {
+	it("registers uppercase native tool names alongside lowercase compatibility names", () => {
+		const tools = createAllToolDefinitions(process.cwd());
+		for (const name of ["Read", "Bash", "Edit", "Write", "Grep", "Find", "Ls", "Agent", "Task"]) {
+			expect(tools).toHaveProperty(name);
+			expect(tools[name as keyof typeof tools].name).toBe(name);
+		}
+		for (const name of ["read", "bash", "edit", "write", "grep", "find", "ls", "agent"]) {
+			expect(tools).toHaveProperty(name);
+			expect(tools[name as keyof typeof tools].name).toBe(name);
+		}
+	});
+});
 
 // Helper to extract text from content blocks
 function getTextOutput(result: any): string {
@@ -195,12 +211,13 @@ describe("Coding Agent Tools", () => {
 
 		it("should treat files with image extension but non-image content as text", async () => {
 			const testFile = join(testDir, "not-an-image.png");
-			writeFileSync(testFile, "definitely not a png");
+			writeFileSync(testFile, "<html><body>definitely not a png</body></html>");
 
 			const result = await readTool.execute("test-call-img-2", { path: testFile });
 			const output = getTextOutput(result);
 
-			expect(output).toContain("definitely not a png");
+			expect(output).toContain("<html><body>definitely not a png</body></html>");
+			expect(output).not.toContain("Read image file");
 			expect(result.content.some((c: any) => c.type === "image")).toBe(false);
 		});
 	});
@@ -280,6 +297,61 @@ describe("Coding Agent Tools", () => {
 					edits: [{ oldText: "foo", newText: "bar" }],
 				}),
 			).rejects.toThrow(/Found 3 occurrences/);
+		});
+
+		it("should reject quote-normalized fuzzy replacements", async () => {
+			const testFile = join(testDir, "edit-fuzzy-quotes.txt");
+			const originalContent = "const message = “hello”;\n";
+			writeFileSync(testFile, originalContent);
+
+			await expect(
+				editTool.execute("test-call-exact-quotes", {
+					path: testFile,
+					edits: [{ oldText: 'const message = "hello";\n', newText: 'const message = "goodbye";\n' }],
+				}),
+			).rejects.toThrow(/Could not find the exact text/);
+			expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
+		});
+
+		it("should reject whitespace-normalized fuzzy replacements", async () => {
+			const testFile = join(testDir, "edit-fuzzy-whitespace.txt");
+			const originalContent = "alpha   \nbeta\n";
+			writeFileSync(testFile, originalContent);
+
+			await expect(
+				editTool.execute("test-call-exact-whitespace", {
+					path: testFile,
+					edits: [{ oldText: "alpha\nbeta\n", newText: "ALPHA\nbeta\n" }],
+				}),
+			).rejects.toThrow(/Could not find the exact text/);
+			expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
+		});
+
+		it("should reject dash-normalized fuzzy replacements in previews", async () => {
+			const testFile = join(testDir, "edit-fuzzy-dash-preview.txt");
+			writeFileSync(testFile, "alpha—beta\n");
+
+			const result = await computeEditsDiff(
+				testFile,
+				[{ oldText: "alpha-beta\n", newText: "ALPHA-BETA\n" }],
+				testDir,
+			);
+
+			expect(result).toEqual({
+				error: `Could not find the exact text in ${testFile}. The old text must match exactly including all whitespace and newlines.`,
+			});
+		});
+
+		it("should reject overlapping duplicate exact matches", async () => {
+			const testFile = join(testDir, "edit-overlapping-dups.txt");
+			writeFileSync(testFile, "aaa");
+
+			await expect(
+				editTool.execute("test-call-overlapping-dups", {
+					path: testFile,
+					edits: [{ oldText: "aa", newText: "AA" }],
+				}),
+			).rejects.toThrow(/Found 2 occurrences/);
 		});
 
 		it("should replace multiple disjoint regions in one call", async () => {
@@ -756,6 +828,31 @@ describe("Coding Agent Tools", () => {
 			]);
 		});
 
+		it("should add rg type filter when requested", () => {
+			const args = buildRgArgs({ pattern: "needle", searchPath: testDir, type: "ts" });
+
+			expect(args).toContain("--type");
+			expect(args).toContain("ts");
+			expect(args.slice(-3)).toEqual(["--", "needle", testDir]);
+		});
+
+		it("should expose Claude-style output fields in the schema", () => {
+			const definition = createGrepToolDefinition(process.cwd());
+			const uppercaseDefinition = createUppercaseGrepToolDefinition(process.cwd());
+			const properties = (definition.parameters as any).properties;
+
+			expect(definition.name).toBe("grep");
+			expect(uppercaseDefinition.name).toBe("Grep");
+			expect(uppercaseDefinition.parameters).toBe(definition.parameters);
+			expect(properties.outputMode).toBeDefined();
+			expect(properties.output_mode).toBeDefined();
+			expect(properties.headLimit).toBeDefined();
+			expect(properties.head_limit).toBeDefined();
+			expect(properties.offset).toBeDefined();
+			expect(properties.type).toBeDefined();
+			expect(properties.multiline).toBeDefined();
+		});
+
 		it("should expose optional timeout in the schema", () => {
 			const definition = createGrepToolDefinition(process.cwd());
 			expect((definition.parameters as any).properties.timeout).toBeDefined();
@@ -780,6 +877,123 @@ describe("Coding Agent Tools", () => {
 			expect(result.details?.matchesReturned).toBeGreaterThanOrEqual(0);
 			expect(getTextOutput(result)).toContain("grep timed out after 1ms");
 			expect(getTextOutput(result)).toContain("Retry with a narrower path/glob/pattern");
+		});
+
+		it("should keep old grep calls in content mode by default", async () => {
+			const testFile = join(testDir, "old-default.txt");
+			writeFileSync(testFile, "first\nneedle line\nlast\n");
+
+			const result = await grepTool.execute("test-call-grep-old-default", {
+				pattern: "needle",
+				path: testFile,
+			});
+
+			expect(getTextOutput(result)).toContain("old-default.txt:2: needle line");
+			expect(result.details?.mode).toBe("content");
+		});
+
+		it("should support grep content output mode", async () => {
+			const testFile = join(testDir, "content-mode.txt");
+			writeFileSync(testFile, "needle one\nother\nneedle two\n");
+
+			const result = await grepTool.execute("test-call-grep-content-mode", {
+				pattern: "needle",
+				path: testFile,
+				outputMode: "content",
+			});
+			const output = getTextOutput(result);
+
+			expect(output).toContain("content-mode.txt:1: needle one");
+			expect(output).toContain("content-mode.txt:3: needle two");
+			expect(result.details?.mode).toBe("content");
+		});
+
+		it("should support grep files_with_matches output mode", async () => {
+			writeFileSync(join(testDir, "one.txt"), "needle\n");
+			writeFileSync(join(testDir, "two.txt"), "needle\nneedle\n");
+			writeFileSync(join(testDir, "miss.txt"), "nothing\n");
+
+			const result = await grepTool.execute("test-call-grep-files-mode", {
+				pattern: "needle",
+				path: testDir,
+				output_mode: "files_with_matches",
+			});
+			const output = getTextOutput(result);
+
+			expect(output).toContain("one.txt");
+			expect(output).toContain("two.txt");
+			expect(output).not.toContain("miss.txt");
+			expect(output).not.toContain(":1:");
+			expect(result.details?.mode).toBe("files_with_matches");
+			expect(result.details?.numFiles).toBe(2);
+		});
+
+		it("should support grep count output mode", async () => {
+			writeFileSync(join(testDir, "one.txt"), "needle\n");
+			writeFileSync(join(testDir, "two.txt"), "needle\nneedle\n");
+
+			const result = await grepTool.execute("test-call-grep-count-mode", {
+				pattern: "needle",
+				path: testDir,
+				outputMode: "count",
+			});
+			const output = getTextOutput(result);
+
+			expect(output).toContain("one.txt:1");
+			expect(output).toContain("two.txt:2");
+			expect(result.details?.mode).toBe("count");
+			expect(result.details?.numMatches).toBe(3);
+		});
+
+		it("should support headLimit and offset pagination", async () => {
+			const testFile = join(testDir, "paged.txt");
+			writeFileSync(testFile, "needle 1\nneedle 2\nneedle 3\nneedle 4\n");
+
+			const result = await grepTool.execute("test-call-grep-head-offset", {
+				pattern: "needle",
+				path: testFile,
+				outputMode: "content",
+				headLimit: 2,
+				offset: 1,
+			});
+			const output = getTextOutput(result);
+
+			expect(output).not.toContain("needle 1");
+			expect(output).toContain("paged.txt:2: needle 2");
+			expect(output).toContain("paged.txt:3: needle 3");
+			expect(output).not.toContain("needle 4");
+			expect(result.details?.appliedLimit).toBe(2);
+			expect(result.details?.appliedOffset).toBe(1);
+		});
+
+		it("should support head_limit alias", async () => {
+			const testFile = join(testDir, "snake-paged.txt");
+			writeFileSync(testFile, "needle 1\nneedle 2\nneedle 3\n");
+
+			const result = await grepTool.execute("test-call-grep-head-limit", {
+				pattern: "needle",
+				path: testFile,
+				output_mode: "content",
+				head_limit: 1,
+			});
+			const output = getTextOutput(result);
+
+			expect(output).toContain("snake-paged.txt:1: needle 1");
+			expect(output).not.toContain("needle 2");
+			expect(result.details?.appliedLimit).toBe(1);
+		});
+
+		it("should reject unsupported multiline mode clearly", async () => {
+			const testFile = join(testDir, "multiline.txt");
+			writeFileSync(testFile, "needle\nacross\n");
+
+			await expect(
+				grepTool.execute("test-call-grep-multiline", {
+					pattern: "needle.*across",
+					path: testFile,
+					multiline: true,
+				}),
+			).rejects.toThrow(/multiline is not supported/);
 		});
 
 		it("should honor explicit higher grep timeout", async () => {
@@ -963,11 +1177,11 @@ describe("Coding Agent Tools", () => {
 	});
 });
 
-describe("edit tool fuzzy matching", () => {
+describe("edit tool exact matching", () => {
 	let testDir: string;
 
 	beforeEach(() => {
-		testDir = join(tmpdir(), `coding-agent-fuzzy-test-${Date.now()}`);
+		testDir = join(tmpdir(), `coding-agent-exact-test-${Date.now()}`);
 		mkdirSync(testDir, { recursive: true });
 	});
 
@@ -975,167 +1189,156 @@ describe("edit tool fuzzy matching", () => {
 		rmSync(testDir, { recursive: true, force: true });
 	});
 
-	it("should match text with trailing whitespace stripped", async () => {
+	it("should reject text that only matches after trailing whitespace is stripped", async () => {
 		const testFile = join(testDir, "trailing-ws.txt");
-		// File has trailing spaces on lines
-		writeFileSync(testFile, "line one   \nline two  \nline three\n");
+		const originalContent = "line one   \nline two  \nline three\n";
+		writeFileSync(testFile, originalContent);
 
-		// oldText without trailing whitespace should still match
-		const result = await editTool.execute("test-fuzzy-1", {
-			path: testFile,
-			edits: [{ oldText: "line one\nline two\n", newText: "replaced\n" }],
-		});
-
-		expect(getTextOutput(result)).toContain("Successfully replaced");
-		const content = readFileSync(testFile, "utf-8");
-		expect(content).toBe("replaced\nline three\n");
+		await expect(
+			editTool.execute("test-exact-trailing-ws", {
+				path: testFile,
+				edits: [{ oldText: "line one\nline two\n", newText: "replaced\n" }],
+			}),
+		).rejects.toThrow(/Could not find the exact text/);
+		expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 	});
 
-	it("should match fullwidth punctuation in Chinese text", async () => {
+	it("should reject fullwidth punctuation normalization", async () => {
 		const testFile = join(testDir, "chinese-punctuation.txt");
-		writeFileSync(testFile, "你好，世界\n你好（世界）\n");
+		const originalContent = "你好，世界\n你好（世界）\n";
+		writeFileSync(testFile, originalContent);
 
-		const result = await editTool.execute("test-fuzzy-chinese", {
-			path: testFile,
-			edits: [{ oldText: "你好,世界\n你好(世界)\n", newText: "你好，pi\n你好(pi)\n" }],
-		});
-
-		expect(getTextOutput(result)).toContain("Successfully replaced");
-		const content = readFileSync(testFile, "utf-8");
-		expect(content).toBe("你好，pi\n你好(pi)\n");
+		await expect(
+			editTool.execute("test-exact-chinese", {
+				path: testFile,
+				edits: [{ oldText: "你好,世界\n你好(世界)\n", newText: "你好，pi\n你好(pi)\n" }],
+			}),
+		).rejects.toThrow(/Could not find the exact text/);
+		expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 	});
 
-	it("should match compatibility-equivalent Unicode forms", async () => {
+	it("should reject compatibility-equivalent Unicode forms", async () => {
 		const testFile = join(testDir, "unicode-compatibility.txt");
-		writeFileSync(testFile, "ＡＢＣ１２３\ncafe\u0301\n");
+		const originalContent = "ＡＢＣ１２３\ncafe\u0301\n";
+		writeFileSync(testFile, originalContent);
 
-		const result = await editTool.execute("test-fuzzy-unicode", {
-			path: testFile,
-			edits: [{ oldText: "ABC123\ncafé\n", newText: "XYZ789\ncoffee\n" }],
-		});
-
-		expect(getTextOutput(result)).toContain("Successfully replaced");
-		const content = readFileSync(testFile, "utf-8");
-		expect(content).toBe("XYZ789\ncoffee\n");
+		await expect(
+			editTool.execute("test-exact-unicode", {
+				path: testFile,
+				edits: [{ oldText: "ABC123\ncafé\n", newText: "XYZ789\ncoffee\n" }],
+			}),
+		).rejects.toThrow(/Could not find the exact text/);
+		expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 	});
 
-	it("should match smart single quotes to ASCII quotes", async () => {
+	it("should reject smart single quotes when oldText uses ASCII quotes", async () => {
 		const testFile = join(testDir, "smart-quotes.txt");
-		// File has smart/curly single quotes (U+2018, U+2019)
-		writeFileSync(testFile, "console.log(\u2018hello\u2019);\n");
+		const originalContent = "console.log(\u2018hello\u2019);\n";
+		writeFileSync(testFile, originalContent);
 
-		// oldText with ASCII quotes should match
-		const result = await editTool.execute("test-fuzzy-2", {
-			path: testFile,
-			edits: [{ oldText: "console.log('hello');", newText: "console.log('world');" }],
-		});
-
-		expect(getTextOutput(result)).toContain("Successfully replaced");
-		const content = readFileSync(testFile, "utf-8");
-		expect(content).toContain("world");
+		await expect(
+			editTool.execute("test-exact-single-quotes", {
+				path: testFile,
+				edits: [{ oldText: "console.log('hello');", newText: "console.log('world');" }],
+			}),
+		).rejects.toThrow(/Could not find the exact text/);
+		expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 	});
 
-	it("should match smart double quotes to ASCII quotes", async () => {
+	it("should reject smart double quotes when oldText uses ASCII quotes", async () => {
 		const testFile = join(testDir, "smart-double-quotes.txt");
-		// File has smart/curly double quotes (U+201C, U+201D)
-		writeFileSync(testFile, "const msg = \u201CHello World\u201D;\n");
+		const originalContent = "const msg = \u201CHello World\u201D;\n";
+		writeFileSync(testFile, originalContent);
 
-		// oldText with ASCII quotes should match
-		const result = await editTool.execute("test-fuzzy-3", {
-			path: testFile,
-			edits: [{ oldText: 'const msg = "Hello World";', newText: 'const msg = "Goodbye";' }],
-		});
-
-		expect(getTextOutput(result)).toContain("Successfully replaced");
-		const content = readFileSync(testFile, "utf-8");
-		expect(content).toContain("Goodbye");
+		await expect(
+			editTool.execute("test-exact-double-quotes", {
+				path: testFile,
+				edits: [{ oldText: 'const msg = "Hello World";', newText: 'const msg = "Goodbye";' }],
+			}),
+		).rejects.toThrow(/Could not find the exact text/);
+		expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 	});
 
-	it("should match Unicode dashes to ASCII hyphen", async () => {
+	it("should reject Unicode dash normalization", async () => {
 		const testFile = join(testDir, "unicode-dashes.txt");
-		// File has en-dash (U+2013) and em-dash (U+2014)
-		writeFileSync(testFile, "range: 1\u20135\nbreak\u2014here\n");
+		const originalContent = "range: 1\u20135\nbreak\u2014here\n";
+		writeFileSync(testFile, originalContent);
 
-		// oldText with ASCII hyphens should match
-		const result = await editTool.execute("test-fuzzy-4", {
-			path: testFile,
-			edits: [{ oldText: "range: 1-5\nbreak-here", newText: "range: 10-50\nbreak--here" }],
-		});
-
-		expect(getTextOutput(result)).toContain("Successfully replaced");
-		const content = readFileSync(testFile, "utf-8");
-		expect(content).toContain("10-50");
+		await expect(
+			editTool.execute("test-exact-dashes", {
+				path: testFile,
+				edits: [{ oldText: "range: 1-5\nbreak-here", newText: "range: 10-50\nbreak--here" }],
+			}),
+		).rejects.toThrow(/Could not find the exact text/);
+		expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 	});
 
-	it("should match non-breaking space to regular space", async () => {
+	it("should reject non-breaking space normalization", async () => {
 		const testFile = join(testDir, "nbsp.txt");
-		// File has non-breaking space (U+00A0)
-		writeFileSync(testFile, "hello\u00A0world\n");
+		const originalContent = "hello\u00A0world\n";
+		writeFileSync(testFile, originalContent);
 
-		// oldText with regular space should match
-		const result = await editTool.execute("test-fuzzy-5", {
-			path: testFile,
-			edits: [{ oldText: "hello world", newText: "hello universe" }],
-		});
-
-		expect(getTextOutput(result)).toContain("Successfully replaced");
-		const content = readFileSync(testFile, "utf-8");
-		expect(content).toContain("universe");
+		await expect(
+			editTool.execute("test-exact-nbsp", {
+				path: testFile,
+				edits: [{ oldText: "hello world", newText: "hello universe" }],
+			}),
+		).rejects.toThrow(/Could not find the exact text/);
+		expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 	});
 
-	it("should prefer exact match over fuzzy match", async () => {
-		const testFile = join(testDir, "exact-preferred.txt");
-		// File has both exact and fuzzy-matchable content
+	it("should still replace exact text", async () => {
+		const testFile = join(testDir, "exact-replace.txt");
 		writeFileSync(testFile, "const x = 'exact';\nconst y = 'other';\n");
 
-		const result = await editTool.execute("test-fuzzy-6", {
+		const result = await editTool.execute("test-exact-replace", {
 			path: testFile,
 			edits: [{ oldText: "const x = 'exact';", newText: "const x = 'changed';" }],
 		});
 
 		expect(getTextOutput(result)).toContain("Successfully replaced");
-		const content = readFileSync(testFile, "utf-8");
-		expect(content).toBe("const x = 'changed';\nconst y = 'other';\n");
+		expect(readFileSync(testFile, "utf-8")).toBe("const x = 'changed';\nconst y = 'other';\n");
 	});
 
-	it("should still fail when text is not found even with fuzzy matching", async () => {
+	it("should fail when text is not found", async () => {
 		const testFile = join(testDir, "no-match.txt");
 		writeFileSync(testFile, "completely different content\n");
 
 		await expect(
-			editTool.execute("test-fuzzy-7", {
+			editTool.execute("test-exact-no-match", {
 				path: testFile,
 				edits: [{ oldText: "this does not exist", newText: "replacement" }],
 			}),
 		).rejects.toThrow(/Could not find the exact text/);
 	});
 
-	it("should detect duplicates after fuzzy normalization", async () => {
-		const testFile = join(testDir, "fuzzy-dups.txt");
-		// Two lines that are identical after trailing whitespace is stripped
-		writeFileSync(testFile, "hello world   \nhello world\n");
+	it("should detect only exact duplicates", async () => {
+		const testFile = join(testDir, "exact-dups.txt");
+		writeFileSync(testFile, "hello world\nhello world\n");
 
 		await expect(
-			editTool.execute("test-fuzzy-8", {
+			editTool.execute("test-exact-dups", {
 				path: testFile,
 				edits: [{ oldText: "hello world", newText: "replaced" }],
 			}),
 		).rejects.toThrow(/Found 2 occurrences/);
 	});
 
-	it("should support fuzzy matching in multi-edit mode", async () => {
-		const testFile = join(testDir, "fuzzy-multi.txt");
-		writeFileSync(testFile, "console.log(\u2018hello\u2019);\nhello\u00A0world\n");
+	it("should reject fuzzy matches in multi-edit mode without partial writes", async () => {
+		const testFile = join(testDir, "exact-multi.txt");
+		const originalContent = "console.log(\u2018hello\u2019);\nhello\u00A0world\n";
+		writeFileSync(testFile, originalContent);
 
-		await editTool.execute("test-fuzzy-9", {
-			path: testFile,
-			edits: [
-				{ oldText: "console.log('hello');\n", newText: "console.log('world');\n" },
-				{ oldText: "hello world\n", newText: "hello universe\n" },
-			],
-		});
-
-		expect(readFileSync(testFile, "utf-8")).toBe("console.log('world');\nhello universe\n");
+		await expect(
+			editTool.execute("test-exact-multi", {
+				path: testFile,
+				edits: [
+					{ oldText: "console.log('hello');\n", newText: "console.log('world');\n" },
+					{ oldText: "hello world\n", newText: "hello universe\n" },
+				],
+			}),
+		).rejects.toThrow(/Could not find edits\[0\]/);
+		expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 	});
 });
 

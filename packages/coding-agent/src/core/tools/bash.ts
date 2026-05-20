@@ -44,7 +44,7 @@ const bashSchema = Type.Object({
 // can read or stop them by id. Output is appended to a log file under
 // ~/.pi/agent/bash-bg/<bgId>.log so it survives process exit and can be tailed.
 
-interface BashBgJob {
+export interface BashBgJob {
 	id: string;
 	command: string;
 	cwd: string;
@@ -59,6 +59,16 @@ interface BashBgJob {
 }
 
 const bashBgJobs = new Map<string, BashBgJob>();
+const bashBgSubscribers = new Set<() => void>();
+
+function notifyBashBgJobsChanged(): void {
+	for (const subscriber of bashBgSubscribers) subscriber();
+}
+
+export function subscribeBashBgJobs(callback: () => void): () => void {
+	bashBgSubscribers.add(callback);
+	return () => bashBgSubscribers.delete(callback);
+}
 
 function bashBgLogDir(): string {
 	const dir = join(homedir(), ".pi", "agent", "bash-bg");
@@ -70,12 +80,18 @@ function nextBashBgId(): string {
 	return `bg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function getBashBgJob(id: string): BashBgJob | undefined {
+export function getBashBgJob(id: string): BashBgJob | undefined {
 	return bashBgJobs.get(id);
 }
 
 export function listBashBgJobs(): BashBgJob[] {
 	return [...bashBgJobs.values()];
+}
+
+export function getRunningBashBgJobsSorted(): BashBgJob[] {
+	return listBashBgJobs()
+		.filter((job) => job.status === "running")
+		.sort((a, b) => a.startedAt - b.startedAt);
 }
 
 /**
@@ -96,6 +112,7 @@ export function killAllBashBgJobs(): void {
 		}
 	}
 	bashBgJobs.clear();
+	notifyBashBgJobsChanged();
 }
 
 function spawnBashBackground(command: string, cwd: string, shellPath?: string, commandPrefix?: string): BashBgJob {
@@ -130,11 +147,13 @@ function spawnBashBackground(command: string, cwd: string, shellPath?: string, c
 		error: undefined,
 	};
 	bashBgJobs.set(id, job);
+	notifyBashBgJobsChanged();
 	child.on("error", (err) => {
 		job.status = "failed";
 		job.error = err.message;
 		job.endedAt = Date.now();
 		if (child.pid) untrackDetachedChildPid(child.pid);
+		notifyBashBgJobsChanged();
 	});
 	child.on("exit", (code, signal) => {
 		job.exitCode = code;
@@ -144,6 +163,7 @@ function spawnBashBackground(command: string, cwd: string, shellPath?: string, c
 			job.status = signal ? "killed" : "exited";
 		}
 		if (child.pid) untrackDetachedChildPid(child.pid);
+		notifyBashBgJobsChanged();
 	});
 	// Don't keep the event loop alive on our behalf — caller decides.
 	child.unref();
@@ -190,6 +210,10 @@ export interface BashBgDetails {
 export interface BashToolDetails {
 	truncation?: TruncationResult;
 	fullOutputPath?: string;
+}
+
+export interface BashOutputToolDetails extends BashBgJob {
+	fullOutputPath: string;
 }
 
 /**
@@ -301,6 +325,8 @@ function resolveSpawnContext(command: string, cwd: string, spawnHook?: BashSpawn
 }
 
 export interface BashToolOptions {
+	toolName?: "bash" | "Bash";
+	label?: string;
 	/** Custom operations for command execution. Default: local shell */
 	operations?: BashOperations;
 	/** Command prefix prepended to every command (for example shell setup commands) */
@@ -315,6 +341,13 @@ const BASH_PREVIEW_LINES = 5;
 const BASH_UPDATE_THROTTLE_MS = 100;
 const DEFAULT_BASH_TIMEOUT_SECONDS = 300;
 const NATIVE_TOOL_COMMANDS = new Set(["grep", "rg", "find", "ls"]);
+const COMMAND_SEMANTIC_EXIT_STATUS = 1;
+
+type BashSemanticExit = {
+	command: string;
+	exitCode: number;
+	summary: string;
+};
 
 type BashRenderState = {
 	startedAt: number | undefined;
@@ -401,7 +434,7 @@ function detectHeredoc(cmd: string): CommandSegment[] | null {
 	const prefix = cmd.slice(0, match.index);
 	let lang = "bash";
 	for (const { pattern, lang: l } of INLINE_SCRIPT_FLAGS) {
-		if (pattern.test(prefix + " x")) {
+		if (pattern.test(`${prefix} x`)) {
 			lang = l;
 			break;
 		}
@@ -459,6 +492,120 @@ function segmentCommand(command: string): CommandSegment[] {
 function resolveBashTimeout(timeout: number | false | undefined): number | undefined {
 	if (timeout === false) return undefined;
 	return timeout ?? DEFAULT_BASH_TIMEOUT_SECONDS;
+}
+
+function shellTokensForSimpleCommand(command: string): string[] | undefined {
+	const tokens: string[] = [];
+	let token = "";
+	let quote: '"' | "'" | undefined;
+	let escaped = false;
+
+	for (const char of command.trim()) {
+		if (escaped) {
+			token += char;
+			escaped = false;
+			continue;
+		}
+		if (char === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (char === quote) quote = undefined;
+			else token += char;
+			continue;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+			continue;
+		}
+		if (char === ";" || char === "|" || char === "&" || char === "\n" || char === "(" || char === ")") {
+			return undefined;
+		}
+		if (/\s/.test(char)) {
+			if (token) {
+				tokens.push(token);
+				token = "";
+			}
+			continue;
+		}
+		token += char;
+	}
+	if (escaped || quote) return undefined;
+	if (token) tokens.push(token);
+	return tokens.length > 0 ? tokens : undefined;
+}
+
+function isShellAssignment(token: string): boolean {
+	return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(token);
+}
+
+function skipGitGlobalOption(tokens: string[], index: number): number {
+	const token = tokens[index];
+	if (!token?.startsWith("-")) return index;
+	if (["-C", "-c", "--git-dir", "--work-tree", "--namespace"].includes(token)) return index + 2;
+	if (
+		token.startsWith("-C") ||
+		token.startsWith("-c") ||
+		token.startsWith("--git-dir=") ||
+		token.startsWith("--work-tree=") ||
+		token.startsWith("--namespace=")
+	) {
+		return index + 1;
+	}
+	return index + 1;
+}
+
+function commandNameForExitSemantics(command: string): string | undefined {
+	const tokens = shellTokensForSimpleCommand(command);
+	if (!tokens) return undefined;
+	let index = 0;
+	while (isShellAssignment(tokens[index] ?? "")) index++;
+	if (tokens[index] === "command" || tokens[index] === "builtin") index++;
+	if (tokens[index] === "env") {
+		index++;
+		while (isShellAssignment(tokens[index] ?? "")) index++;
+	}
+	const commandName = tokens[index];
+	if (!commandName) return undefined;
+	if (commandName !== "git") return commandName;
+
+	index++;
+	while (index < tokens.length && tokens[index]?.startsWith("-")) {
+		const nextIndex = skipGitGlobalOption(tokens, index);
+		if (nextIndex <= index) break;
+		index = nextIndex;
+	}
+	const gitSubcommand = tokens[index];
+	if (gitSubcommand === "grep" || gitSubcommand === "diff") return `git ${gitSubcommand}`;
+	return commandName;
+}
+
+export function semanticExitForBashCommand(command: string, exitCode: number | null): BashSemanticExit | undefined {
+	if (exitCode !== COMMAND_SEMANTIC_EXIT_STATUS) return undefined;
+	const commandName = commandNameForExitSemantics(command);
+	switch (commandName) {
+		case "grep":
+		case "egrep":
+		case "fgrep":
+		case "rg":
+		case "git grep":
+			return { command: commandName, exitCode, summary: `${commandName} found no matches` };
+		case "diff":
+		case "git diff":
+			return { command: commandName, exitCode, summary: `${commandName} found differences` };
+		case "test":
+		case "[":
+			return { command: commandName, exitCode, summary: `${commandName} condition was false` };
+		case "find":
+			return {
+				command: commandName,
+				exitCode,
+				summary: "find completed with partial results or inaccessible paths",
+			};
+		default:
+			return undefined;
+	}
 }
 
 export function nativeToolCommandUsedInBash(command: string): "grep" | "rg" | "find" | "ls" | undefined {
@@ -613,10 +760,12 @@ export function createBashToolDefinition(
 	const ops = options?.operations ?? createLocalBashOperations({ shellPath: options?.shellPath });
 	const commandPrefix = options?.commandPrefix;
 	const spawnHook = options?.spawnHook;
+	const toolName = options?.toolName ?? "bash";
+	const label = options?.label ?? toolName;
 	return {
-		name: "bash",
-		label: "bash",
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: do not use this tool to run \`grep\`, \`rg\`, \`find\`, or \`ls\` \u2014 use the dedicated \`grep\`, \`find\`, and \`ls\` tools instead. Bash invocations of those commands are blocked at runtime and return an error. Reserve bash for shell-only operations (pipelines, \`stat\`, \`wc\`, \`head\`, \`tail\`, git, package managers, etc.).\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
+		name: toolName,
+		label,
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: do not use this tool to run \`grep\`, \`rg\`, \`find\`, or \`ls\` \u2014 use the dedicated Grep, Find, and Ls tools instead. Bash invocations of those commands are blocked at runtime and return an error. Reserve Bash for shell-only operations (pipelines, \`stat\`, \`wc\`, \`head\`, \`tail\`, git, package managers, etc.).\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
 		promptSnippet:
 			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
 		promptGuidelines: [
@@ -624,7 +773,7 @@ export function createBashToolDefinition(
 			"Do NOT poll a background bash job with sleep loops. Call bash_output(bgId) when you need its current state, or use monitor_start instead if you want to be woken on every output batch.",
 			"Always stop background jobs you started but no longer need with bash_kill(bgId).",
 			// Worded identically to system-prompt.ts so the dedup in addGuideline merges both into one bullet.
-			"Use the grep, find, and ls tools for file exploration instead of bash — `grep`/`rg`/`find`/`ls` invoked via bash are blocked at runtime.",
+			"Use the Grep, Find, and Ls tools for file exploration instead of Bash — `grep`/`rg`/`find`/`ls` invoked via Bash are blocked at runtime.",
 		],
 		parameters: bashSchema,
 		async execute(
@@ -784,7 +933,12 @@ export function createBashToolDefinition(
 				const snapshot = await finishOutput();
 				const { text: outputText, details } = formatOutput(snapshot);
 				if (exitCode !== 0 && exitCode !== null) {
-					throw new Error(appendStatus(outputText, `Command exited with code ${exitCode}`));
+					const semanticExit = semanticExitForBashCommand(command, exitCode);
+					if (!semanticExit) {
+						throw new Error(appendStatus(outputText, `Command exited with code ${exitCode}`));
+					}
+					const status = `Command exited with code ${exitCode} (${semanticExit.summary}; treated as success).`;
+					return { content: [{ type: "text", text: appendStatus(outputText, status) }], details };
 				}
 				return { content: [{ type: "text", text: outputText }], details };
 			} finally {
@@ -833,6 +987,17 @@ export function createBashTool(cwd: string, options?: BashToolOptions): AgentToo
 	return wrapToolDefinition(createBashToolDefinition(cwd, options));
 }
 
+export function createUppercaseBashToolDefinition(
+	cwd: string,
+	options?: BashToolOptions,
+): ToolDefinition<typeof bashSchema, BashToolDetails | undefined, BashRenderState> {
+	return createBashToolDefinition(cwd, { ...options, toolName: "Bash", label: "Bash" });
+}
+
+export function createUppercaseBashTool(cwd: string, options?: BashToolOptions): AgentTool<typeof bashSchema> {
+	return wrapToolDefinition(createUppercaseBashToolDefinition(cwd, options));
+}
+
 // ===========================================================================
 // bash_output — read accumulated output from a backgrounded bash job
 // ===========================================================================
@@ -849,7 +1014,10 @@ const bashOutputSchema = Type.Object({
 
 export type BashOutputToolInput = Static<typeof bashOutputSchema>;
 
-export function createBashOutputToolDefinition(): ToolDefinition<typeof bashOutputSchema, BashBgJob | undefined> {
+export function createBashOutputToolDefinition(): ToolDefinition<
+	typeof bashOutputSchema,
+	BashOutputToolDetails | undefined
+> {
 	return {
 		name: "bash_output",
 		label: "bash_output",
@@ -887,7 +1055,7 @@ export function createBashOutputToolDefinition(): ToolDefinition<typeof bashOutp
 			const body = lines.length ? lines.join("\n") : "(no output yet)";
 			return {
 				content: [{ type: "text", text: `${header}\n\n${body}` }],
-				details: job,
+				details: { ...job, fullOutputPath: job.logPath },
 			};
 		},
 	};
@@ -951,6 +1119,7 @@ export function createBashKillToolDefinition(): ToolDefinition<typeof bashKillSc
 			}
 			job.status = "killed";
 			job.endedAt = Date.now();
+			notifyBashBgJobsChanged();
 			return {
 				content: [{ type: "text", text: `Killed bgId=${bgId} (pid=${job.pid ?? "unknown"}).` }],
 				details: job,

@@ -72,7 +72,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		}
 
 		// Append skills section (only if read tool is available)
-		const customPromptHasRead = !selectedTools || selectedTools.includes("read");
+		const customPromptHasRead = !selectedTools || selectedTools.includes("read") || selectedTools.includes("Read");
 		if (customPromptHasRead && skills.length > 0) {
 			prompt += formatSkillsForPrompt(skills);
 		}
@@ -91,7 +91,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
 	// Build tools list based on selected tools.
 	// A tool appears in Available tools only when the caller provides a one-line snippet.
-	const tools = selectedTools || ["read", "bash", "edit", "write", "grep", "find", "ls"];
+	const tools = selectedTools || ["Read", "Bash", "Edit", "Write", "Grep", "Find", "Ls"];
 	const visibleTools = tools.filter((name) => !!toolSnippets?.[name]);
 	const toolsList =
 		visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets![name]}`).join("\n") : "(none)";
@@ -107,20 +107,20 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		guidelinesList.push(guideline);
 	};
 
-	const hasBash = tools.includes("bash");
-	const hasGrep = tools.includes("grep");
-	const hasFind = tools.includes("find");
-	const hasLs = tools.includes("ls");
-	const hasRead = tools.includes("read");
+	const hasBash = tools.includes("bash") || tools.includes("Bash");
+	const hasGrep = tools.includes("grep") || tools.includes("Grep");
+	const hasFind = tools.includes("find") || tools.includes("Find");
+	const hasLs = tools.includes("ls") || tools.includes("Ls");
+	const hasRead = tools.includes("read") || tools.includes("Read");
 
 	// File exploration guidelines
 	if (hasBash && !hasGrep && !hasFind && !hasLs) {
-		addGuideline("Use bash for file operations like ls, rg, find");
+		addGuideline("Use Bash for file operations like ls, rg, find");
 	} else if (hasBash && (hasGrep || hasFind || hasLs)) {
 		// Single CC-style bullet: positive verb leads, negative explains why.
 		// Worded to match bash.ts promptGuidelines so the dedup in addGuideline collapses both into one line.
 		addGuideline(
-			"Use the grep, find, and ls tools for file exploration instead of bash — `grep`/`rg`/`find`/`ls` invoked via bash are blocked at runtime.",
+			"Use the Grep, Find, and Ls tools for file exploration instead of Bash — `grep`/`rg`/`find`/`ls` invoked via Bash are blocked at runtime.",
 		);
 	}
 
@@ -157,6 +157,7 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 - Main documentation: ${readmePath}
 - Additional docs: ${docsPath}
 - Examples: ${examplesPath} (extensions, custom tools, SDK)
+- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
 - When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md)
 - When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
 - Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;

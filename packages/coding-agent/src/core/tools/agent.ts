@@ -51,7 +51,11 @@ const controlActionSchema = Type.Union([
 
 const taskSchema = Type.Object({
 	agent: Type.String({ description: "Agent id/name to run" }),
+	subagent_type: Type.Optional(
+		Type.String({ description: "Alias for agent, matching Claude Code's Agent/Task tool" }),
+	),
 	task: Type.String({ description: "Task for the child agent" }),
+	prompt: Type.Optional(Type.String({ description: "Alias for task, matching Claude Code's Agent/Task tool" })),
 	description: Type.Optional(Type.String({ description: "Short UI label" })),
 	context: Type.Optional(contextModeSchema),
 	extraContext: Type.Optional(
@@ -78,7 +82,11 @@ export const agentToolSchema = Type.Object({
 	runId: Type.Optional(Type.String({ description: "Background run id for control actions" })),
 	message: Type.Optional(Type.String({ description: "Optional resume/continue prompt for control actions" })),
 	agent: Type.Optional(Type.String({ description: "Agent id/name to run" })),
+	subagent_type: Type.Optional(
+		Type.String({ description: "Alias for agent, matching Claude Code's Agent/Task tool" }),
+	),
 	task: Type.Optional(Type.String({ description: "Task for the child agent" })),
+	prompt: Type.Optional(Type.String({ description: "Alias for task, matching Claude Code's Agent/Task tool" })),
 	description: Type.Optional(Type.String()),
 	tasks: Type.Optional(Type.Array(taskSchema, { maxItems: 8 })),
 	chain: Type.Optional(Type.Array(taskSchema, { minItems: 1 })),
@@ -105,12 +113,18 @@ export const agentToolSchema = Type.Object({
 	background: Type.Optional(
 		Type.Boolean({ description: "Run in the background and return immediately with a run id" }),
 	),
+	run_in_background: Type.Optional(
+		Type.Boolean({ description: "Alias for background, matching Claude Code's Agent/Task tool" }),
+	),
 	agentScope: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project"), Type.Literal("both")])),
 });
 
 export type AgentToolInput = Static<typeof agentToolSchema>;
 
 export interface AgentToolOptions {
+	toolName?: "agent" | "Agent" | "Task";
+	label?: string;
+	description?: string;
 	parentServices?: AgentToolParentServices;
 	getParentActiveTools?: () => string[];
 	getParentSessionManager?: () => ReadonlySessionManager;
@@ -139,13 +153,75 @@ function countExecutionModes(params: AgentToolInput): number {
 	].filter(Boolean).length;
 }
 
+type AgentToolParams = AgentToolInput & Record<string, unknown>;
+type AgentTaskParams = NonNullable<AgentToolInput["tasks"]>[number] & Record<string, unknown>;
+
+const unsupportedFutureFields = ["cwd", "worktree", "remote", "team_name", "name", "mode"] as const;
+
+function rejectUnsupportedFutureFields(params: Record<string, unknown>): void {
+	for (const field of unsupportedFutureFields) {
+		if (field in params) {
+			throw new Error(`agent tool field ${field} is not supported yet`);
+		}
+	}
+}
+
+function resolveStringAlias(
+	params: Record<string, unknown>,
+	primaryName: string,
+	aliasName: string,
+): string | undefined {
+	const primary = params[primaryName];
+	const alias = params[aliasName];
+	if (typeof primary === "string" && typeof alias === "string" && primary !== alias) {
+		throw new Error(`Conflicting agent tool aliases: ${primaryName} and ${aliasName} differ`);
+	}
+	return typeof primary === "string" ? primary : typeof alias === "string" ? alias : undefined;
+}
+
+function resolveBooleanAlias(
+	params: Record<string, unknown>,
+	primaryName: string,
+	aliasName: string,
+): boolean | undefined {
+	const primary = params[primaryName];
+	const alias = params[aliasName];
+	if (typeof primary === "boolean" && typeof alias === "boolean" && primary !== alias) {
+		throw new Error(`Conflicting agent tool aliases: ${primaryName} and ${aliasName} differ`);
+	}
+	return typeof primary === "boolean" ? primary : typeof alias === "boolean" ? alias : undefined;
+}
+
+function normalizeAgentTaskAliases(task: AgentTaskParams): NonNullable<AgentToolInput["tasks"]>[number] {
+	rejectUnsupportedFutureFields(task);
+	return {
+		...task,
+		agent: resolveStringAlias(task, "agent", "subagent_type") ?? task.agent,
+		task: resolveStringAlias(task, "task", "prompt") ?? task.task,
+	};
+}
+
+export function normalizeAgentToolAliases(params: AgentToolInput): AgentToolInput {
+	const input = params as AgentToolParams;
+	rejectUnsupportedFutureFields(input);
+	return {
+		...params,
+		agent: resolveStringAlias(input, "agent", "subagent_type") ?? params.agent,
+		task: resolveStringAlias(input, "task", "prompt") ?? params.task,
+		background: resolveBooleanAlias(input, "background", "run_in_background") ?? params.background,
+		tasks: params.tasks?.map((task) => normalizeAgentTaskAliases(task as AgentTaskParams)),
+		chain: params.chain?.map((task) => normalizeAgentTaskAliases(task as AgentTaskParams)),
+	};
+}
+
 export function normalizeAgentToolMode(params: AgentToolInput): {
 	mode: AgentToolMode;
 	tasks: NonNullable<AgentToolInput["tasks"]>;
 } {
-	const hasSingle = Boolean(params.agent && params.task);
-	const hasParallel = Boolean(params.tasks && params.tasks.length > 0);
-	const count = countExecutionModes(params);
+	const normalized = normalizeAgentToolAliases(params);
+	const hasSingle = Boolean(normalized.agent && normalized.task);
+	const hasParallel = Boolean(normalized.tasks && normalized.tasks.length > 0);
+	const count = countExecutionModes(normalized);
 	if (count !== 1) {
 		throw new Error("agent tool requires exactly one mode: {agent, task}, {tasks}, or {chain}");
 	}
@@ -154,23 +230,23 @@ export function normalizeAgentToolMode(params: AgentToolInput): {
 			mode: "single",
 			tasks: [
 				{
-					agent: params.agent ?? "",
-					task: params.task ?? "",
-					description: params.description,
-					context: params.context,
-					extraContext: params.extraContext,
-					model: params.model,
-					tools: params.tools,
-					thinking: params.thinking,
-					maxOutputTokens: params.maxOutputTokens,
-					output: params.output,
-					outputMode: params.outputMode,
+					agent: normalized.agent ?? "",
+					task: normalized.task ?? "",
+					description: normalized.description,
+					context: normalized.context,
+					extraContext: normalized.extraContext,
+					model: normalized.model,
+					tools: normalized.tools,
+					thinking: normalized.thinking,
+					maxOutputTokens: normalized.maxOutputTokens,
+					output: normalized.output,
+					outputMode: normalized.outputMode,
 				},
 			],
 		};
 	}
-	if (hasParallel) return { mode: "parallel", tasks: params.tasks ?? [] };
-	return { mode: "chain", tasks: params.chain ?? [] };
+	if (hasParallel) return { mode: "parallel", tasks: normalized.tasks ?? [] };
+	return { mode: "chain", tasks: normalized.chain ?? [] };
 }
 
 function formatUsage(run: AgentRunDetails): string | undefined {
@@ -395,10 +471,13 @@ export function createAgentToolDefinition(
 	_cwd: string,
 	options?: AgentToolOptions,
 ): ToolDefinition<typeof agentToolSchema, AgentToolDetails> {
+	const toolName = options?.toolName ?? "agent";
+	const label = options?.label ?? toolName;
 	return {
-		name: "agent",
-		label: "agent",
+		name: toolName,
+		label,
 		description:
+			options?.description ??
 			"Launch a built-in or configured Pi child agent. Supports single {agent, task}, parallel {tasks}, sequential chain {chain}, background execution, and background run control actions.",
 		promptSnippet: "Delegate a task to a child agent with bounded tools",
 		promptGuidelines: [
@@ -414,27 +493,28 @@ export function createAgentToolDefinition(
 		parameters: agentToolSchema,
 		executionMode: "parallel",
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			if (params.action) return executeAgentControlAction(params);
+			const normalizedParams = normalizeAgentToolAliases(params);
+			if (normalizedParams.action) return executeAgentControlAction(normalizedParams);
 			if (!options?.parentServices || !options.getParentActiveTools || !options.getParentSessionManager) {
 				throw new Error("agent tool is unavailable in this runtime");
 			}
-			await confirmProjectAgentsIfNeeded(params, ctx);
-			const mode = normalizeAgentToolMode(params);
+			await confirmProjectAgentsIfNeeded(normalizedParams, ctx);
+			const mode = normalizeAgentToolMode(normalizedParams);
 			const details = await executeAgentTool(
 				{
 					mode: mode.mode,
 					tasks: mode.tasks,
-					concurrency: params.concurrency,
-					context: params.context,
-					extraContext: params.extraContext,
-					model: params.model,
-					tools: params.tools,
-					thinking: params.thinking,
-					output: params.output,
-					outputMode: params.outputMode,
-					chainDir: params.chainDir,
-					background: params.background,
-					agentScope: params.agentScope,
+					concurrency: normalizedParams.concurrency,
+					context: normalizedParams.context,
+					extraContext: normalizedParams.extraContext,
+					model: normalizedParams.model,
+					tools: normalizedParams.tools,
+					thinking: normalizedParams.thinking,
+					output: normalizedParams.output,
+					outputMode: normalizedParams.outputMode,
+					chainDir: normalizedParams.chainDir,
+					background: normalizedParams.background,
+					agentScope: normalizedParams.agentScope,
 				},
 				{
 					parentServices: options.parentServices,
@@ -457,19 +537,20 @@ export function createAgentToolDefinition(
 		},
 		renderCall(args, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			let label = "agent";
+			let detail: string = toolName;
 			try {
-				if (args.action) {
-					label = `${args.action}${args.runId ? `: ${args.runId}` : ""}`;
+				const normalizedArgs = normalizeAgentToolAliases(args);
+				if (normalizedArgs.action) {
+					detail = `${normalizedArgs.action}${normalizedArgs.runId ? `: ${normalizedArgs.runId}` : ""}`;
 				} else {
-					const mode = normalizeAgentToolMode(args);
+					const mode = normalizeAgentToolMode(normalizedArgs);
 					const names = mode.tasks.map((task) => task.agent).join(", ");
-					label = `${mode.mode}${args.background ? " background" : ""}: ${names}`;
+					detail = `${mode.mode}${normalizedArgs.background ? " background" : ""}: ${names}`;
 				}
 			} catch (e) {
-				label = `agent: ${e instanceof Error ? e.message : "invalid mode"}`;
+				detail = `${toolName}: ${e instanceof Error ? e.message : "invalid mode"}`;
 			}
-			text.setText(`${theme.fg("toolTitle", theme.bold("agent"))} ${theme.fg("accent", label)}`);
+			text.setText(`${theme.fg("toolTitle", theme.bold(label))} ${theme.fg("accent", detail)}`);
 			return text;
 		},
 		renderResult(result, options, _theme, context) {
@@ -498,6 +579,40 @@ export function createAgentToolDefinition(
 
 export function createAgentTool(cwd: string, options?: AgentToolOptions): AgentTool<typeof agentToolSchema> {
 	return wrapToolDefinition(createAgentToolDefinition(cwd, options));
+}
+
+export function createUppercaseAgentToolDefinition(
+	cwd: string,
+	options?: AgentToolOptions,
+): ToolDefinition<typeof agentToolSchema, AgentToolDetails> {
+	return createAgentToolDefinition(cwd, {
+		...options,
+		toolName: "Agent",
+		label: "Agent",
+		description:
+			"Launch a Pi child agent, matching Claude Code's native Agent tool. Supports single {subagent_type, prompt}, legacy {agent, task}, parallel {tasks}, sequential chain {chain}, background execution, and background run control actions.",
+	});
+}
+
+export function createUppercaseAgentTool(cwd: string, options?: AgentToolOptions): AgentTool<typeof agentToolSchema> {
+	return wrapToolDefinition(createUppercaseAgentToolDefinition(cwd, options));
+}
+
+export function createTaskToolDefinition(
+	cwd: string,
+	options?: AgentToolOptions,
+): ToolDefinition<typeof agentToolSchema, AgentToolDetails> {
+	return createAgentToolDefinition(cwd, {
+		...options,
+		toolName: "Task",
+		label: "Task",
+		description:
+			"Launch a Pi child agent, matching Claude Code's legacy Task tool alias. Supports single {agent, task}, parallel {tasks}, sequential chain {chain}, background execution, and background run control actions.",
+	});
+}
+
+export function createTaskTool(cwd: string, options?: AgentToolOptions): AgentTool<typeof agentToolSchema> {
+	return wrapToolDefinition(createTaskToolDefinition(cwd, options));
 }
 
 export type { AgentToolDetails };

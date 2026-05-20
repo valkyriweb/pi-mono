@@ -35,6 +35,8 @@ const defaultWriteOperations: WriteOperations = {
 };
 
 export interface WriteToolOptions {
+	toolName?: "write" | "Write";
+	label?: string;
 	/** Custom operations for file writing. Default: local filesystem */
 	operations?: WriteOperations;
 }
@@ -183,9 +185,11 @@ export function createWriteToolDefinition(
 	options?: WriteToolOptions,
 ): ToolDefinition<typeof writeSchema, undefined> {
 	const ops = options?.operations ?? defaultWriteOperations;
+	const toolName = options?.toolName ?? "write";
+	const label = options?.label ?? toolName;
 	return {
-		name: "write",
-		label: "write",
+		name: toolName,
+		label,
 		description:
 			"Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
 		promptSnippet: "Create or overwrite files",
@@ -278,4 +282,15 @@ export function createWriteToolDefinition(
 
 export function createWriteTool(cwd: string, options?: WriteToolOptions): AgentTool<typeof writeSchema> {
 	return wrapToolDefinition(createWriteToolDefinition(cwd, options));
+}
+
+export function createUppercaseWriteToolDefinition(
+	cwd: string,
+	options?: WriteToolOptions,
+): ToolDefinition<typeof writeSchema, undefined> {
+	return createWriteToolDefinition(cwd, { ...options, toolName: "Write", label: "Write" });
+}
+
+export function createUppercaseWriteTool(cwd: string, options?: WriteToolOptions): AgentTool<typeof writeSchema> {
+	return wrapToolDefinition(createUppercaseWriteToolDefinition(cwd, options));
 }

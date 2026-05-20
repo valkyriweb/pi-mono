@@ -261,10 +261,16 @@ function hasGlobPattern(s: string): boolean {
 	return s.includes("*") || s.includes("?");
 }
 
-function splitPatterns(entries: string[]): { plain: string[]; patterns: string[] } {
+function normalizeResourceEntries(entries: unknown): string[] {
+	if (Array.isArray(entries)) return entries.filter((entry): entry is string => typeof entry === "string");
+	if (typeof entries === "string") return [entries];
+	return [];
+}
+
+function splitPatterns(entries: unknown): { plain: string[]; patterns: string[] } {
 	const plain: string[] = [];
 	const patterns: string[] = [];
-	for (const entry of entries) {
+	for (const entry of normalizeResourceEntries(entries)) {
 		if (isPattern(entry)) {
 			patterns.push(entry);
 		} else {
@@ -675,8 +681,10 @@ function matchesAnyExactPattern(filePath: string, patterns: string[], baseDir: s
 	});
 }
 
-function getOverridePatterns(entries: string[]): string[] {
-	return entries.filter((pattern) => pattern.startsWith("!") || pattern.startsWith("+") || pattern.startsWith("-"));
+function getOverridePatterns(entries: unknown): string[] {
+	return normalizeResourceEntries(entries).filter(
+		(pattern) => pattern.startsWith("!") || pattern.startsWith("+") || pattern.startsWith("-"),
+	);
 }
 
 function isEnabledByOverrides(filePath: string, patterns: string[], baseDir: string): boolean {
@@ -871,12 +879,8 @@ export class DefaultPackageManager implements PackageManager {
 
 		for (const resourceType of RESOURCE_TYPES) {
 			const target = this.getTargetMap(accumulator, resourceType);
-			const globalEntries = (
-				Array.isArray(globalSettings[resourceType]) ? globalSettings[resourceType] : []
-			) as string[];
-			const projectEntries = (
-				Array.isArray(projectSettings[resourceType]) ? projectSettings[resourceType] : []
-			) as string[];
+			const globalEntries = normalizeResourceEntries(globalSettings[resourceType]);
+			const projectEntries = normalizeResourceEntries(projectSettings[resourceType]);
 			this.resolveLocalEntries(
 				projectEntries,
 				resourceType,
@@ -2206,18 +2210,17 @@ export class DefaultPackageManager implements PackageManager {
 			baseDir: projectBaseDir,
 		};
 
-		const toArray = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
 		const userOverrides = {
-			extensions: toArray(globalSettings.extensions),
-			skills: toArray(globalSettings.skills),
-			prompts: toArray(globalSettings.prompts),
-			themes: toArray(globalSettings.themes),
+			extensions: normalizeResourceEntries(globalSettings.extensions),
+			skills: normalizeResourceEntries(globalSettings.skills),
+			prompts: normalizeResourceEntries(globalSettings.prompts),
+			themes: normalizeResourceEntries(globalSettings.themes),
 		};
 		const projectOverrides = {
-			extensions: toArray(projectSettings.extensions),
-			skills: toArray(projectSettings.skills),
-			prompts: toArray(projectSettings.prompts),
-			themes: toArray(projectSettings.themes),
+			extensions: normalizeResourceEntries(projectSettings.extensions),
+			skills: normalizeResourceEntries(projectSettings.skills),
+			prompts: normalizeResourceEntries(projectSettings.prompts),
+			themes: normalizeResourceEntries(projectSettings.themes),
 		};
 
 		const userDirs = {

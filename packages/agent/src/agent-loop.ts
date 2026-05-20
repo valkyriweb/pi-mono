@@ -446,6 +446,10 @@ async function executeToolCallsSequential(
 		await emitToolResultMessage(toolResultMessage, emit);
 		finalizedCalls.push(finalized);
 		messages.push(toolResultMessage);
+
+		if (signal?.aborted) {
+			break;
+		}
 	}
 
 	return {
@@ -481,6 +485,9 @@ async function executeToolCallsParallel(
 			} satisfies FinalizedToolCallOutcome;
 			await emitToolExecutionEnd(finalized, emit);
 			finalizedCalls.push(finalized);
+			if (signal?.aborted) {
+				break;
+			}
 			continue;
 		}
 
@@ -497,6 +504,9 @@ async function executeToolCallsParallel(
 			await emitToolExecutionEnd(finalized, emit);
 			return finalized;
 		});
+		if (signal?.aborted) {
+			break;
+		}
 	}
 
 	const orderedFinalizedCalls = await Promise.all(
@@ -588,6 +598,13 @@ async function prepareToolCall(
 				},
 				signal,
 			);
+			if (signal?.aborted) {
+				return {
+					kind: "immediate",
+					result: createErrorToolResult("Operation aborted"),
+					isError: true,
+				};
+			}
 			if (beforeResult?.block) {
 				return {
 					kind: "immediate",
@@ -595,6 +612,13 @@ async function prepareToolCall(
 					isError: true,
 				};
 			}
+		}
+		if (signal?.aborted) {
+			return {
+				kind: "immediate",
+				result: createErrorToolResult("Operation aborted"),
+				isError: true,
+			};
 		}
 		return {
 			kind: "prepared",

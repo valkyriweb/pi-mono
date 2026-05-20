@@ -23,7 +23,15 @@ import type {
 	AgentTool,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Context, ImageContent, Message, Model, TextContent } from "@earendil-works/pi-ai";
+import type {
+	AssistantMessage,
+	Context,
+	ImageContent,
+	Message,
+	Model,
+	TextContent,
+	ToolReferenceContent,
+} from "@earendil-works/pi-ai";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
@@ -42,6 +50,7 @@ import { cancelAgentRecentRun, findAgentRecentRun, waitForAgentRecentRun } from 
 import type { AgentBackgroundCompletion, AgentToolDetails, AgentToolStatus } from "./agents/types.js";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.js";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
+import { createPromptCacheAffinityKey } from "./cache-affinity.js";
 import {
 	type CompactionResult,
 	calculateContextTokens,
@@ -140,10 +149,22 @@ const CACHE_HEARTBEAT_MESSAGE = "<system-reminder>Cache heartbeat only. Reply wi
 const globalCacheHeartbeat: {
 	timer: ReturnType<typeof setTimeout> | undefined;
 	running: boolean;
+	baseWarmAt: Map<string, number>;
+	rateLimitedUntil: Map<string, number>;
 } = {
 	timer: undefined,
 	running: false,
+	baseWarmAt: new Map(),
+	rateLimitedUntil: new Map(),
 };
+
+function modelCacheKey(model: Model<any>): string {
+	return `${model.provider}/${model.id}`;
+}
+
+function isRateLimitErrorText(text: string | undefined): boolean {
+	return /\b429\b|rate.?limit|quota|too many requests/i.test(text ?? "");
+}
 
 /** Session-specific events that extend the core AgentEvent */
 export type AgentSessionEvent =
@@ -171,7 +192,17 @@ export type AgentSessionEvent =
 	  }
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
-	| { type: "idle_cache_hint"; idleMs: number; cacheTtlMs: number; message: string };
+	| { type: "idle_cache_hint"; idleMs: number; cacheTtlMs: number; message: string }
+	| {
+			type: "cache_heartbeat";
+			scope: "base" | "session";
+			model: string;
+			provider: string;
+			cacheRead: number;
+			cacheWrite: number;
+			input: number;
+			cacheHitRate: number | undefined;
+	  };
 
 /** Listener function for agent session events */
 export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
@@ -215,6 +246,7 @@ export interface AgentSessionConfig {
 export interface ExtensionBindings {
 	uiContext?: ExtensionUIContext;
 	commandContextActions?: ExtensionCommandContextActions;
+	abortHandler?: () => void;
 	shutdownHandler?: ShutdownHandler;
 	onError?: ExtensionErrorListener;
 }
@@ -272,6 +304,56 @@ interface ToolDefinitionEntry {
 
 /** Standard thinking levels */
 const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
+const SUPPORTED_INLINE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const TOOL_ARTIFACTS_DIR = ".pi/tool-artifacts";
+
+type ToolResultContentBlock = TextContent | ImageContent | ToolReferenceContent;
+
+function replaceUnsupportedToolResultImages(
+	content: ToolResultContentBlock[],
+	cwd: string,
+	toolCallId: string,
+): ToolResultContentBlock[] | undefined {
+	let changed = false;
+	const nextContent = content.map((block, index): ToolResultContentBlock => {
+		if (block.type !== "image" || SUPPORTED_INLINE_IMAGE_MIME_TYPES.has(block.mimeType)) {
+			return block;
+		}
+
+		changed = true;
+		const relativePath = `${TOOL_ARTIFACTS_DIR}/${sanitizeArtifactName(toolCallId)}-${index}${extensionForMimeType(block.mimeType)}`;
+		const absolutePath = resolve(cwd, relativePath);
+		try {
+			mkdirSync(dirname(absolutePath), { recursive: true });
+			writeFileSync(absolutePath, Buffer.from(block.data, "base64"));
+			return {
+				type: "text",
+				text: `[Unsupported image MIME ${block.mimeType}; saved artifact to ${relativePath}]`,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return {
+				type: "text",
+				text: `[Unsupported image MIME ${block.mimeType}; image omitted because artifact save failed: ${message}]`,
+			};
+		}
+	});
+
+	return changed ? nextContent : undefined;
+}
+
+function sanitizeArtifactName(value: string): string {
+	return value.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "tool-result";
+}
+
+function extensionForMimeType(mimeType: string): string {
+	const subtype =
+		mimeType
+			.split("/")[1]
+			?.toLowerCase()
+			.replace(/[^a-z0-9.+-]/g, "") || "bin";
+	return `.${subtype.replace("+", ".")}`;
+}
 
 // ============================================================================
 // AgentSession Class
@@ -333,6 +415,7 @@ export class AgentSession {
 	private _agentToolServices?: AgentToolParentServices;
 	private _extensionUIContext?: ExtensionUIContext;
 	private _extensionCommandContextActions?: ExtensionCommandContextActions;
+	private _extensionAbortHandler?: () => void;
 	private _extensionShutdownHandler?: ShutdownHandler;
 	private _extensionErrorListener?: ExtensionErrorListener;
 	private _extensionErrorUnsubscriber?: () => void;
@@ -456,9 +539,11 @@ export class AgentSession {
 		};
 
 		this.agent.afterToolCall = async ({ toolCall, args, result, isError }) => {
+			const normalizedContent = replaceUnsupportedToolResultImages(result.content, this._cwd, toolCall.id);
+			const currentResult = normalizedContent ? { ...result, content: normalizedContent } : result;
 			const runner = this._extensionRunner;
 			if (!runner.hasHandlers("tool_result")) {
-				return undefined;
+				return normalizedContent ? { content: normalizedContent, details: result.details, isError } : undefined;
 			}
 
 			const hookResult = await runner.emitToolResult({
@@ -466,13 +551,13 @@ export class AgentSession {
 				toolName: toolCall.name,
 				toolCallId: toolCall.id,
 				input: args as Record<string, unknown>,
-				content: result.content,
-				details: result.details,
+				content: currentResult.content,
+				details: currentResult.details,
 				isError,
 			});
 
 			if (!hookResult) {
-				return undefined;
+				return normalizedContent ? { content: normalizedContent, details: result.details, isError } : undefined;
 			}
 
 			return {
@@ -658,8 +743,11 @@ export class AgentSession {
 		if (this._disposed) return;
 		const settings = this.settingsManager.getCacheHeartbeatSettings();
 		if (!settings.enabled || !this.model || !this._isWithinCacheHeartbeatHours()) return;
+		if (!this._isCacheHeartbeatProviderAllowed()) return;
+		if (this._isCacheHeartbeatRateLimited()) return;
 
 		if ((scope === "base" || scope === "all") && settings.basePrompt) {
+			this._markBaseCacheWarm();
 			this._scheduleBaseCacheHeartbeat(settings.intervalMs);
 		}
 		if ((scope === "session" || scope === "all") && settings.sessionPrompt) {
@@ -667,13 +755,43 @@ export class AgentSession {
 		}
 	}
 
+	private _isCacheHeartbeatProviderAllowed(): boolean {
+		if (!this.model) return false;
+		const modelName = modelCacheKey(this.model);
+		return this.settingsManager
+			.getCacheHeartbeatSettings()
+			.providers.some(
+				(prefix) => modelName.startsWith(prefix) || this.model?.provider === prefix.replace(/\/$/, ""),
+			);
+	}
+
+	private _isCacheHeartbeatRateLimited(): boolean {
+		if (!this.model) return true;
+		const until = globalCacheHeartbeat.rateLimitedUntil.get(modelCacheKey(this.model));
+		return until !== undefined && until > Date.now();
+	}
+
+	private _markCacheHeartbeatRateLimited(errorText: string | undefined): void {
+		if (!this.model || !isRateLimitErrorText(errorText)) return;
+		const cooldownMs = this.settingsManager.getCacheHeartbeatSettings().rateLimitCooldownMs;
+		globalCacheHeartbeat.rateLimitedUntil.set(modelCacheKey(this.model), Date.now() + cooldownMs);
+	}
+
+	private _markBaseCacheWarm(): void {
+		if (!this.model) return;
+		globalCacheHeartbeat.baseWarmAt.set(modelCacheKey(this.model), Date.now());
+	}
+
 	private _scheduleBaseCacheHeartbeat(intervalMs: number): void {
+		if (!this.model) return;
+		const lastWarmAt = globalCacheHeartbeat.baseWarmAt.get(modelCacheKey(this.model)) ?? Date.now();
+		const delayMs = Math.max(0, intervalMs - (Date.now() - lastWarmAt));
 		if (globalCacheHeartbeat.timer) {
 			clearTimeout(globalCacheHeartbeat.timer);
 		}
 		globalCacheHeartbeat.timer = setTimeout(() => {
 			void this._runBaseCacheHeartbeat();
-		}, intervalMs);
+		}, delayMs);
 	}
 
 	private _scheduleSessionCacheHeartbeat(intervalMs: number): void {
@@ -694,16 +812,21 @@ export class AgentSession {
 		if (this._disposed || globalCacheHeartbeat.running) return;
 		const settings = this.settingsManager.getCacheHeartbeatSettings();
 		if (!settings.enabled || !settings.basePrompt || !this.model || !this._isWithinCacheHeartbeatHours()) return;
+		if (!this._isCacheHeartbeatProviderAllowed() || this._isCacheHeartbeatRateLimited()) return;
 
 		globalCacheHeartbeat.running = true;
 		try {
-			await this._sendCacheHeartbeat({
-				systemPrompt: this._baseSystemPromptForHeartbeat(),
-				messages: [],
-				tools: [],
-				sessionId: BASE_HEARTBEAT_SESSION_ID,
-			});
+			await this._sendCacheHeartbeat(
+				{
+					systemPrompt: this._baseSystemPromptForHeartbeat(),
+					messages: [],
+					tools: [],
+					sessionId: BASE_HEARTBEAT_SESSION_ID,
+				},
+				"base",
+			);
 		} finally {
+			this._markBaseCacheWarm();
 			globalCacheHeartbeat.running = false;
 			const latest = this.settingsManager.getCacheHeartbeatSettings();
 			if (latest.enabled && latest.basePrompt && this._isWithinCacheHeartbeatHours()) {
@@ -722,7 +845,9 @@ export class AgentSession {
 			!this.model ||
 			!targetTimestamp ||
 			this._sessionHeartbeatUsedTimestamp === targetTimestamp ||
-			!this._isWithinCacheHeartbeatHours()
+			!this._isWithinCacheHeartbeatHours() ||
+			!this._isCacheHeartbeatProviderAllowed() ||
+			this._isCacheHeartbeatRateLimited()
 		) {
 			return;
 		}
@@ -731,15 +856,21 @@ export class AgentSession {
 		if (!lastAssistant || lastAssistant.timestamp !== targetTimestamp) return;
 
 		this._sessionHeartbeatUsedTimestamp = targetTimestamp;
-		await this._sendCacheHeartbeat({
-			systemPrompt: this.systemPrompt,
-			messages: await convertToLlm(this.agent.state.messages),
-			tools: this.agent.state.tools,
-			sessionId: this.sessionId,
-		});
+		await this._sendCacheHeartbeat(
+			{
+				systemPrompt: this.systemPrompt,
+				messages: await convertToLlm(this.agent.state.messages),
+				tools: this.agent.state.tools,
+				sessionId: this.sessionId,
+			},
+			"session",
+		);
 	}
 
-	private async _sendCacheHeartbeat(context: Context & { sessionId: string }): Promise<void> {
+	private async _sendCacheHeartbeat(
+		context: Context & { sessionId: string },
+		scope: "base" | "session",
+	): Promise<void> {
 		if (this._disposed || !this.model) return;
 		this._cacheHeartbeatAbortController?.abort();
 		const abortController = new AbortController();
@@ -756,26 +887,51 @@ export class AgentSession {
 		const settings = this.settingsManager.getCacheHeartbeatSettings();
 		const providerRetrySettings = this.settingsManager.getProviderRetrySettings();
 		try {
-			const stream = await this.agent.streamFn(this.model, heartbeatContext, {
+			const model = this.model;
+			const stream = await this.agent.streamFn(model, heartbeatContext, {
 				cacheRetention: "long",
 				maxTokens: settings.maxTokens,
 				maxRetries: 0,
 				maxRetryDelayMs: 0,
 				timeoutMs: providerRetrySettings.timeoutMs,
 				sessionId: context.sessionId,
+				cacheAffinityKey: createPromptCacheAffinityKey(model, this._cwd),
 				signal: abortController.signal,
 				transport: this.settingsManager.getTransport(),
 			});
 			for await (const event of stream) {
-				if (event.type === "done" || event.type === "error") break;
+				if (event.type === "done") {
+					this._emitCacheHeartbeatEvent(scope, model, event.message as AssistantMessage);
+					break;
+				}
+				if (event.type === "error") {
+					this._markCacheHeartbeatRateLimited("message" in event ? String(event.message) : undefined);
+					break;
+				}
 			}
-		} catch {
+		} catch (error) {
+			this._markCacheHeartbeatRateLimited(error instanceof Error ? error.message : String(error));
 			// Heartbeats are opportunistic. Never surface background cache-refresh failures to the user.
 		} finally {
 			if (this._cacheHeartbeatAbortController === abortController) {
 				this._cacheHeartbeatAbortController = undefined;
 			}
 		}
+	}
+
+	private _emitCacheHeartbeatEvent(scope: "base" | "session", model: Model<any>, message: AssistantMessage): void {
+		const usage = message.usage;
+		const cacheableInput = usage.input + usage.cacheRead;
+		this._emit({
+			type: "cache_heartbeat",
+			scope,
+			model: model.id,
+			provider: model.provider,
+			cacheRead: usage.cacheRead,
+			cacheWrite: usage.cacheWrite,
+			input: usage.input,
+			cacheHitRate: cacheableInput > 0 ? usage.cacheRead / cacheableInput : undefined,
+		});
 	}
 
 	private _replaceMessageInPlace(target: AgentMessage, replacement: AgentMessage): void {
@@ -2427,6 +2583,9 @@ export class AgentSession {
 		if (bindings.commandContextActions !== undefined) {
 			this._extensionCommandContextActions = bindings.commandContextActions;
 		}
+		if (bindings.abortHandler !== undefined) {
+			this._extensionAbortHandler = bindings.abortHandler;
+		}
 		if (bindings.shutdownHandler !== undefined) {
 			this._extensionShutdownHandler = bindings.shutdownHandler;
 		}
@@ -2822,7 +2981,13 @@ export class AgentSession {
 				getModel: () => this.model,
 				isIdle: () => !this.isStreaming,
 				getSignal: () => this.agent.signal,
-				abort: () => this.abort(),
+				abort: () => {
+					if (this._extensionAbortHandler) {
+						this._extensionAbortHandler();
+						return;
+					}
+					void this.abort();
+				},
 				hasPendingMessages: () => this.pendingMessageCount > 0,
 				shutdown: () => {
 					this._extensionShutdownHandler?.();
@@ -3068,7 +3233,7 @@ export class AgentSession {
 		// run_in_background:true returns a bgId the model can never read or stop.
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "bash_output", "bash_kill", "edit", "write", "agent", "grep", "find", "ls"];
+			: ["Read", "Bash", "bash_output", "bash_kill", "Edit", "Write", "Agent", "Task", "Grep", "Find", "Ls"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,

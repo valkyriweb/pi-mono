@@ -56,6 +56,8 @@ const defaultReadOperations: ReadOperations = {
 };
 
 export interface ReadToolOptions {
+	toolName?: "read" | "Read";
+	label?: string;
 	/** Whether to auto-resize images to 2000x2000 max. Default: true */
 	autoResizeImages?: boolean;
 	/** Custom operations for file reading. Default: local filesystem */
@@ -209,9 +211,11 @@ export function createReadToolDefinition(
 ): ToolDefinition<typeof readSchema, ReadToolDetails | undefined> {
 	const autoResizeImages = options?.autoResizeImages ?? true;
 	const ops = options?.operations ?? defaultReadOperations;
+	const toolName = options?.toolName ?? "read";
+	const label = options?.label ?? toolName;
 	return {
-		name: "read",
-		label: "read",
+		name: toolName,
+		label,
 		description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
 		promptSnippet: "Read file contents",
 		promptGuidelines: ["Use read to examine files instead of cat or sed."],
@@ -360,4 +364,15 @@ export function createReadToolDefinition(
 
 export function createReadTool(cwd: string, options?: ReadToolOptions): AgentTool<typeof readSchema> {
 	return wrapToolDefinition(createReadToolDefinition(cwd, options));
+}
+
+export function createUppercaseReadToolDefinition(
+	cwd: string,
+	options?: ReadToolOptions,
+): ToolDefinition<typeof readSchema, ReadToolDetails | undefined> {
+	return createReadToolDefinition(cwd, { ...options, toolName: "Read", label: "Read" });
+}
+
+export function createUppercaseReadTool(cwd: string, options?: ReadToolOptions): AgentTool<typeof readSchema> {
+	return wrapToolDefinition(createUppercaseReadToolDefinition(cwd, options));
 }

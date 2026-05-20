@@ -43,7 +43,12 @@ export async function loadAgentRegistry(options: { cwd: string; agentScope?: Age
 }
 
 export function findAgentDefinition(registry: AgentRegistry, id: string): AgentDefinition | undefined {
-	return registry.agents.find((agent) => agent.id === id);
+	const exact = registry.agents.find((agent) => agent.id === id);
+	if (exact) return exact;
+
+	const lowerId = id.toLowerCase();
+	const caseInsensitiveMatches = registry.agents.filter((agent) => agent.id.toLowerCase() === lowerId);
+	return caseInsensitiveMatches.length === 1 ? caseInsensitiveMatches[0] : undefined;
 }
 
 export function formatAvailableAgents(registry: AgentRegistry): string {
