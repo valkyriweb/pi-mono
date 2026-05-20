@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.js";
-import { resolveEffectiveTools } from "../src/core/agents/executor.js";
+import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.ts";
+import { resolveEffectiveTools } from "../src/core/agents/executor.ts";
 
 const generalPurpose = getBuiltinAgentDefinitions().find((agent) => agent.id === "general");
 // Use `explore` for read-only agent assertions; the fork removed `scout` because it overlapped `explore`.

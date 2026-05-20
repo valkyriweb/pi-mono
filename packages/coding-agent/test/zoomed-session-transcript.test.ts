@@ -12,18 +12,18 @@
 
 import type { Container } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
-import type { AgentSessionEventListener } from "../src/core/agent-session.js";
+import type { AgentSessionEventListener } from "../src/core/agent-session.ts";
 import {
 	clearLiveSessionsForTests,
 	getLiveSession,
 	registerLiveSession,
 	unregisterLiveSession,
-} from "../src/core/agents/live-sessions.js";
+} from "../src/core/agents/live-sessions.ts";
 import {
 	makeZoomedSessionTranscript,
 	ZoomedSessionTranscript,
-} from "../src/modes/interactive/components/zoomed-session-transcript.js";
-import { initTheme } from "../src/modes/interactive/theme/theme.js";
+} from "../src/modes/interactive/components/zoomed-session-transcript.ts";
+import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal stubs

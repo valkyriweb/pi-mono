@@ -1,10 +1,10 @@
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { AgentSession } from "../../../core/agent-session.js";
-import { formatAgentFooterStatus } from "../../../core/agents/status.js";
-import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.js";
-import { getRunningTasksSorted } from "../../../core/tasks/index.js";
-import { type BashBgJob, getRunningBashBgJobsSorted } from "../../../core/tools/bash.js";
-import { theme } from "../theme/theme.js";
+import type { AgentSession } from "../../../core/agent-session.ts";
+import { formatAgentFooterStatus } from "../../../core/agents/status.ts";
+import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
+import { getRunningTasksSorted } from "../../../core/tasks/index.ts";
+import { type BashBgJob, getRunningBashBgJobsSorted } from "../../../core/tools/bash.ts";
+import { theme } from "../theme/theme.ts";
 
 /**
  * Sanitize text for display in a single-line status.
@@ -19,7 +19,7 @@ function sanitizeStatusText(text: string): string {
 }
 
 /**
- * Format token counts (similar to web-ui)
+ * Format token counts for compact footer display.
  */
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();

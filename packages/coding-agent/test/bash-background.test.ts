@@ -5,7 +5,7 @@ import {
 	createBashToolDefinition,
 	killAllBashBgJobs,
 	listBashBgJobs,
-} from "../src/core/tools/bash.js";
+} from "../src/core/tools/bash.ts";
 
 function getText(result: any): string {
 	return result.content?.[0]?.text ?? "";

@@ -1,10 +1,10 @@
 import { registerFauxProvider } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, test } from "vitest";
-import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.js";
-import { resolveAgentDefaults, resolveAgentModel, resolveAgentThinking } from "../src/core/agents/executor.js";
-import { AuthStorage } from "../src/core/auth-storage.js";
-import { ModelRegistry } from "../src/core/model-registry.js";
-import { SettingsManager } from "../src/core/settings-manager.js";
+import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.ts";
+import { resolveAgentDefaults, resolveAgentModel, resolveAgentThinking } from "../src/core/agents/executor.ts";
+import { AuthStorage } from "../src/core/auth-storage.ts";
+import { ModelRegistry } from "../src/core/model-registry.ts";
+import { SettingsManager } from "../src/core/settings-manager.ts";
 
 const registrations: ReturnType<typeof registerFauxProvider>[] = [];
 

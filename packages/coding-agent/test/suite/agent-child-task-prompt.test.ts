@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildChildTaskPrompt } from "../../src/core/agents/context.js";
-import type { AgentTaskConfig } from "../../src/core/agents/types.js";
+import { buildChildTaskPrompt } from "../../src/core/agents/context.ts";
+import type { AgentTaskConfig } from "../../src/core/agents/types.ts";
 
 const baseTask: AgentTaskConfig = {
 	agent: "worker",

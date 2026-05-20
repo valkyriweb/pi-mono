@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { clearAgentRecentRunsForTests, finishAgentRecentRun, startAgentRecentRun } from "../src/core/agents/status.js";
-import type { AgentRunDetails } from "../src/core/agents/types.js";
-import { cycleRunningTask, getRunningTasksSorted } from "../src/core/tasks/index.js";
+import { clearAgentRecentRunsForTests, finishAgentRecentRun, startAgentRecentRun } from "../src/core/agents/status.ts";
+import type { AgentRunDetails } from "../src/core/agents/types.ts";
+import { cycleRunningTask, getRunningTasksSorted } from "../src/core/tasks/index.ts";
 
 function makeRunDetails(status: AgentRunDetails["status"] = "completed"): AgentRunDetails {
 	return {

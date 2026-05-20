@@ -1,9 +1,9 @@
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { clearAgentRecentRunsForTests } from "../../../src/core/agents/status.js";
-import type { AgentHandle, ExtensionAPI } from "../../../src/index.js";
-import { createHarness, type Harness } from "../harness.js";
+import { clearAgentRecentRunsForTests } from "../../../src/core/agents/status.ts";
+import type { AgentHandle, ExtensionAPI } from "../../../src/index.ts";
+import { createHarness, type Harness } from "../harness.ts";
 
 interface CapturedFork {
 	handle?: AgentHandle;

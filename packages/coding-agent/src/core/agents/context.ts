@@ -1,8 +1,8 @@
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { DefaultResourceLoaderOptions } from "../resource-loader.js";
-import { buildSessionContext, type ReadonlySessionManager } from "../session-manager.js";
-import type { AgentDefinition, AgentTaskConfig, ContextMode, ResolvedContextPolicy } from "./types.js";
+import type { DefaultResourceLoaderOptions } from "../resource-loader.ts";
+import { buildSessionContext, type ReadonlySessionManager } from "../session-manager.ts";
+import type { AgentDefinition, AgentTaskConfig, ContextMode, ResolvedContextPolicy } from "./types.ts";
 
 export function resolveContextPolicy(mode: ContextMode): ResolvedContextPolicy {
 	switch (mode) {

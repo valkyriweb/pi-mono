@@ -21,12 +21,12 @@
  */
 
 import { type Component, Container, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
-import { getLiveSession } from "../../../core/agents/live-sessions.js";
-import { findAgentRecentRun, formatAgentDurationMs } from "../../../core/agents/status.js";
-import { getTaskMessages, subscribeTaskMessages, type TaskMessageEvent } from "../../../core/tasks/index.js";
-import { theme } from "../theme/theme.js";
-import { DynamicBorder } from "./dynamic-border.js";
-import { type ZoomedSessionConfig, ZoomedSessionTranscript } from "./zoomed-session-transcript.js";
+import { getLiveSession } from "../../../core/agents/live-sessions.ts";
+import { findAgentRecentRun, formatAgentDurationMs } from "../../../core/agents/status.ts";
+import { getTaskMessages, subscribeTaskMessages, type TaskMessageEvent } from "../../../core/tasks/index.ts";
+import { theme } from "../theme/theme.ts";
+import { DynamicBorder } from "./dynamic-border.ts";
+import { type ZoomedSessionConfig, ZoomedSessionTranscript } from "./zoomed-session-transcript.ts";
 
 const PREVIEW_MAX = 120;
 

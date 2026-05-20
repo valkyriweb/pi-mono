@@ -1,8 +1,8 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
-import type { ToolDefinition } from "../extensions/types.js";
-import { wrapToolDefinition } from "./tool-definition-wrapper.js";
+import type { ToolDefinition } from "../extensions/types.ts";
+import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 
 const webSearchSchema = Type.Object({
 	query: Type.String({ description: "Search query" }),

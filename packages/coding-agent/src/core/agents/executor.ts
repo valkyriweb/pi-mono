@@ -1,15 +1,15 @@
 import { existsSync } from "node:fs";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, AssistantMessage, Model, TextContent, Usage } from "@earendil-works/pi-ai";
-import type { AgentSession } from "../agent-session.js";
-import { createAgentSessionFromServices, createAgentSessionServices } from "../agent-session-services.js";
-import type { AuthStorage } from "../auth-storage.js";
-import { DEFAULT_THINKING_LEVEL } from "../defaults.js";
-import type { ModelRegistry } from "../model-registry.js";
-import { fastModelPerProvider, mediumModelPerProvider, parseModelPattern } from "../model-resolver.js";
-import { type ReadonlySessionManager, SessionManager } from "../session-manager.js";
-import type { SettingsManager } from "../settings-manager.js";
-import { appendTaskMessage } from "../tasks/messages.js";
+import type { AgentSession } from "../agent-session.ts";
+import { createAgentSessionFromServices, createAgentSessionServices } from "../agent-session-services.ts";
+import type { AuthStorage } from "../auth-storage.ts";
+import { DEFAULT_THINKING_LEVEL } from "../defaults.ts";
+import type { ModelRegistry } from "../model-registry.ts";
+import { fastModelPerProvider, mediumModelPerProvider, parseModelPattern } from "../model-resolver.ts";
+import { type ReadonlySessionManager, SessionManager } from "../session-manager.ts";
+import type { SettingsManager } from "../settings-manager.ts";
+import { appendTaskMessage } from "../tasks/messages.ts";
 import {
 	buildAgentSystemAppend,
 	buildChildTaskPrompt,
@@ -18,11 +18,11 @@ import {
 	getChildResourceLoaderOptions,
 	getFilteredForkMessages,
 	resolveContextPolicy,
-} from "./context.js";
-import { registerLiveSession, unregisterLiveSession } from "./live-sessions.js";
-import { writeAgentOutput } from "./output.js";
-import { findAgentDefinition, formatAvailableAgents, loadAgentRegistry } from "./registry.js";
-import type { AgentRecentRun } from "./status.js";
+} from "./context.ts";
+import { registerLiveSession, unregisterLiveSession } from "./live-sessions.ts";
+import { writeAgentOutput } from "./output.ts";
+import { findAgentDefinition, formatAvailableAgents, loadAgentRegistry } from "./registry.ts";
+import type { AgentRecentRun } from "./status.ts";
 import {
 	attachAgentRecentRunController,
 	attachAgentRecentRunTerminalListener,
@@ -34,7 +34,7 @@ import {
 	restartAgentRecentRun,
 	startAgentRecentRun,
 	updateAgentRecentRunProgress,
-} from "./status.js";
+} from "./status.ts";
 import type {
 	AgentBackgroundCompletion,
 	AgentDefaultSelection,
@@ -50,7 +50,7 @@ import type {
 	AgentToolStatus,
 	ContextMode,
 	NormalizedAgentTaskConfig,
-} from "./types.js";
+} from "./types.ts";
 
 const GLOBAL_DENY_TOOLS = new Set(["agent"]);
 const DEFAULT_CONCURRENCY = 4;

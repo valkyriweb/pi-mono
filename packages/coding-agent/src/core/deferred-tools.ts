@@ -1,6 +1,6 @@
 import type { Api, Model, ToolReferenceContent } from "@earendil-works/pi-ai";
-import { type DeferredToolCapabilities, getDeferredToolCapabilities } from "./deferred-tool-capabilities.js";
-import type { ToolDefinition } from "./extensions/types.js";
+import { type DeferredToolCapabilities, getDeferredToolCapabilities } from "./deferred-tool-capabilities.ts";
+import type { ToolDefinition } from "./extensions/types.ts";
 
 export type DeferredToolReferenceBlock = ToolReferenceContent;
 

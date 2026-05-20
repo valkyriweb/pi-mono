@@ -9,7 +9,7 @@ export {
 	createTaskToolDefinition,
 	createUppercaseAgentTool,
 	createUppercaseAgentToolDefinition,
-} from "./agent.js";
+} from "./agent.ts";
 export {
 	type BashBgDetails,
 	type BashKillToolInput,
@@ -34,7 +34,7 @@ export {
 	createUppercaseBashTool,
 	createUppercaseBashToolDefinition,
 	listBashBgJobs,
-} from "./bash.js";
+} from "./bash.ts";
 export {
 	createEditTool,
 	createEditToolDefinition,
@@ -44,8 +44,8 @@ export {
 	type EditToolDetails,
 	type EditToolInput,
 	type EditToolOptions,
-} from "./edit.js";
-export { withFileMutationQueue } from "./file-mutation-queue.js";
+} from "./edit.ts";
+export { withFileMutationQueue } from "./file-mutation-queue.ts";
 export {
 	createFindTool,
 	createFindToolDefinition,
@@ -55,7 +55,7 @@ export {
 	type FindToolDetails,
 	type FindToolInput,
 	type FindToolOptions,
-} from "./find.js";
+} from "./find.ts";
 export {
 	createGrepTool,
 	createGrepToolDefinition,
@@ -65,7 +65,7 @@ export {
 	type GrepToolDetails,
 	type GrepToolInput,
 	type GrepToolOptions,
-} from "./grep.js";
+} from "./grep.ts";
 export {
 	createLsTool,
 	createLsToolDefinition,
@@ -75,7 +75,7 @@ export {
 	type LsToolDetails,
 	type LsToolInput,
 	type LsToolOptions,
-} from "./ls.js";
+} from "./ls.ts";
 export {
 	createReadTool,
 	createReadToolDefinition,
@@ -85,7 +85,7 @@ export {
 	type ReadToolDetails,
 	type ReadToolInput,
 	type ReadToolOptions,
-} from "./read.js";
+} from "./read.ts";
 export {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
@@ -95,19 +95,19 @@ export {
 	truncateHead,
 	truncateLine,
 	truncateTail,
-} from "./truncate.js";
+} from "./truncate.ts";
 export {
 	createWebFetchTool,
 	createWebFetchToolDefinition,
 	type WebFetchToolInput,
 	type WebFetchToolOptions,
-} from "./web-fetch.js";
+} from "./web-fetch.ts";
 export {
 	createWebSearchTool,
 	createWebSearchToolDefinition,
 	type WebSearchToolInput,
 	type WebSearchToolOptions,
-} from "./web-search.js";
+} from "./web-search.ts";
 export {
 	createUppercaseWriteTool,
 	createUppercaseWriteToolDefinition,
@@ -116,10 +116,10 @@ export {
 	type WriteOperations,
 	type WriteToolInput,
 	type WriteToolOptions,
-} from "./write.js";
+} from "./write.ts";
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { ToolDefinition } from "../extensions/types.js";
+import type { ToolDefinition } from "../extensions/types.ts";
 import {
 	type AgentToolOptions,
 	createAgentTool,
@@ -128,7 +128,7 @@ import {
 	createTaskToolDefinition,
 	createUppercaseAgentTool,
 	createUppercaseAgentToolDefinition,
-} from "./agent.js";
+} from "./agent.ts";
 import {
 	type BashToolOptions,
 	createBashKillTool,
@@ -143,51 +143,51 @@ import {
 	createKillShellToolDefinition,
 	createUppercaseBashTool,
 	createUppercaseBashToolDefinition,
-} from "./bash.js";
+} from "./bash.ts";
 import {
 	createEditTool,
 	createEditToolDefinition,
 	createUppercaseEditTool,
 	createUppercaseEditToolDefinition,
 	type EditToolOptions,
-} from "./edit.js";
+} from "./edit.ts";
 import {
 	createFindTool,
 	createFindToolDefinition,
 	createUppercaseFindTool,
 	createUppercaseFindToolDefinition,
 	type FindToolOptions,
-} from "./find.js";
+} from "./find.ts";
 import {
 	createGrepTool,
 	createGrepToolDefinition,
 	createUppercaseGrepTool,
 	createUppercaseGrepToolDefinition,
 	type GrepToolOptions,
-} from "./grep.js";
+} from "./grep.ts";
 import {
 	createLsTool,
 	createLsToolDefinition,
 	createUppercaseLsTool,
 	createUppercaseLsToolDefinition,
 	type LsToolOptions,
-} from "./ls.js";
+} from "./ls.ts";
 import {
 	createReadTool,
 	createReadToolDefinition,
 	createUppercaseReadTool,
 	createUppercaseReadToolDefinition,
 	type ReadToolOptions,
-} from "./read.js";
-import { createWebFetchTool, createWebFetchToolDefinition, type WebFetchToolOptions } from "./web-fetch.js";
-import { createWebSearchTool, createWebSearchToolDefinition, type WebSearchToolOptions } from "./web-search.js";
+} from "./read.ts";
+import { createWebFetchTool, createWebFetchToolDefinition, type WebFetchToolOptions } from "./web-fetch.ts";
+import { createWebSearchTool, createWebSearchToolDefinition, type WebSearchToolOptions } from "./web-search.ts";
 import {
 	createUppercaseWriteTool,
 	createUppercaseWriteToolDefinition,
 	createWriteTool,
 	createWriteToolDefinition,
 	type WriteToolOptions,
-} from "./write.js";
+} from "./write.ts";
 
 // Tool registries erase concrete TypeBox/detail generics across heterogeneous built-ins.
 // `any` is unavoidable here because AgentTool/ToolDefinition are intentionally variant in their schema parameter.

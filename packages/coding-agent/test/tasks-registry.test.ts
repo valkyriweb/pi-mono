@@ -8,9 +8,9 @@ import {
 	finishAgentRecentRun,
 	startAgentRecentRun,
 	updateAgentRecentRunProgress,
-} from "../src/core/agents/status.js";
-import type { AgentRunDetails } from "../src/core/agents/types.js";
-import { getTaskSnapshot, LocalAgentTask, listTasks } from "../src/core/tasks/index.js";
+} from "../src/core/agents/status.ts";
+import type { AgentRunDetails } from "../src/core/agents/types.ts";
+import { getTaskSnapshot, LocalAgentTask, listTasks } from "../src/core/tasks/index.ts";
 
 let tempDir = "";
 let childSessionPath = "";

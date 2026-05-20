@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import type { AgentTaskConfig } from "./types.js";
+import type { AgentTaskConfig } from "./types.ts";
 
 export interface AgentChainDefinition {
 	name: string;

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { withFileMutationQueue } from "../tools/file-mutation-queue.js";
-import type { AgentOutputMode } from "./types.js";
+import { withFileMutationQueue } from "../tools/file-mutation-queue.ts";
+import type { AgentOutputMode } from "./types.ts";
 
 export interface AgentOutputWriteResult {
 	displayText: string;

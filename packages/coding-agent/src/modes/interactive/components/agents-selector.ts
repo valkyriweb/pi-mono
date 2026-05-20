@@ -1,8 +1,8 @@
 import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
-import type { AgentDefinition } from "../../../core/agents/types.js";
-import { theme } from "../theme/theme.js";
-import { DynamicBorder } from "./dynamic-border.js";
-import { keyHint, rawKeyHint } from "./keybinding-hints.js";
+import type { AgentDefinition } from "../../../core/agents/types.ts";
+import { theme } from "../theme/theme.ts";
+import { DynamicBorder } from "./dynamic-border.ts";
+import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
 
 export class AgentsSelectorComponent extends Container {
 	private readonly agents: AgentDefinition[];

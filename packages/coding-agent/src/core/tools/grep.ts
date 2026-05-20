@@ -5,13 +5,13 @@ import { spawn } from "child_process";
 import { readFileSync, statSync } from "fs";
 import path from "path";
 import { type Static, Type } from "typebox";
-import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
-import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.js";
-import { ensureTool, getOptionalSearchToolPath, toolDisplayName } from "../../utils/tools-manager.js";
-import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
-import { resolveToCwd } from "./path-utils.js";
-import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.js";
-import { wrapToolDefinition } from "./tool-definition-wrapper.js";
+import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
+import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.ts";
+import { ensureTool, getOptionalSearchToolPath, toolDisplayName } from "../../utils/tools-manager.ts";
+import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
+import { resolveToCwd } from "./path-utils.ts";
+import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.ts";
+import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import {
 	DEFAULT_MAX_BYTES,
 	formatSize,
@@ -19,7 +19,7 @@ import {
 	type TruncationResult,
 	truncateHead,
 	truncateLine,
-} from "./truncate.js";
+} from "./truncate.ts";
 
 const grepSchema = Type.Object({
 	pattern: Type.String({ description: "Search pattern (regex or literal string)" }),
@@ -256,7 +256,7 @@ export interface GrepToolOptions {
  * Context lines: "path-lineno-content" → dim
  * Separators:    "--"                   → muted dots
  */
-function colorGrepLine(line: string, theme: typeof import("../../modes/interactive/theme/theme.js").theme): string {
+function colorGrepLine(line: string, theme: typeof import("../../modes/interactive/theme/theme.ts").theme): string {
 	if (line === "--") return theme.fg("muted", "···");
 
 	// Match line: "file:lineno:content"
@@ -289,7 +289,7 @@ function colorGrepLine(line: string, theme: typeof import("../../modes/interacti
 
 function formatGrepCall(
 	args: { pattern: string; path?: string; glob?: string; limit?: number } | undefined,
-	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
 	label: string,
 ): string {
 	const pattern = str(args?.pattern);
@@ -314,7 +314,7 @@ function formatGrepResult(
 		details?: GrepToolDetails;
 	},
 	options: ToolRenderResultOptions,
-	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
 	showImages: boolean,
 ): string {
 	const output = getTextOutput(result, showImages).trim();

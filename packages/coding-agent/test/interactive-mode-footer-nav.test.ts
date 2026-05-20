@@ -8,12 +8,12 @@
 
 import { Container } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.js";
-import { clearTaskMessagesForTests } from "../src/core/tasks/index.js";
-import type { FooterComponent } from "../src/modes/interactive/components/footer.js";
-import type { ZoomedTaskComponent } from "../src/modes/interactive/components/zoomed-task.js";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.js";
-import { initTheme } from "../src/modes/interactive/theme/theme.js";
+import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.ts";
+import { clearTaskMessagesForTests } from "../src/core/tasks/index.ts";
+import type { FooterComponent } from "../src/modes/interactive/components/footer.ts";
+import type { ZoomedTaskComponent } from "../src/modes/interactive/components/zoomed-task.ts";
+import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 type FooterNavContext = {
 	zoomedTaskId: string | undefined;

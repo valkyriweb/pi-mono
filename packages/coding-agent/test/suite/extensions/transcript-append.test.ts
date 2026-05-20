@@ -1,7 +1,7 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../../src/index.js";
-import { createHarness, type Harness } from "../harness.js";
+import type { ExtensionAPI } from "../../../src/index.ts";
+import { createHarness, type Harness } from "../harness.ts";
 
 describe("ctx.transcript.append", () => {
 	const harnesses: Harness[] = [];

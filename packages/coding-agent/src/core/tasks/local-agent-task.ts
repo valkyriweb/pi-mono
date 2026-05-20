@@ -12,15 +12,15 @@
  * TUI (Layer B) can talk to one interface regardless of task flavor.
  */
 
-import type { AgentRecentRun } from "../agents/status.js";
+import type { AgentRecentRun } from "../agents/status.ts";
 import {
 	cancelAgentRecentRun,
 	findAgentRecentRun,
 	interruptAgentRecentRun,
 	resumeAgentRecentRun,
-} from "../agents/status.js";
-import type { AgentToolStatus } from "../agents/types.js";
-import type { Task, TaskControlResult, TaskSnapshot, TaskStatus } from "./types.js";
+} from "../agents/status.ts";
+import type { AgentToolStatus } from "../agents/types.ts";
+import type { Task, TaskControlResult, TaskSnapshot, TaskStatus } from "./types.ts";
 
 function mapStatus(status: AgentToolStatus): TaskStatus {
 	switch (status) {

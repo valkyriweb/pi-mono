@@ -3,7 +3,7 @@ import { existsSync, readFileSync, realpathSync, type Stats, statSync } from "no
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { Lexer } from "marked";
-import type { ResourceDiagnostic } from "./diagnostics.js";
+import type { ResourceDiagnostic } from "./diagnostics.ts";
 
 export const MAX_CONTEXT_IMPORT_DEPTH = 5;
 

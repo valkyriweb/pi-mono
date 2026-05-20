@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createBashToolDefinition, redundantCdToCurrentWorkingDirectory } from "../src/core/tools/bash.js";
+import { createBashToolDefinition, redundantCdToCurrentWorkingDirectory } from "../src/core/tools/bash.ts";
 
 function getText(result: any): string {
 	return result.content?.[0]?.text ?? "";

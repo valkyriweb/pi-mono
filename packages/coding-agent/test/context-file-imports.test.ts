@@ -9,7 +9,7 @@ import {
 	expandSystemPromptImports,
 	extractContextFileImports,
 	MAX_CONTEXT_IMPORT_DEPTH,
-} from "../src/core/context-file-imports.js";
+} from "../src/core/context-file-imports.ts";
 
 function file(path: string, content: string): ContextFile {
 	return { path, content };

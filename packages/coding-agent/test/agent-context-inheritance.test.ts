@@ -4,9 +4,9 @@ import {
 	getChildResourceLoaderOptions,
 	getFilteredForkMessages,
 	resolveContextPolicy,
-} from "../src/core/agents/context.js";
-import type { AgentDefinition } from "../src/core/agents/types.js";
-import { SessionManager } from "../src/core/session-manager.js";
+} from "../src/core/agents/context.ts";
+import type { AgentDefinition } from "../src/core/agents/types.ts";
+import { SessionManager } from "../src/core/session-manager.ts";
 
 const agent: AgentDefinition = {
 	id: "scout",

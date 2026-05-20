@@ -15,8 +15,8 @@
  */
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { convertResponsesTools } from "../src/providers/openai-responses-shared.js";
-import type { Tool } from "../src/types.js";
+import { convertResponsesTools } from "../src/providers/openai-responses-shared.ts";
+import type { Tool } from "../src/types.ts";
 
 function tool(name: string, extra: Partial<Tool> = {}): Tool {
 	return {

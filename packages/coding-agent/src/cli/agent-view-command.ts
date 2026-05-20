@@ -2,9 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import chalk from "chalk";
 import { createJiti } from "jiti";
-import { getAgentDir } from "../config.js";
-import { DefaultPackageManager } from "../core/package-manager.js";
-import { SettingsManager } from "../core/settings-manager.js";
+import { getAgentDir } from "../config.ts";
+import { DefaultPackageManager } from "../core/package-manager.ts";
+import { SettingsManager } from "../core/settings-manager.ts";
 
 type AgentViewCliResult = {
 	sessionPath?: string;

@@ -12,8 +12,8 @@
  * predictably at the end.
  */
 
-import { listTasks } from "./registry.js";
-import { isTerminalTaskStatus, type TaskSnapshot } from "./types.js";
+import { listTasks } from "./registry.ts";
+import { isTerminalTaskStatus, type TaskSnapshot } from "./types.ts";
 
 /**
  * Return every task that is not in a terminal state, sorted by `startedAt`

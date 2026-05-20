@@ -1,12 +1,12 @@
 import { setKeybindings } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.js";
-import type { AgentDefinition } from "../src/core/agents/types.js";
-import { KeybindingsManager } from "../src/core/keybindings.js";
-import { AgentRunsSelectorComponent } from "../src/modes/interactive/components/agent-runs-selector.js";
-import { AgentsSelectorComponent } from "../src/modes/interactive/components/agents-selector.js";
-import { initTheme } from "../src/modes/interactive/theme/theme.js";
+import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.ts";
+import type { AgentDefinition } from "../src/core/agents/types.ts";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
+import { AgentRunsSelectorComponent } from "../src/modes/interactive/components/agent-runs-selector.ts";
+import { AgentsSelectorComponent } from "../src/modes/interactive/components/agents-selector.ts";
+import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 const agents: AgentDefinition[] = [
 	{

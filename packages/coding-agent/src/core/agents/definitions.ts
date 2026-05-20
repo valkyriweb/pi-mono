@@ -1,4 +1,4 @@
-import type { AgentDefinition } from "./types.js";
+import type { AgentDefinition } from "./types.ts";
 
 export const BUILTIN_AGENT_DEFINITIONS: AgentDefinition[] = [
 	{

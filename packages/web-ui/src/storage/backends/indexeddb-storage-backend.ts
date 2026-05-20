@@ -1,4 +1,4 @@
-import type { IndexedDBConfig, StorageBackend, StorageTransaction } from "../types.js";
+import type { IndexedDBConfig, StorageBackend, StorageTransaction } from "../types.ts";
 
 /**
  * IndexedDB implementation of StorageBackend.

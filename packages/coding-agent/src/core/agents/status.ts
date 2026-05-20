@@ -5,7 +5,7 @@ import type {
 	AgentToolDetails,
 	AgentToolMode,
 	AgentToolStatus,
-} from "./types.js";
+} from "./types.ts";
 
 export type AgentRunExecution = "foreground" | "background";
 

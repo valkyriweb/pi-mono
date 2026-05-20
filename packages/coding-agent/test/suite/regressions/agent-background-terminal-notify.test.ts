@@ -1,9 +1,9 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { executeAgentTool } from "../../../src/core/agents/executor.js";
-import { waitForAgentRecentRun } from "../../../src/core/agents/status.js";
-import type { AgentBackgroundCompletion } from "../../../src/core/agents/types.js";
-import { createHarness, type Harness } from "../harness.js";
+import { executeAgentTool } from "../../../src/core/agents/executor.ts";
+import { waitForAgentRecentRun } from "../../../src/core/agents/status.ts";
+import type { AgentBackgroundCompletion } from "../../../src/core/agents/types.ts";
+import { createHarness, type Harness } from "../harness.ts";
 
 describe("background agent terminal notification", () => {
 	const harnesses: Harness[] = [];

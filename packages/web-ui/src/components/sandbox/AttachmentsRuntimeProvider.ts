@@ -1,6 +1,6 @@
-import { ATTACHMENTS_RUNTIME_DESCRIPTION } from "../../prompts/prompts.js";
-import type { Attachment } from "../../utils/attachment-utils.js";
-import type { SandboxRuntimeProvider } from "./SandboxRuntimeProvider.js";
+import { ATTACHMENTS_RUNTIME_DESCRIPTION } from "../../prompts/prompts.ts";
+import type { Attachment } from "../../utils/attachment-utils.ts";
+import type { SandboxRuntimeProvider } from "./SandboxRuntimeProvider.ts";
 
 /**
  * Attachments Runtime Provider

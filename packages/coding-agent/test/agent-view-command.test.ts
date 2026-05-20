@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { __test, isAgentViewCommand } from "../src/cli/agent-view-command.js";
+import { __test, isAgentViewCommand } from "../src/cli/agent-view-command.ts";
 
 describe("agent view command", () => {
 	test("recognizes pi agents", () => {

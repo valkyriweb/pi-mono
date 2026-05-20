@@ -1,11 +1,11 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { ModelRegistry } from "../model-registry.js";
-import { parseModelPattern } from "../model-resolver.js";
-import { loadAgentChainRegistry } from "./chains.js";
-import { findNearestProjectAgentsDir, getUserAgentsDir } from "./loader.js";
-import { loadAgentRegistry } from "./registry.js";
-import type { AgentDefinition } from "./types.js";
+import type { ModelRegistry } from "../model-registry.ts";
+import { parseModelPattern } from "../model-resolver.ts";
+import { loadAgentChainRegistry } from "./chains.ts";
+import { findNearestProjectAgentsDir, getUserAgentsDir } from "./loader.ts";
+import { loadAgentRegistry } from "./registry.ts";
+import type { AgentDefinition } from "./types.ts";
 
 export interface AgentDoctorOptions {
 	cwd: string;

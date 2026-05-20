@@ -3,12 +3,12 @@ import { Text } from "@earendil-works/pi-tui";
 import { existsSync, readdirSync, statSync } from "fs";
 import nodePath from "path";
 import { type Static, Type } from "typebox";
-import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
-import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
-import { resolveToCwd } from "./path-utils.js";
-import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.js";
-import { wrapToolDefinition } from "./tool-definition-wrapper.js";
-import { DEFAULT_MAX_BYTES, formatSize, type TruncationResult, truncateHead } from "./truncate.js";
+import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
+import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
+import { resolveToCwd } from "./path-utils.ts";
+import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.ts";
+import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
+import { DEFAULT_MAX_BYTES, formatSize, type TruncationResult, truncateHead } from "./truncate.ts";
 
 const lsSchema = Type.Object({
 	path: Type.Optional(Type.String({ description: "Directory to list (default: current directory)" })),
@@ -52,7 +52,7 @@ export interface LsToolOptions {
 
 function formatLsCall(
 	args: { path?: string; limit?: number } | undefined,
-	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
 	label: string,
 ): string {
 	const rawPath = str(args?.path);
@@ -66,7 +66,7 @@ function formatLsCall(
 	return text;
 }
 
-function colorLsEntry(entry: string, theme: typeof import("../../modes/interactive/theme/theme.js").theme): string {
+function colorLsEntry(entry: string, theme: typeof import("../../modes/interactive/theme/theme.ts").theme): string {
 	if (entry.endsWith("/")) return theme.fg("accent", entry);
 	if (entry.startsWith(".")) return theme.fg("muted", entry);
 	return theme.fg("toolOutput", entry);
@@ -78,7 +78,7 @@ function formatLsResult(
 		details?: LsToolDetails;
 	},
 	options: ToolRenderResultOptions,
-	theme: typeof import("../../modes/interactive/theme/theme.js").theme,
+	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
 	showImages: boolean,
 ): string {
 	const output = getTextOutput(result, showImages).trim();

@@ -1,6 +1,6 @@
 import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
-import { buildSystemPrompt } from "../src/core/system-prompt.js";
+import { buildSystemPrompt } from "../src/core/system-prompt.ts";
 
 describe("buildSystemPrompt", () => {
 	describe("empty tools", () => {

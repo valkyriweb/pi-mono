@@ -8,7 +8,7 @@ import type {
 	ToolCall,
 	ToolReferenceContent,
 	ToolResultMessage,
-} from "../types.js";
+} from "../types.ts";
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
 const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";

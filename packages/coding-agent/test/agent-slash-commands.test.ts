@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { BUILTIN_SLASH_COMMANDS } from "../src/core/slash-commands.js";
+import { BUILTIN_SLASH_COMMANDS } from "../src/core/slash-commands.ts";
 
 describe("native agents slash commands", () => {
 	test("registers native agents doctor and status aliases", () => {

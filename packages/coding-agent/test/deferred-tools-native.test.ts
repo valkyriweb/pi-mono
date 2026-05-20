@@ -29,8 +29,8 @@ import {
 	scanDiscoveredDeferredToolNames,
 	searchDeferredTools,
 	snapshotDeferredToolState,
-} from "../src/core/deferred-tools.js";
-import type { ToolDefinition } from "../src/core/extensions/types.js";
+} from "../src/core/deferred-tools.ts";
+import type { ToolDefinition } from "../src/core/extensions/types.ts";
 
 function makeDefinition(name: string, options: Partial<ToolDefinition> = {}): ToolDefinition {
 	return {

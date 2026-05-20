@@ -7,7 +7,7 @@
  * status store to the session object graph.
  */
 
-import type { AgentSession } from "../agent-session.js";
+import type { AgentSession } from "../agent-session.ts";
 
 const liveSessions = new Map<string, AgentSession>();
 

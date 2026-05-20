@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.js";
-import { findAgentDefinition } from "../src/core/agents/registry.js";
-import { createAgentToolDefinition } from "../src/core/tools/agent.js";
+import { getBuiltinAgentDefinitions } from "../src/core/agents/definitions.ts";
+import { findAgentDefinition } from "../src/core/agents/registry.ts";
+import { createAgentToolDefinition } from "../src/core/tools/agent.ts";
 
 const READ_ONLY_AGENTS = new Set(["decompose", "explore", "plan", "reviewer"]);
 

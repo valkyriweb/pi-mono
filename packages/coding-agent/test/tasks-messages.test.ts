@@ -6,7 +6,7 @@ import {
 	getTaskMessages,
 	MAX_EVENTS_PER_TASK,
 	subscribeTaskMessages,
-} from "../src/core/tasks/index.js";
+} from "../src/core/tasks/index.ts";
 
 describe("tasks/messages ring buffer", () => {
 	beforeEach(() => {

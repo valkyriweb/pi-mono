@@ -3,8 +3,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { waitForChildProcess } from "../utils/child-process.js";
-import { killProcessTree } from "../utils/shell.js";
+import { waitForChildProcess } from "../utils/child-process.ts";
+import { killProcessTree } from "../utils/shell.ts";
 
 /**
  * Options for executing shell commands.

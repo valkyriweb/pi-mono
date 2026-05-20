@@ -20,8 +20,8 @@ import {
 	startAgentRecentRun,
 	subscribeAgentRecentRuns,
 	updateAgentRecentRunProgress,
-} from "../src/core/agents/status.js";
-import type { AgentRunDetails } from "../src/core/agents/types.js";
+} from "../src/core/agents/status.ts";
+import type { AgentRunDetails } from "../src/core/agents/types.ts";
 
 let tempDir = "";
 let childSessionPath = "";

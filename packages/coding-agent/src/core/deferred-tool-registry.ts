@@ -1,7 +1,7 @@
-import { createDeferredToolSearchTool, type DeferredToolSearchToolOptions } from "./deferred-tool-search-tool.js";
-import { isDeferredTool } from "./deferred-tools.js";
-import type { ToolDefinition } from "./extensions/types.js";
-import { createSyntheticSourceInfo } from "./source-info.js";
+import { createDeferredToolSearchTool, type DeferredToolSearchToolOptions } from "./deferred-tool-search-tool.ts";
+import { isDeferredTool } from "./deferred-tools.ts";
+import type { ToolDefinition } from "./extensions/types.ts";
+import { createSyntheticSourceInfo } from "./source-info.ts";
 
 export interface ToolDefinitionEntryLike {
 	definition: ToolDefinition;

@@ -6,7 +6,7 @@ import {
 	type Model,
 } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHarness, type Harness } from "./harness.js";
+import { createHarness, type Harness } from "./harness.ts";
 
 type SessionWithCompactionInternals = {
 	_checkCompaction: (

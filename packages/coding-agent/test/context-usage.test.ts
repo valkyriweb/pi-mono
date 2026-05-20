@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentSession } from "../src/core/agent-session.js";
+import { AgentSession } from "../src/core/agent-session.ts";
 
 function getContextUsageFor(options: { systemPrompt: string; messages?: unknown[]; contextWindow?: number }) {
 	return AgentSession.prototype.getContextUsage.call({

@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
-import { streamAnthropic } from "../src/providers/anthropic.js";
-import { type Context, type Model, SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "../src/types.js";
+import { streamAnthropic } from "../src/providers/anthropic.ts";
+import { type Context, type Model, SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "../src/types.ts";
 
 function createModel(baseUrl: string): Model<"anthropic-messages"> {
 	return {

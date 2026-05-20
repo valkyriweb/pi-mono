@@ -1,5 +1,5 @@
-export { LocalAgentTask } from "./local-agent-task.js";
-export type { TaskMessageEvent, TaskMessageListener } from "./messages.js";
+export { LocalAgentTask } from "./local-agent-task.ts";
+export type { TaskMessageEvent, TaskMessageListener } from "./messages.ts";
 export {
 	appendTaskMessage,
 	clearTaskMessagesForTests,
@@ -7,7 +7,7 @@ export {
 	getTaskMessages,
 	MAX_EVENTS_PER_TASK,
 	subscribeTaskMessages,
-} from "./messages.js";
+} from "./messages.ts";
 export {
 	clearTaskAdaptersForTests,
 	findTaskAdapter,
@@ -16,7 +16,7 @@ export {
 	listTasks,
 	registerTaskAdapter,
 	subscribeTasks,
-} from "./registry.js";
-export { cycleRunningTask, getRunningTasksSorted } from "./sort.js";
-export type { Task, TaskControlResult, TaskListener, TaskSnapshot, TaskStatus, TaskType } from "./types.js";
-export { isTerminalTaskStatus } from "./types.js";
+} from "./registry.ts";
+export { cycleRunningTask, getRunningTasksSorted } from "./sort.ts";
+export type { Task, TaskControlResult, TaskListener, TaskSnapshot, TaskStatus, TaskType } from "./types.ts";
+export { isTerminalTaskStatus } from "./types.ts";

@@ -1,14 +1,14 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { keyHint } from "../modes/interactive/components/keybinding-hints.js";
+import { keyHint } from "../modes/interactive/components/keybinding-hints.ts";
 import {
 	type DeferredToolSearchPlan,
 	type DeferredToolSearchRuntimeActions,
 	executeDeferredToolSearchForModel,
 	searchDeferredTools,
-} from "./deferred-tools.js";
-import type { ToolDefinition } from "./extensions/types.js";
+} from "./deferred-tools.ts";
+import type { ToolDefinition } from "./extensions/types.ts";
 
 const toolSearchSchema = Type.Object({
 	query: Type.Optional(Type.String()),

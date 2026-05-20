@@ -1,9 +1,9 @@
 import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
-import { type AgentRecentRun, formatAgentDurationMs } from "../../../core/agents/status.js";
-import type { AgentToolStatus } from "../../../core/agents/types.js";
-import { theme } from "../theme/theme.js";
-import { DynamicBorder } from "./dynamic-border.js";
-import { keyHint, rawKeyHint } from "./keybinding-hints.js";
+import { type AgentRecentRun, formatAgentDurationMs } from "../../../core/agents/status.ts";
+import type { AgentToolStatus } from "../../../core/agents/types.ts";
+import { theme } from "../theme/theme.ts";
+import { DynamicBorder } from "./dynamic-border.ts";
+import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
 
 export type AgentRunsSelectorAction = "detail" | "interrupt" | "cancel" | "resume";
 

@@ -10,9 +10,9 @@
  * `registerTaskAdapter`.
  */
 
-import { listAgentRecentRuns, subscribeAgentRecentRuns } from "../agents/status.js";
-import { LocalAgentTask } from "./local-agent-task.js";
-import type { Task, TaskSnapshot, TaskType } from "./types.js";
+import { listAgentRecentRuns, subscribeAgentRecentRuns } from "../agents/status.ts";
+import { LocalAgentTask } from "./local-agent-task.ts";
+import type { Task, TaskSnapshot, TaskType } from "./types.ts";
 
 const adapters = new Map<TaskType, Task>();
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type BashOperations, createBashToolDefinition, semanticExitForBashCommand } from "../src/core/tools/bash.js";
+import { type BashOperations, createBashToolDefinition, semanticExitForBashCommand } from "../src/core/tools/bash.ts";
 
 const ctx: any = {};
 

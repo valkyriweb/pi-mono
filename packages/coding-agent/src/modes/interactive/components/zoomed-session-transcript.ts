@@ -17,10 +17,10 @@
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { Container, type MarkdownTheme, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
-import type { AgentSession } from "../../../core/agent-session.js";
-import { theme } from "../theme/theme.js";
-import { AssistantMessageComponent } from "./assistant-message.js";
-import { ToolExecutionComponent } from "./tool-execution.js";
+import type { AgentSession } from "../../../core/agent-session.ts";
+import { theme } from "../theme/theme.ts";
+import { AssistantMessageComponent } from "./assistant-message.ts";
+import { ToolExecutionComponent } from "./tool-execution.ts";
 
 export interface ZoomedSessionConfig {
 	/** Worker directory for built-in tool definitions (edit diffs etc.). */

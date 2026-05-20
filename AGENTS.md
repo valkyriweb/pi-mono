@@ -19,7 +19,7 @@
 - Check node_modules for external API type definitions instead of guessing
 - **NEVER use inline imports** - no `await import("./foo.js")`, no `import("pkg").Type` in type positions, no dynamic imports for types. Always use standard top-level imports.
 - NEVER remove or downgrade code to fix type errors from outdated dependencies; upgrade the dependency instead
-- In core source packages (`packages/ai/src`, `packages/agent/src`, `packages/coding-agent/src`), use only erasable TypeScript syntax compatible with Node strip-only mode. Do not use constructor parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other TypeScript constructs that require JavaScript emit. Use explicit fields and constructor assignments instead of parameter properties.
+- Use only erasable TypeScript syntax compatible with Node strip-only mode in TypeScript checked by the root config (`packages/*/src`, `packages/*/test`, and `packages/coding-agent/examples`). Do not use constructor parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other TypeScript constructs that require JavaScript emit. Use explicit fields and constructor assignments instead of parameter properties.
 - Always ask before removing functionality or code that appears to be intentional
 - Do not preserve backward compatibility unless the user explicitly asks for it
 - Never hardcode key checks with, eg. `matchesKey(keyData, "ctrl+x")`. All keybindings must be configurable. Add default to matching object (`DEFAULT_EDITOR_KEYBINDINGS` or `DEFAULT_APP_KEYBINDINGS`)
@@ -51,7 +51,7 @@ Flag P1 in local review when:
 
 - After code changes (not documentation changes): `npm run check` (get full output, no tail). Fix all errors, warnings, and infos before committing.
 - Note: `npm run check` does not run tests.
-- NEVER run: `npm run dev`, `npm run build`, `npm test`
+- NEVER run: `npm run build`, `npm test`
 - Only run specific tests if user instructs: `npx tsx ../../node_modules/vitest/dist/cli.js --run test/specific.test.ts`
 - Run tests from the package root, not the repo root.
 - If you create or modify a test file, you MUST run that test file and iterate until it passes.
@@ -85,7 +85,7 @@ When triaging GitHub checks, workflow failures, or branch status:
 When creating issues:
 
 - Add `pkg:*` labels to indicate which package(s) the issue affects
-  - Available labels: `pkg:agent`, `pkg:ai`, `pkg:coding-agent`, `pkg:tui`, `pkg:web-ui`
+  - Available labels: `pkg:agent`, `pkg:ai`, `pkg:coding-agent`, `pkg:tui`
 - If an issue spans multiple packages, add all relevant labels
 
 When posting issue/PR comments:
@@ -234,13 +234,23 @@ Create provider file exporting:
 
 1. **Update CHANGELOGs**: Ensure all changes since last release are documented in the `[Unreleased]` section of each affected package's CHANGELOG.md
 
-2. **Run release script**:
+2. **Soft gate: local release smoke test**: Before running the real release script, build an unpublished local release and manually smoke test it from outside the repository so it cannot accidentally resolve workspace files:
+   ```bash
+   npm run release:local -- --out /tmp/pi-local-release --force
+   cd /tmp
+   /tmp/pi-local-release/bin/pi --help
+   /tmp/pi-local-release/bin/pi --version
+   /tmp/pi-local-release/bin/pi
+   ```
+   In the interactive smoke test, verify startup, model/account listing, and at least one real prompt with the intended default provider. Treat failures as release blockers unless the user explicitly accepts the risk.
+
+3. **Run release script**:
    ```bash
    npm run release:patch    # Fixes and additions
    npm run release:minor    # API breaking changes
    ```
 
-The script handles: version bump, CHANGELOG finalization, commit, tag, publish, and adding new `[Unreleased]` sections.
+The release script handles: version bump, CHANGELOG finalization, commit, tag, publish, and adding new `[Unreleased]` sections.
 
 ## **CRITICAL** Git Rules for Parallel Agents **CRITICAL**
 

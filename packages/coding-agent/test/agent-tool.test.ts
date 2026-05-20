@@ -3,23 +3,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { writeAgentOutput } from "../src/core/agents/output.js";
+import { writeAgentOutput } from "../src/core/agents/output.ts";
 import {
 	attachAgentRecentRunController,
 	clearAgentRecentRunsForTests,
 	startAgentRecentRun,
 	updateAgentRecentRunProgress,
-} from "../src/core/agents/status.js";
-import type { AgentToolDetails } from "../src/core/agents/types.js";
-import { createDeferredToolSearchTool } from "../src/core/deferred-tool-search-tool.js";
-import type { ToolDefinition } from "../src/core/extensions/types.js";
+} from "../src/core/agents/status.ts";
+import type { AgentToolDetails } from "../src/core/agents/types.ts";
+import { createDeferredToolSearchTool } from "../src/core/deferred-tool-search-tool.ts";
+import type { ToolDefinition } from "../src/core/extensions/types.ts";
 import {
 	createAgentToolDefinition,
 	normalizeAgentToolAliases,
 	normalizeAgentToolMode,
-} from "../src/core/tools/agent.js";
-import { createAllToolDefinitions } from "../src/core/tools/index.js";
-import { theme } from "../src/modes/interactive/theme/theme.js";
+} from "../src/core/tools/agent.ts";
+import { createAllToolDefinitions } from "../src/core/tools/index.ts";
+import { theme } from "../src/modes/interactive/theme/theme.ts";
 
 const tempDirs: string[] = [];
 

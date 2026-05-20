@@ -1,6 +1,6 @@
-import { getBuiltinAgentDefinitions } from "./definitions.js";
-import { findNearestProjectAgentsDir, getUserAgentsDir, loadAgentDefinitionsFromDirectory } from "./loader.js";
-import type { AgentDefinition, AgentRegistry, AgentScope } from "./types.js";
+import { getBuiltinAgentDefinitions } from "./definitions.ts";
+import { findNearestProjectAgentsDir, getUserAgentsDir, loadAgentDefinitionsFromDirectory } from "./loader.ts";
+import type { AgentDefinition, AgentRegistry, AgentScope } from "./types.ts";
 
 function mergeDefinitions(base: AgentRegistry, next: AgentRegistry): AgentRegistry {
 	const byId = new Map<string, AgentDefinition>();

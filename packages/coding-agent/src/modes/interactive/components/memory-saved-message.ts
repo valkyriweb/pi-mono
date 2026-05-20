@@ -1,8 +1,8 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { Container, Text } from "@earendil-works/pi-tui";
-import type { MessageRenderer } from "../../../core/extensions/types.js";
-import type { CustomMessage } from "../../../core/messages.js";
-import { theme } from "../theme/theme.js";
+import type { MessageRenderer } from "../../../core/extensions/types.ts";
+import type { CustomMessage } from "../../../core/messages.ts";
+import { theme } from "../theme/theme.ts";
 
 /**
  * Built-in renderer for `customType === "memory_saved"` transcript entries

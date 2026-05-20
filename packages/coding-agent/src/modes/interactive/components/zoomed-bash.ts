@@ -8,9 +8,9 @@
 
 import { readFileSync, statSync } from "node:fs";
 import { type Component, Container, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
-import { type BashBgJob, getBashBgJob } from "../../../core/tools/bash.js";
-import { theme } from "../theme/theme.js";
-import { DynamicBorder } from "./dynamic-border.js";
+import { type BashBgJob, getBashBgJob } from "../../../core/tools/bash.ts";
+import { theme } from "../theme/theme.ts";
+import { DynamicBorder } from "./dynamic-border.ts";
 
 const MAX_LINES = 200;
 const REFRESH_MS = 1000;

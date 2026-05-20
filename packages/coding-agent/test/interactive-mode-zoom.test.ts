@@ -16,17 +16,17 @@ import {
 	clearAgentRecentRunsForTests,
 	finishAgentRecentRun,
 	startAgentRecentRun,
-} from "../src/core/agents/status.js";
-import type { AgentRunDetails } from "../src/core/agents/types.js";
+} from "../src/core/agents/status.ts";
+import type { AgentRunDetails } from "../src/core/agents/types.ts";
 import {
 	appendTaskMessage,
 	clearTaskMessagesForTests,
 	getTaskMessages,
 	LocalAgentTask,
-} from "../src/core/tasks/index.js";
-import { ZoomedTaskComponent } from "../src/modes/interactive/components/zoomed-task.js";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.js";
-import { initTheme } from "../src/modes/interactive/theme/theme.js";
+} from "../src/core/tasks/index.ts";
+import { ZoomedTaskComponent } from "../src/modes/interactive/components/zoomed-task.ts";
+import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 type ZoomContext = {
 	zoomedTaskId: string | undefined;

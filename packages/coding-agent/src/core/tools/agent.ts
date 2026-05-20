@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolResult, ThinkingLevel } from "@earendil-works/
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
-import { type AgentToolParentServices, executeAgentTool } from "../agents/executor.js";
+import { type AgentToolParentServices, executeAgentTool } from "../agents/executor.ts";
 import {
 	cancelAgentRecentRun,
 	formatAgentDurationMs,
@@ -10,18 +10,18 @@ import {
 	formatAgentTokenCount,
 	interruptAgentRecentRun,
 	resumeAgentRecentRun,
-} from "../agents/status.js";
+} from "../agents/status.ts";
 import type {
 	AgentBackgroundCompletion,
 	AgentExecutionProgress,
 	AgentRunDetails,
 	AgentToolDetails,
 	AgentToolMode,
-} from "../agents/types.js";
-import type { ToolDefinition } from "../extensions/types.js";
-import type { ReadonlySessionManager } from "../session-manager.js";
-import { LocalAgentTask } from "../tasks/index.js";
-import { wrapToolDefinition } from "./tool-definition-wrapper.js";
+} from "../agents/types.ts";
+import type { ToolDefinition } from "../extensions/types.ts";
+import type { ReadonlySessionManager } from "../session-manager.ts";
+import { LocalAgentTask } from "../tasks/index.ts";
+import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 
 const contextModeSchema = Type.Union([
 	Type.Literal("default"),

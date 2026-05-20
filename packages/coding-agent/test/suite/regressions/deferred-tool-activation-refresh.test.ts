@@ -1,8 +1,8 @@
 import { type Context, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../../src/core/extensions/types.js";
-import { createHarness, type Harness } from "../harness.js";
+import type { ExtensionAPI } from "../../../src/core/extensions/types.ts";
+import { createHarness, type Harness } from "../harness.ts";
 
 function registerFakeTool(pi: ExtensionAPI, name: string): void {
 	pi.registerTool({

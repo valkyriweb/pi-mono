@@ -2,10 +2,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Context, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildAgentSystemAppend } from "../../src/core/agents/context.js";
-import { getBuiltinAgentDefinitions } from "../../src/core/agents/definitions.js";
-import { executeAgentTool } from "../../src/core/agents/executor.js";
-import { createHarness, type Harness } from "./harness.js";
+import { buildAgentSystemAppend } from "../../src/core/agents/context.ts";
+import { getBuiltinAgentDefinitions } from "../../src/core/agents/definitions.ts";
+import { executeAgentTool } from "../../src/core/agents/executor.ts";
+import { createHarness, type Harness } from "./harness.ts";
 
 function executorOptions(harness: Harness) {
 	return {

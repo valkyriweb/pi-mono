@@ -5,14 +5,14 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import type { KeyId } from "@earendil-works/pi-tui";
-import { type Theme, theme } from "../../modes/interactive/theme/theme.js";
-import type { ResourceDiagnostic } from "../diagnostics.js";
-import type { EventBus } from "../event-bus.js";
-import type { KeybindingsConfig } from "../keybindings.js";
-import type { ModelRegistry } from "../model-registry.js";
-import type { SessionManager } from "../session-manager.js";
-import type { BuildSystemPromptOptions } from "../system-prompt.js";
-import { loadDeferredExtension } from "./loader.js";
+import { type Theme, theme } from "../../modes/interactive/theme/theme.ts";
+import type { ResourceDiagnostic } from "../diagnostics.ts";
+import type { EventBus } from "../event-bus.ts";
+import type { KeybindingsConfig } from "../keybindings.ts";
+import type { ModelRegistry } from "../model-registry.ts";
+import type { SessionManager } from "../session-manager.ts";
+import type { BuildSystemPromptOptions } from "../system-prompt.ts";
+import { loadDeferredExtension } from "./loader.ts";
 import type {
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
@@ -62,7 +62,7 @@ import type {
 	TranscriptEntry,
 	UserBashEvent,
 	UserBashEventResult,
-} from "./types.js";
+} from "./types.ts";
 
 // Extension shortcuts compete with canonical keybinding ids from keybindings.json.
 // Only editor-global shortcuts are reserved here. Picker-specific bindings are not.

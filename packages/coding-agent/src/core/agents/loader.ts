@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { parseFrontmatter } from "../../utils/frontmatter.js";
+import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import type {
 	AgentCacheProfile,
 	AgentDefinition,
@@ -9,7 +9,7 @@ import type {
 	AgentSource,
 	AgentToolList,
 	ContextMode,
-} from "./types.js";
+} from "./types.ts";
 
 interface RawAgentFrontmatter extends Record<string, unknown> {
 	name?: unknown;

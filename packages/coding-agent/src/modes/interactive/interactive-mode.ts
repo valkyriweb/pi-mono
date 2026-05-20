@@ -57,12 +57,12 @@ import {
 	getDocsPath,
 	getShareViewerUrl,
 	VERSION,
-} from "../../config.js";
-import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.js";
-import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.js";
-import { findAgentChain, loadAgentChainRegistry } from "../../core/agents/chains.js";
-import { buildAgentDoctorReport } from "../../core/agents/doctor.js";
-import { loadAgentRegistry } from "../../core/agents/registry.js";
+} from "../../config.ts";
+import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
+import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.ts";
+import { findAgentChain, loadAgentChainRegistry } from "../../core/agents/chains.ts";
+import { buildAgentDoctorReport } from "../../core/agents/doctor.ts";
+import { loadAgentRegistry } from "../../core/agents/registry.ts";
 import {
 	type AgentRecentRun,
 	cancelAgentRecentRun,
@@ -71,8 +71,8 @@ import {
 	listAgentRecentRuns,
 	resumeAgentRecentRun,
 	subscribeAgentRecentRuns,
-} from "../../core/agents/status.js";
-import type { AgentDefinition } from "../../core/agents/types.js";
+} from "../../core/agents/status.ts";
+import type { AgentDefinition } from "../../core/agents/types.ts";
 import type {
 	AutocompleteProviderFactory,
 	EditorFactory,
@@ -82,71 +82,72 @@ import type {
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
-} from "../../core/extensions/index.js";
-import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.js";
-import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.js";
-import { createCompactionSummaryMessage } from "../../core/messages.js";
-import { defaultModelPerProvider, findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.js";
-import { DefaultPackageManager } from "../../core/package-manager.js";
-import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "../../core/provider-display-names.js";
-import type { ResourceDiagnostic } from "../../core/resource-loader.js";
-import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.js";
-import { type SessionContext, SessionManager } from "../../core/session-manager.js";
-import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.js";
-import type { SourceInfo } from "../../core/source-info.js";
+} from "../../core/extensions/index.ts";
+import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.ts";
+import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/http-dispatcher.ts";
+import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.ts";
+import { createCompactionSummaryMessage } from "../../core/messages.ts";
+import { defaultModelPerProvider, findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.ts";
+import { DefaultPackageManager } from "../../core/package-manager.ts";
+import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "../../core/provider-display-names.ts";
+import type { ResourceDiagnostic } from "../../core/resource-loader.ts";
+import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.ts";
+import { type SessionContext, SessionManager } from "../../core/session-manager.ts";
+import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
+import type { SourceInfo } from "../../core/source-info.ts";
 import {
 	appendTaskMessage,
 	cycleRunningTask,
 	getRunningTasksSorted,
 	isTerminalTaskStatus,
 	LocalAgentTask,
-} from "../../core/tasks/index.js";
-import { isInstallTelemetryEnabled } from "../../core/telemetry.js";
-import { getBashBgJob, getRunningBashBgJobsSorted, subscribeBashBgJobs } from "../../core/tools/bash.js";
-import type { TruncationResult } from "../../core/tools/truncate.js";
-import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.js";
-import { copyToClipboard } from "../../utils/clipboard.js";
-import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.js";
-import { parseGitUrl } from "../../utils/git.js";
-import { getCwdRelativePath } from "../../utils/paths.js";
-import { getPiUserAgent } from "../../utils/pi-user-agent.js";
-import { killTrackedDetachedChildren } from "../../utils/shell.js";
-import { ensureTool } from "../../utils/tools-manager.js";
-import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.js";
-import { type AgentRunsSelectorAction, AgentRunsSelectorComponent } from "./components/agent-runs-selector.js";
-import { AgentsSelectorComponent } from "./components/agents-selector.js";
-import { ArminComponent } from "./components/armin.js";
-import { AssistantMessageComponent } from "./components/assistant-message.js";
-import { BashExecutionComponent } from "./components/bash-execution.js";
-import { BorderedLoader } from "./components/bordered-loader.js";
-import { BranchSummaryMessageComponent } from "./components/branch-summary-message.js";
-import { CompactionSummaryMessageComponent } from "./components/compaction-summary-message.js";
-import { CountdownTimer } from "./components/countdown-timer.js";
-import { CustomEditor } from "./components/custom-editor.js";
-import { CustomMessageComponent } from "./components/custom-message.js";
-import { DaxnutsComponent } from "./components/daxnuts.js";
-import { DynamicBorder } from "./components/dynamic-border.js";
-import { EarendilAnnouncementComponent } from "./components/earendil-announcement.js";
-import { ExtensionEditorComponent } from "./components/extension-editor.js";
-import { ExtensionInputComponent } from "./components/extension-input.js";
-import { ExtensionSelectorComponent } from "./components/extension-selector.js";
-import { FooterComponent } from "./components/footer.js";
-import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.js";
-import { LoginDialogComponent } from "./components/login-dialog.js";
-import { memorySavedMessageRenderer } from "./components/memory-saved-message.js";
-import { ModelSelectorComponent } from "./components/model-selector.js";
-import { type AuthSelectorProvider, OAuthSelectorComponent } from "./components/oauth-selector.js";
-import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.js";
-import { SessionSelectorComponent } from "./components/session-selector.js";
-import { SettingsSelectorComponent } from "./components/settings-selector.js";
-import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.js";
-import { ToolExecutionComponent } from "./components/tool-execution.js";
-import { TreeSelectorComponent } from "./components/tree-selector.js";
-import { UserMessageComponent } from "./components/user-message.js";
-import { UserMessageSelectorComponent } from "./components/user-message-selector.js";
-import { ZoomedBashComponent } from "./components/zoomed-bash.js";
-import type { ZoomedSessionConfig } from "./components/zoomed-session-transcript.js";
-import { ZoomedTaskComponent } from "./components/zoomed-task.js";
+} from "../../core/tasks/index.ts";
+import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
+import { getBashBgJob, getRunningBashBgJobsSorted, subscribeBashBgJobs } from "../../core/tools/bash.ts";
+import type { TruncationResult } from "../../core/tools/truncate.ts";
+import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.ts";
+import { copyToClipboard } from "../../utils/clipboard.ts";
+import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.ts";
+import { parseGitUrl } from "../../utils/git.ts";
+import { getCwdRelativePath } from "../../utils/paths.ts";
+import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
+import { killTrackedDetachedChildren } from "../../utils/shell.ts";
+import { ensureTool } from "../../utils/tools-manager.ts";
+import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
+import { type AgentRunsSelectorAction, AgentRunsSelectorComponent } from "./components/agent-runs-selector.ts";
+import { AgentsSelectorComponent } from "./components/agents-selector.ts";
+import { ArminComponent } from "./components/armin.ts";
+import { AssistantMessageComponent } from "./components/assistant-message.ts";
+import { BashExecutionComponent } from "./components/bash-execution.ts";
+import { BorderedLoader } from "./components/bordered-loader.ts";
+import { BranchSummaryMessageComponent } from "./components/branch-summary-message.ts";
+import { CompactionSummaryMessageComponent } from "./components/compaction-summary-message.ts";
+import { CountdownTimer } from "./components/countdown-timer.ts";
+import { CustomEditor } from "./components/custom-editor.ts";
+import { CustomMessageComponent } from "./components/custom-message.ts";
+import { DaxnutsComponent } from "./components/daxnuts.ts";
+import { DynamicBorder } from "./components/dynamic-border.ts";
+import { EarendilAnnouncementComponent } from "./components/earendil-announcement.ts";
+import { ExtensionEditorComponent } from "./components/extension-editor.ts";
+import { ExtensionInputComponent } from "./components/extension-input.ts";
+import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
+import { FooterComponent } from "./components/footer.ts";
+import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
+import { LoginDialogComponent } from "./components/login-dialog.ts";
+import { memorySavedMessageRenderer } from "./components/memory-saved-message.ts";
+import { ModelSelectorComponent } from "./components/model-selector.ts";
+import { type AuthSelectorProvider, OAuthSelectorComponent } from "./components/oauth-selector.ts";
+import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
+import { SessionSelectorComponent } from "./components/session-selector.ts";
+import { SettingsSelectorComponent } from "./components/settings-selector.ts";
+import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
+import { ToolExecutionComponent } from "./components/tool-execution.ts";
+import { TreeSelectorComponent } from "./components/tree-selector.ts";
+import { UserMessageComponent } from "./components/user-message.ts";
+import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
+import { ZoomedBashComponent } from "./components/zoomed-bash.ts";
+import type { ZoomedSessionConfig } from "./components/zoomed-session-transcript.ts";
+import { ZoomedTaskComponent } from "./components/zoomed-task.ts";
 import {
 	getAvailableThemes,
 	getAvailableThemesWithPaths,
@@ -162,7 +163,7 @@ import {
 	Theme,
 	type ThemeColor,
 	theme,
-} from "./theme/theme.js";
+} from "./theme/theme.ts";
 
 /** Interface for components that can be expanded/collapsed */
 interface Expandable {
@@ -1635,6 +1636,7 @@ export class InteractiveMode {
 	}
 
 	private applyRuntimeSettings(): void {
+		configureHttpDispatcher(this.settingsManager.getHttpIdleTimeoutMs());
 		this.footer.setSession(this.session);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
 		this.footerDataProvider.setCwd(this.sessionManager.getCwd());
@@ -4287,6 +4289,7 @@ export class InteractiveMode {
 					steeringMode: this.session.steeringMode,
 					followUpMode: this.session.followUpMode,
 					transport: this.settingsManager.getTransport(),
+					httpIdleTimeoutMs: this.settingsManager.getHttpIdleTimeoutMs(),
 					thinkingLevel: this.session.thinkingLevel,
 					availableThinkingLevels: this.session.getAvailableThinkingLevels(),
 					currentTheme: this.settingsManager.getTheme() || "dark",
@@ -4344,6 +4347,11 @@ export class InteractiveMode {
 					onTransportChange: (transport) => {
 						this.settingsManager.setTransport(transport);
 						this.session.agent.transport = transport;
+					},
+					onHttpIdleTimeoutMsChange: (timeoutMs) => {
+						this.settingsManager.setHttpIdleTimeoutMs(timeoutMs);
+						configureHttpDispatcher(timeoutMs);
+						this.showStatus(`HTTP idle timeout: ${formatHttpIdleTimeoutMs(timeoutMs)}`);
 					},
 					onThinkingLevelChange: (level) => {
 						this.session.setThinkingLevel(level);
@@ -5494,6 +5502,7 @@ export class InteractiveMode {
 
 		try {
 			await this.session.reload();
+			configureHttpDispatcher(this.settingsManager.getHttpIdleTimeoutMs());
 			this.keybindings.reload();
 			const activeHeader = this.customHeader ?? this.builtInHeader;
 			if (isExpandable(activeHeader)) {

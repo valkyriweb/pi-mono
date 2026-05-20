@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { loadAgentDefinitionsFromDirectory } from "../src/core/agents/loader.js";
-import { loadAgentRegistry } from "../src/core/agents/registry.js";
+import { loadAgentDefinitionsFromDirectory } from "../src/core/agents/loader.ts";
+import { loadAgentRegistry } from "../src/core/agents/registry.ts";
 
 const tempDirs: string[] = [];
 
