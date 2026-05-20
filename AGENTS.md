@@ -29,6 +29,8 @@
 
 Canonical setup registry lives in `~/Projects/personal/my-pi/docs/pi-setup/`, not this fork. Runtime/provider/cache/tool/fork-patch changes here should update the my-pi catalog/governed docs; generated registry files are refreshed from my-pi scanners and must not be hand-edited here.
 
+- TEMP 2026-05-20: Claude Code 2.1.145 read-truncation handoff lives at `packages/coding-agent/docs/claude-code-2.1.145-read-truncation-handoff.md`; delete this AGENTS.md line after seen/triaged.
+
 ## Local Pi Docs
 
 Read local docs before changing the matching surface:
