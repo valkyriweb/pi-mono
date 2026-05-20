@@ -95,6 +95,6 @@ describe("bash command exit semantics", () => {
 		const result = await bash.execute("t1", { command: "grep needle README.md" }, undefined, undefined, ctx);
 
 		expect(isError(result)).toBe(true);
-		expect(getText(result)).toContain("Blocked bash grep");
+		expect(getText(result)).toContain("Blocked: bash command contains `grep`");
 	});
 });

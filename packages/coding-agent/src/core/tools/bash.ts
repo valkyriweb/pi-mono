@@ -8,6 +8,7 @@ import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 import { truncateToVisualLines } from "../../modes/interactive/components/visual-truncate.js";
 import { highlightCode, theme } from "../../modes/interactive/theme/theme.js";
+import { stripAnsi } from "../../utils/ansi.js";
 import { waitForChildProcess } from "../../utils/child-process.js";
 import {
 	getShellConfig,
@@ -170,6 +171,52 @@ function spawnBashBackground(command: string, cwd: string, shellPath?: string, c
 	return job;
 }
 
+const VERTICAL_TUI_RUN_MIN_LINES = 12;
+
+function stripTrailingCarriageReturn(line: string): string {
+	return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
+function stripTerminalControls(text: string): string {
+	return stripAnsi(text)
+		.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, "")
+		.trimEnd();
+}
+
+function isShortTerminalFragment(line: string): boolean {
+	const text = stripTrailingCarriageReturn(line);
+	return text === "" || [...text].length <= 3;
+}
+
+function isLikelyWrappedTuiRun(lines: string[]): boolean {
+	if (lines.length < VERTICAL_TUI_RUN_MIN_LINES) return false;
+	const joined = lines.map(stripTrailingCarriageReturn).join("");
+	return joined.includes("\u001B") && /\[[0-9;?]*[A-Za-z]/u.test(joined);
+}
+
+function sanitizeBashBgDisplayLines(lines: string[]): string[] {
+	const sanitized: string[] = [];
+	for (let index = 0; index < lines.length; ) {
+		if (!isShortTerminalFragment(lines[index])) {
+			sanitized.push(stripTerminalControls(stripTrailingCarriageReturn(lines[index])));
+			index++;
+			continue;
+		}
+
+		let end = index + 1;
+		while (end < lines.length && isShortTerminalFragment(lines[end])) end++;
+		const run = lines.slice(index, end);
+		if (isLikelyWrappedTuiRun(run)) {
+			const collapsed = stripTerminalControls(run.map(stripTrailingCarriageReturn).join(""));
+			if (collapsed) sanitized.push(collapsed);
+		} else {
+			for (const line of run) sanitized.push(stripTerminalControls(stripTrailingCarriageReturn(line)));
+		}
+		index = end;
+	}
+	return sanitized;
+}
+
 function readBashBgLog(
 	job: BashBgJob,
 	opts: { mode: "tail" | "head" | "all"; maxLines: number },
@@ -187,14 +234,14 @@ function readBashBgLog(
 	const max = Math.max(1, Math.min(opts.maxLines, 1000));
 	if (opts.mode === "head") {
 		const slice = all.slice(0, max);
-		return { lines: slice, totalLines: total, truncated: total > slice.length };
+		return { lines: sanitizeBashBgDisplayLines(slice), totalLines: total, truncated: total > slice.length };
 	}
 	if (opts.mode === "all") {
 		const slice = all.slice(0, max);
-		return { lines: slice, totalLines: total, truncated: total > slice.length };
+		return { lines: sanitizeBashBgDisplayLines(slice), totalLines: total, truncated: total > slice.length };
 	}
 	const slice = all.slice(Math.max(0, total - max));
-	return { lines: slice, totalLines: total, truncated: total > slice.length };
+	return { lines: sanitizeBashBgDisplayLines(slice), totalLines: total, truncated: total > slice.length };
 }
 
 export type BashToolInput = Static<typeof bashSchema>;
@@ -619,7 +666,13 @@ export function nativeToolCommandUsedInBash(command: string): "grep" | "rg" | "f
 }
 
 function nativeToolCommandError(tool: string): string {
-	return `Blocked bash ${tool}: use the native ${tool === "rg" ? "grep" : tool} tool instead of running ${tool} inside bash.`;
+	const native = tool === "rg" ? "Grep" : tool === "grep" ? "Grep" : tool === "find" ? "Find" : "Ls";
+	return (
+		`Blocked: bash command contains \`${tool}\` (also blocked: grep/rg/find/ls). ` +
+		`The entire bash call was rejected, not just that token. ` +
+		`Use native tools instead: ${native} for this, Read for file contents, Grep for content search, Find for file patterns, Ls for directories. ` +
+		`Split into separate native-tool calls; do not combine with other shell work in one bash invocation.`
+	);
 }
 
 function unquoteShellPath(value: string): string {
@@ -643,6 +696,7 @@ function redundantCdError(): string {
 
 function formatBashCall(
 	args: { command?: string; timeout?: number | false; run_in_background?: boolean } | undefined,
+	label: string,
 ): string {
 	const command = str(args?.command);
 	const timeout = resolveBashTimeout(args?.timeout as number | false | undefined);
@@ -653,7 +707,7 @@ function formatBashCall(
 			? theme.fg("muted", ` (timeout ${timeout}s)`)
 			: theme.fg("muted", " (no timeout)");
 
-	const prompt = `${theme.fg("toolTitle", theme.bold("bash"))} `;
+	const prompt = `${theme.fg("toolTitle", theme.bold(label))} `;
 
 	if (command === null) return prompt + invalidArgText(theme) + timeoutSuffix;
 	if (!command) return prompt + theme.fg("toolOutput", "...") + timeoutSuffix;
@@ -761,19 +815,21 @@ export function createBashToolDefinition(
 	const commandPrefix = options?.commandPrefix;
 	const spawnHook = options?.spawnHook;
 	const toolName = options?.toolName ?? "bash";
-	const label = options?.label ?? toolName;
+	const label = options?.label ?? "Bash";
 	return {
 		name: toolName,
 		label,
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: do not use this tool to run \`grep\`, \`rg\`, \`find\`, or \`ls\` \u2014 use the dedicated Grep, Find, and Ls tools instead. Bash invocations of those commands are blocked at runtime and return an error. Reserve Bash for shell-only operations (pipelines, \`stat\`, \`wc\`, \`head\`, \`tail\`, git, package managers, etc.).\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: use native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Do not run \`grep\`, \`rg\`, \`find\`, or \`ls\` in Bash; those commands are blocked at runtime. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`. Do not delegate back to native tools from inside Bash.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
 		promptSnippet:
 			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
 		promptGuidelines: [
 			"Use run_in_background:true for any command likely to exceed ~30s when you don't need the output immediately (builds, installers, kubectl rollouts, long test suites, dev servers).",
 			"Do NOT poll a background bash job with sleep loops. Call bash_output(bgId) when you need its current state, or use monitor_start instead if you want to be woken on every output batch.",
 			"Always stop background jobs you started but no longer need with bash_kill(bgId).",
-			// Worded identically to system-prompt.ts so the dedup in addGuideline merges both into one bullet.
-			"Use the Grep, Find, and Ls tools for file exploration instead of Bash — `grep`/`rg`/`find`/`ls` invoked via Bash are blocked at runtime.",
+			// Worded identically to system-prompt.ts so addGuideline deduplicates shared rules.
+			"Use native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches; do not run `grep`/`rg`/`find`/`ls` in Bash.",
+			"Use Bash for shell work and non-repo command output: `kubectl ... | jq`, `ps ... | awk`, git, package managers, `stat`/`wc`/`head`/`tail`.",
+			"Use Read/Edit/Write for files instead of shelling out to view or modify file contents.",
 		],
 		parameters: bashSchema,
 		async execute(
@@ -952,7 +1008,7 @@ export function createBashToolDefinition(
 				state.endedAt = undefined;
 			}
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatBashCall(args));
+			text.setText(formatBashCall(args, label));
 			return text;
 		},
 		renderResult(result, options, _theme, context) {
@@ -1014,13 +1070,15 @@ const bashOutputSchema = Type.Object({
 
 export type BashOutputToolInput = Static<typeof bashOutputSchema>;
 
-export function createBashOutputToolDefinition(): ToolDefinition<
-	typeof bashOutputSchema,
-	BashOutputToolDetails | undefined
-> {
+export function createBashOutputToolDefinition(options?: {
+	toolName?: string;
+	label?: string;
+}): ToolDefinition<typeof bashOutputSchema, BashOutputToolDetails | undefined> {
+	const toolName = options?.toolName ?? "bash_output";
+	const label = options?.label ?? "BashOutput";
 	return {
-		name: "bash_output",
-		label: "bash_output",
+		name: toolName,
+		label,
 		description:
 			"Read accumulated stdout/stderr from a backgrounded bash job (started via bash with run_in_background:true). Returns a bounded slice of the log plus job status. Does not block or wait \u2014 just shows current state. Use this when you need to peek at progress or grab results after the job has completed. For live streaming with wake-on-output behavior, use monitor_start instead.",
 		promptSnippet: "Read the log of a backgrounded bash job by bgId",
@@ -1065,6 +1123,17 @@ export function createBashOutputTool(): AgentTool<typeof bashOutputSchema> {
 	return wrapToolDefinition(createBashOutputToolDefinition());
 }
 
+export function createBashOutputNativeToolDefinition(): ToolDefinition<
+	typeof bashOutputSchema,
+	BashOutputToolDetails | undefined
+> {
+	return createBashOutputToolDefinition({ toolName: "BashOutput", label: "BashOutput" });
+}
+
+export function createBashOutputNativeTool(): AgentTool<typeof bashOutputSchema> {
+	return wrapToolDefinition(createBashOutputNativeToolDefinition());
+}
+
 // ===========================================================================
 // bash_kill — stop a backgrounded bash job
 // ===========================================================================
@@ -1075,10 +1144,15 @@ const bashKillSchema = Type.Object({
 
 export type BashKillToolInput = Static<typeof bashKillSchema>;
 
-export function createBashKillToolDefinition(): ToolDefinition<typeof bashKillSchema, BashBgJob | undefined> {
+export function createBashKillToolDefinition(options?: {
+	toolName?: string;
+	label?: string;
+}): ToolDefinition<typeof bashKillSchema, BashBgJob | undefined> {
+	const toolName = options?.toolName ?? "bash_kill";
+	const label = options?.label ?? "KillShell";
 	return {
-		name: "bash_kill",
-		label: "bash_kill",
+		name: toolName,
+		label,
 		description:
 			"Stop a backgrounded bash job (started via bash with run_in_background:true). Sends SIGTERM to the whole process tree; the job moves to status=killed. Idempotent \u2014 calling on an already-finished job is safe and just reports state.",
 		promptSnippet: "Stop a backgrounded bash job by bgId",
@@ -1130,4 +1204,12 @@ export function createBashKillToolDefinition(): ToolDefinition<typeof bashKillSc
 
 export function createBashKillTool(): AgentTool<typeof bashKillSchema> {
 	return wrapToolDefinition(createBashKillToolDefinition());
+}
+
+export function createKillShellToolDefinition(): ToolDefinition<typeof bashKillSchema, BashBgJob | undefined> {
+	return createBashKillToolDefinition({ toolName: "KillShell", label: "KillShell" });
+}
+
+export function createKillShellTool(): AgentTool<typeof bashKillSchema> {
+	return wrapToolDefinition(createKillShellToolDefinition());
 }

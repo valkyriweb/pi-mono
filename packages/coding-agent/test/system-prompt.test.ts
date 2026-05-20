@@ -31,26 +31,26 @@ describe("buildSystemPrompt", () => {
 		test("includes all default tools when snippets are provided", () => {
 			const prompt = buildSystemPrompt({
 				toolSnippets: {
-					read: "Read file contents",
-					bash: "Execute bash commands",
-					edit: "Make surgical edits",
-					write: "Create or overwrite files",
-					grep: "Search file contents",
-					find: "Find files by glob pattern",
-					ls: "List directory contents",
+					Read: "Read file contents",
+					Bash: "Execute bash commands",
+					Edit: "Make surgical edits",
+					Write: "Create or overwrite files",
+					Grep: "Search file contents",
+					Find: "Find files by glob pattern",
+					Ls: "List directory contents",
 				},
 				contextFiles: [],
 				skills: [],
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("- read:");
-			expect(prompt).toContain("- bash:");
-			expect(prompt).toContain("- edit:");
-			expect(prompt).toContain("- write:");
-			expect(prompt).toContain("- grep:");
-			expect(prompt).toContain("- find:");
-			expect(prompt).toContain("- ls:");
+			expect(prompt).toContain("- Read:");
+			expect(prompt).toContain("- Bash:");
+			expect(prompt).toContain("- Edit:");
+			expect(prompt).toContain("- Write:");
+			expect(prompt).toContain("- Grep:");
+			expect(prompt).toContain("- Find:");
+			expect(prompt).toContain("- Ls:");
 		});
 
 		test("instructs models to resolve pi docs and examples under absolute base paths", () => {
@@ -104,7 +104,7 @@ describe("buildSystemPrompt", () => {
 
 			const boundary = prompt.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
 			expect(boundary).toBeGreaterThan(0);
-			expect(prompt.indexOf("# Project Context")).toBeGreaterThan(boundary);
+			expect(prompt.indexOf("<project_context>")).toBeGreaterThan(boundary);
 			expect(prompt.indexOf("Current date:")).toBeGreaterThan(boundary);
 			expect(prompt.indexOf("Current working directory:")).toBeGreaterThan(boundary);
 		});
@@ -128,13 +128,38 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("## /repo/AGENTS.md\n\nRoot @docs/rules.md");
-			expect(prompt).toContain("## /repo/docs/rules.md\n\nImported rules");
-			expect(prompt.indexOf("## /repo/AGENTS.md")).toBeLessThan(prompt.indexOf("## /repo/docs/rules.md"));
+			expect(prompt).toContain('<project_instructions path="/repo/AGENTS.md">\nRoot @docs/rules.md');
+			expect(prompt).toContain('<project_instructions path="/repo/docs/rules.md">\nImported rules');
+			expect(prompt.indexOf('path="/repo/AGENTS.md"')).toBeLessThan(prompt.indexOf('path="/repo/docs/rules.md"'));
 		});
 	});
 
 	describe("prompt guidelines", () => {
+		test("routes repo exploration to native tools and shell output to Bash", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: ["bash", "grep", "find", "ls"],
+				toolSnippets: {
+					bash: "Execute bash commands",
+					grep: "Search file contents",
+					find: "Find files by glob pattern",
+					ls: "List directory contents",
+				},
+				contextFiles: [],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).toContain(
+				"File/dir exploration uses native tools, never bash: Read = file contents (replaces cat/head/tail/sed on files); Ls = directory listing; Grep = content search (known strings/regex); Find = file discovery by glob; SemanticGrep = conceptual search. Bash calls containing `ls`/`grep`/`rg`/`find` are rejected in full — split into separate native-tool calls, do not combine with other shell work in one bash invocation.",
+			);
+			expect(prompt).toContain(
+				"Use Bash for shell work and non-repo command output: `kubectl ... | jq`, `ps ... | awk`, git, package managers, `stat`/`wc`/`head`/`tail`.",
+			);
+			expect(prompt).toContain(
+				"Use Read/Edit/Write for files instead of shelling out to view or modify file contents.",
+			);
+		});
+
 		test("appends promptGuidelines to default guidelines", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: ["read", "dynamic_tool"],

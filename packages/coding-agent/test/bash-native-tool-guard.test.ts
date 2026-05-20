@@ -39,8 +39,16 @@ describe("bash native tool guard", () => {
 		const result = await bash.execute("t1", { command: "grep foo README.md" }, undefined, undefined, ctx);
 
 		expect(isError(result)).toBe(true);
-		expect(getText(result)).toContain("Blocked bash grep");
-		expect(getText(result)).toContain("native grep tool");
+		expect(getText(result)).toContain("Blocked: bash command contains `grep`");
+		expect(getText(result)).toContain("Grep for content search");
+	});
+
+	it("documents Bash as shell work, not repo exploration", () => {
+		const bash = createBashToolDefinition(process.cwd());
+
+		expect(bash.description).toContain("use native file tools for repo exploration");
+		expect(bash.description).toContain("kubectl ... | jq");
+		expect(bash.description).toContain("Do not delegate back to native tools from inside Bash");
 	});
 
 	it("detects redundant cd to the bash cwd", () => {

@@ -117,11 +117,14 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	if (hasBash && !hasGrep && !hasFind && !hasLs) {
 		addGuideline("Use Bash for file operations like ls, rg, find");
 	} else if (hasBash && (hasGrep || hasFind || hasLs)) {
-		// Single CC-style bullet: positive verb leads, negative explains why.
-		// Worded to match bash.ts promptGuidelines so the dedup in addGuideline collapses both into one line.
+		// Worded to match bash.ts promptGuidelines so addGuideline deduplicates shared rules.
 		addGuideline(
-			"Use the Grep, Find, and Ls tools for file exploration instead of Bash — `grep`/`rg`/`find`/`ls` invoked via Bash are blocked at runtime.",
+			"File/dir exploration uses native tools, never bash: Read = file contents (replaces cat/head/tail/sed on files); Ls = directory listing; Grep = content search (known strings/regex); Find = file discovery by glob; SemanticGrep = conceptual search. Bash calls containing `ls`/`grep`/`rg`/`find` are rejected in full — split into separate native-tool calls, do not combine with other shell work in one bash invocation.",
 		);
+		addGuideline(
+			"Use Bash for shell work and non-repo command output: `kubectl ... | jq`, `ps ... | awk`, git, package managers, `stat`/`wc`/`head`/`tail`.",
+		);
+		addGuideline("Use Read/Edit/Write for files instead of shelling out to view or modify file contents.");
 	}
 
 	if (hasBash) {
