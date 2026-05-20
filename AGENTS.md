@@ -11,6 +11,9 @@
 ## Code Quality
 
 - Read files in full before making wide-ranging changes, before editing files you have not already fully inspected, and when the user asks you to investigate or audit something. Do not rely only on search snippets for broad changes.
+- Add custom Pi functionality as a `my-pi` extension or pi package first. Modify `packages/coding-agent` core only when documented extension/package APIs cannot achieve the behavior.
+- Before core changes, read the local Pi docs for the touched surface and record why core is required.
+- For every `pi-mono-fork` or `my-pi` modification/update, run Matt Pocock's architecture lens: `~/Projects/agent-scripts/skills/matt-pocock/references/improve-codebase-architecture.md`; apply only local, incremental simplifications unless Luke asks for a larger refactor.
 - No `any` types unless absolutely necessary
 - Single-line helper functions with a single call site are forbidden; inline them instead.
 - Check node_modules for external API type definitions instead of guessing
@@ -25,6 +28,24 @@
 ## Pi Setup Registry
 
 Canonical setup registry lives in `~/Projects/personal/my-pi/docs/pi-setup/`, not this fork. Runtime/provider/cache/tool/fork-patch changes here should update the my-pi catalog/governed docs; generated registry files are refreshed from my-pi scanners and must not be hand-edited here.
+
+## Local Pi Docs
+
+Read local docs before changing the matching surface:
+
+- Extensions: `packages/coding-agent/docs/extensions.md` and `packages/coding-agent/examples/extensions/`.
+- Packages: `packages/coding-agent/docs/packages.md` and `packages/coding-agent/examples/README.md`.
+- SDK: `packages/coding-agent/docs/sdk.md` and `packages/coding-agent/examples/sdk/`.
+- Core/source development: `packages/coding-agent/docs/development.md`, `packages/coding-agent/docs/index.md`, `packages/coding-agent/docs/tui.md`, and `packages/coding-agent/src/`.
+
+## PR Review Gate
+
+Flag P1 in local review when:
+
+- Custom behavior is implemented in core without evidence that extension/package APIs are insufficient.
+- A Pi setup/runtime change skips the `my-pi` catalog YAML or governed docs.
+- The architecture lens above was skipped for a `my-pi` or `pi-mono-fork` modification/update.
+- A PR misses a nearby safe simplification or duplicates extension/package glue that should be consolidated.
 
 ## Commands
 
