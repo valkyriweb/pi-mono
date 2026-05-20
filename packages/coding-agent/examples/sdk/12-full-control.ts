@@ -8,6 +8,7 @@ import { getModel } from "@earendil-works/pi-ai";
 import {
 	AuthStorage,
 	createAgentSession,
+	createEventBus,
 	createExtensionRuntime,
 	ModelRegistry,
 	type ResourceLoader,
@@ -38,7 +39,13 @@ const settingsManager = SettingsManager.inMemory({
 const cwd = process.cwd();
 
 const resourceLoader: ResourceLoader = {
-	getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
+	getExtensions: () => ({
+		extensions: [],
+		deferredExtensions: [],
+		errors: [],
+		eventBus: createEventBus(),
+		runtime: createExtensionRuntime(),
+	}),
 	getSkills: () => ({ skills: [], diagnostics: [] }),
 	getPrompts: () => ({ prompts: [], diagnostics: [] }),
 	getThemes: () => ({ themes: [], diagnostics: [] }),

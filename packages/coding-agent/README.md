@@ -527,6 +527,15 @@ Read the [blog post](https://mariozechner.at/posts/2025-11-30-pi-coding-agent/) 
 pi [options] [@files...] [messages...]
 ```
 
+### Agent View
+
+```bash
+pi agents                  # Open the Agent View dashboard from pi-agent-view
+pi agents --bg <task>      # Start a detached background task, then show Agent View
+```
+
+`pi agents` is a thin dispatcher; the dashboard lives in the separate `pi-agent-view` package.
+
 ### Package Commands
 
 ```bash

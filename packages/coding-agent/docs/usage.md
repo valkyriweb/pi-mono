@@ -131,6 +131,15 @@ If you use pi for open source work and want to publish sessions for model, promp
 pi [options] [@files...] [messages...]
 ```
 
+### Agent View Command
+
+```bash
+pi agents                  # Open the Agent View dashboard from pi-agent-view
+pi agents --bg <task>      # Start a detached background task, then show Agent View
+```
+
+`pi agents` is a thin core dispatcher. The dashboard UI lives in the separate `pi-agent-view` package; if that package is not installed, Pi prints an install hint instead of loading coding-agent internals.
+
 ### Package Commands
 
 ```bash
