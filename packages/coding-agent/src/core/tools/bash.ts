@@ -387,7 +387,6 @@ export interface BashToolOptions {
 const BASH_PREVIEW_LINES = 5;
 const BASH_UPDATE_THROTTLE_MS = 100;
 const DEFAULT_BASH_TIMEOUT_SECONDS = 300;
-const NATIVE_TOOL_COMMANDS = new Set(["grep", "rg", "find", "ls"]);
 const COMMAND_SEMANTIC_EXIT_STATUS = 1;
 
 type BashSemanticExit = {
@@ -655,26 +654,6 @@ export function semanticExitForBashCommand(command: string, exitCode: number | n
 	}
 }
 
-export function nativeToolCommandUsedInBash(command: string): "grep" | "rg" | "find" | "ls" | undefined {
-	const pattern =
-		/(?:^|[;&|()\n]|\b(?:then|do)\b)\s*(?:command\s+|builtin\s+|env\s+(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*)?(grep|rg|find|ls)\b/g;
-	for (const match of command.matchAll(pattern)) {
-		const tool = match[1] as "grep" | "rg" | "find" | "ls";
-		if (NATIVE_TOOL_COMMANDS.has(tool)) return tool;
-	}
-	return undefined;
-}
-
-function nativeToolCommandError(tool: string): string {
-	const native = tool === "rg" ? "Grep" : tool === "grep" ? "Grep" : tool === "find" ? "Find" : "Ls";
-	return (
-		`Blocked: bash command contains \`${tool}\` (also blocked: grep/rg/find/ls). ` +
-		`The entire bash call was rejected, not just that token. ` +
-		`Use native tools instead: ${native} for this, Read for file contents, Grep for content search, Find for file patterns, Ls for directories. ` +
-		`Split into separate native-tool calls; do not combine with other shell work in one bash invocation.`
-	);
-}
-
 function unquoteShellPath(value: string): string {
 	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
 		return value.slice(1, -1);
@@ -819,7 +798,7 @@ export function createBashToolDefinition(
 	return {
 		name: toolName,
 		label,
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: use native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Do not run \`grep\`, \`rg\`, \`find\`, or \`ls\` in Bash; those commands are blocked at runtime. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`. Do not delegate back to native tools from inside Bash.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Avoid running \`grep\`, \`rg\`, \`find\`, or \`ls\` standalone in Bash — use the native tools instead. Pipeline filters on command output (e.g. \`kubectl ... | grep Ready\`, \`ps ... | grep -v\`) are fine; the native tools only apply to files on disk. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
 		promptSnippet:
 			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
 		promptGuidelines: [
@@ -827,7 +806,7 @@ export function createBashToolDefinition(
 			"Do NOT poll a background bash job with sleep loops. Call bash_output(bgId) when you need its current state, or use monitor_start instead if you want to be woken on every output batch.",
 			"Always stop background jobs you started but no longer need with bash_kill(bgId).",
 			// Worded identically to system-prompt.ts so addGuideline deduplicates shared rules.
-			"Use native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches; do not run `grep`/`rg`/`find`/`ls` in Bash.",
+			"Prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches. Standalone `grep`/`rg`/`find`/`ls` in Bash is discouraged, but pipeline filters on command output (e.g. `kubectl ... | grep Ready`) are fine.",
 			"Use Bash for shell work and non-repo command output: `kubectl ... | jq`, `ps ... | awk`, git, package managers, `stat`/`wc`/`head`/`tail`.",
 			"Use Read/Edit/Write for files instead of shelling out to view or modify file contents.",
 		],
@@ -847,15 +826,6 @@ export function createBashToolDefinition(
 				return {
 					isError: true,
 					content: [{ type: "text", text: redundantCdError() }],
-					details: undefined,
-				};
-			}
-
-			const nativeToolCommand = nativeToolCommandUsedInBash(command);
-			if (nativeToolCommand) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: nativeToolCommandError(nativeToolCommand) }],
 					details: undefined,
 				};
 			}

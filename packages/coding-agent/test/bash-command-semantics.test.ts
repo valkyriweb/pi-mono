@@ -90,11 +90,11 @@ describe("bash command exit semantics", () => {
 		);
 	});
 
-	it("keeps direct native grep blocked before exit semantics", async () => {
+	it("no longer hard-blocks direct native grep (guidance is instruction-only)", async () => {
 		const bash = createBashToolDefinition(process.cwd(), { operations: operationsWithExit(1) });
 		const result = await bash.execute("t1", { command: "grep needle README.md" }, undefined, undefined, ctx);
 
-		expect(isError(result)).toBe(true);
-		expect(getText(result)).toContain("Blocked: bash command contains `grep`");
+		// grep exit code 1 = no matches; surfaced via semantic-exit, not the old block message.
+		expect(getText(result)).not.toContain("Blocked: bash command contains");
 	});
 });

@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	createBashToolDefinition,
-	nativeToolCommandUsedInBash,
-	redundantCdToCurrentWorkingDirectory,
-} from "../src/core/tools/bash.js";
+import { createBashToolDefinition, redundantCdToCurrentWorkingDirectory } from "../src/core/tools/bash.js";
 
 function getText(result: any): string {
 	return result.content?.[0]?.text ?? "";
@@ -15,40 +11,28 @@ function isError(result: any): boolean {
 
 const ctx: any = {};
 
-describe("bash native tool guard", () => {
-	it.each([
-		["grep foo README.md", "grep"],
-		["rg foo src", "rg"],
-		["find . -name '*.ts'", "find"],
-		["ls -la", "ls"],
-		["git status && grep foo README.md", "grep"],
-		["if true; then rg foo src; fi", "rg"],
-	])("detects %s", (command, expected) => {
-		expect(nativeToolCommandUsedInBash(command)).toBe(expected);
+describe("bash native tool guidance (soft, instruction-only)", () => {
+	it("does not block standalone grep/rg/find/ls (Claude-Code-style soft guidance)", async () => {
+		const bash = createBashToolDefinition(process.cwd());
+		for (const command of ["grep foo README.md", "rg foo src", "find . -name '*.ts'", "ls -la"]) {
+			const result = await bash.execute("t1", { command }, undefined, undefined, ctx);
+			expect(getText(result)).not.toContain("Blocked: bash command contains");
+		}
 	});
 
-	it.each(["git status", "npm --version", "echo grep is a word", "node -e \"console.log('grep')\""])(
-		"allows non-native-tool command %s",
-		(command) => {
-			expect(nativeToolCommandUsedInBash(command)).toBeUndefined();
-		},
-	);
-
-	it("blocks bash commands that should use native tools", async () => {
+	it("does not block pipeline filters on command output", async () => {
 		const bash = createBashToolDefinition(process.cwd());
-		const result = await bash.execute("t1", { command: "grep foo README.md" }, undefined, undefined, ctx);
-
-		expect(isError(result)).toBe(true);
-		expect(getText(result)).toContain("Blocked: bash command contains `grep`");
-		expect(getText(result)).toContain("Grep for content search");
+		const result = await bash.execute("t1", { command: "echo hello | grep hello" }, undefined, undefined, ctx);
+		expect(isError(result)).toBe(false);
+		expect(getText(result)).toContain("hello");
 	});
 
-	it("documents Bash as shell work, not repo exploration", () => {
+	it("documents Bash with soft guidance toward native tools and pipeline-filter exception", () => {
 		const bash = createBashToolDefinition(process.cwd());
 
-		expect(bash.description).toContain("use native file tools for repo exploration");
+		expect(bash.description).toContain("prefer native file tools for repo exploration");
+		expect(bash.description).toContain("Pipeline filters on command output");
 		expect(bash.description).toContain("kubectl ... | jq");
-		expect(bash.description).toContain("Do not delegate back to native tools from inside Bash");
 	});
 
 	it("detects redundant cd to the bash cwd", () => {
@@ -58,7 +42,7 @@ describe("bash native tool guard", () => {
 		expect(redundantCdToCurrentWorkingDirectory("cd packages/coding-agent && npm test", cwd)).toBe(false);
 	});
 
-	it("blocks redundant cd to the bash cwd", async () => {
+	it("still blocks redundant cd to the bash cwd", async () => {
 		const cwd = process.cwd();
 		const bash = createBashToolDefinition(cwd);
 		const result = await bash.execute("t1", { command: `cd ${cwd} && git status` }, undefined, undefined, ctx);
