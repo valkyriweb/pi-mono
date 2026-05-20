@@ -51,13 +51,13 @@ describe("cache-break Fix #3 — builtin preservation across setActiveToolsByNam
 
 		// Sanity: builtins active by default after bindExtensions.
 		const before = harness.session.getActiveToolNames();
-		expect(before).toContain("bash");
-		expect(before).toContain("read");
-		expect(before).toContain("edit");
-		expect(before).toContain("write");
-		expect(before).toContain("grep");
-		expect(before).toContain("find");
-		expect(before).toContain("ls");
+		expect(before).toContain("Bash");
+		expect(before).toContain("Read");
+		expect(before).toContain("Edit");
+		expect(before).toContain("Write");
+		expect(before).toContain("Grep");
+		expect(before).toContain("Find");
+		expect(before).toContain("Ls");
 
 		// Caller (simulating an extension) sets active to extension-only list.
 		// Pre-Fix-#3: builtins would silently drop, breaking the cache prefix.
@@ -65,13 +65,13 @@ describe("cache-break Fix #3 — builtin preservation across setActiveToolsByNam
 
 		const after = harness.session.getActiveToolNames();
 		expect(after).toContain("ext_one");
-		expect(after).toContain("bash");
-		expect(after).toContain("read");
-		expect(after).toContain("edit");
-		expect(after).toContain("write");
-		expect(after).toContain("grep");
-		expect(after).toContain("find");
-		expect(after).toContain("ls");
+		expect(after).toContain("Bash");
+		expect(after).toContain("Read");
+		expect(after).toContain("Edit");
+		expect(after).toContain("Write");
+		expect(after).toContain("Grep");
+		expect(after).toContain("Find");
+		expect(after).toContain("Ls");
 	});
 
 	it("preserves alwaysLoad-tagged extension tools across setActiveToolsByName", async () => {

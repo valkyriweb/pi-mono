@@ -80,7 +80,7 @@ describe("createAgentSession session manager defaults", () => {
 		expect(session.sessionManager).toBe(sessionManager);
 		expect(session.systemPrompt).toContain(`Current working directory: ${sessionCwd}`);
 
-		const bashTool = session.agent.state.tools.find((tool) => tool.name === "bash");
+		const bashTool = session.agent.state.tools.find((tool) => tool.name === "Bash");
 		expect(bashTool).toBeTruthy();
 		const result = await bashTool!.execute("test", { command: "pwd" });
 		const output = result.content

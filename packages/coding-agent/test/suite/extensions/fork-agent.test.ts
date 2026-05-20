@@ -183,7 +183,7 @@ describe("ctx.forkAgent", () => {
 	it("intersects allowedTools with the parent's active tool list", async () => {
 		const captured = newCaptured();
 		const record: ContextRecord = { contexts: [] };
-		const { factory } = forkExtensionFactory(captured, { allowedTools: ["read"] });
+		const { factory } = forkExtensionFactory(captured, { allowedTools: ["Read"] });
 		const harness = await createHarness({ extensionFactories: [factory] });
 		harnesses.push(harness);
 		makeAgentServices(harness);
@@ -191,11 +191,11 @@ describe("ctx.forkAgent", () => {
 
 		await harness.session.prompt("go");
 		const details = await captured.handle!.wait();
-		expect(details.runs[0]?.effectiveTools).toEqual(["read"]);
+		expect(details.runs[0]?.effectiveTools).toEqual(["Read"]);
 
 		const childContext = record.contexts.find(isChildContext);
 		const childToolNames = (childContext?.tools ?? []).map((tool) => tool.name);
-		expect(childToolNames).toEqual(["read"]);
+		expect(childToolNames).toEqual(["Read"]);
 	});
 
 	it("aborts the run within ~1s when the caller signals", async () => {
