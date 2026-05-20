@@ -200,6 +200,24 @@ describe("extensions discovery", () => {
 		expect(result.extensions).toHaveLength(0);
 	});
 
+	it("ignores auto-discovered files and directories marked .disabled", async () => {
+		fs.writeFileSync(path.join(extensionsDir, "file.disabled.ts"), extensionCodeWithTool("disabled-file"));
+
+		const subdir = path.join(extensionsDir, "folder.disabled");
+		fs.mkdirSync(subdir);
+		fs.writeFileSync(path.join(subdir, "index.ts"), extensionCodeWithTool("disabled-folder"));
+
+		const activeDir = path.join(extensionsDir, "active");
+		fs.mkdirSync(activeDir);
+		fs.writeFileSync(path.join(activeDir, "index.ts"), extensionCodeWithTool("active-tool"));
+
+		const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+
+		expect(result.errors).toHaveLength(0);
+		expect(result.extensions).toHaveLength(1);
+		expect(result.extensions[0].tools.has("active-tool")).toBe(true);
+	});
+
 	it("does not recurse beyond one level", async () => {
 		const subdir = path.join(extensionsDir, "container");
 		const nested = path.join(subdir, "nested");

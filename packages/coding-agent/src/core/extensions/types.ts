@@ -1607,7 +1607,7 @@ export type GetCommandsHandler = () => SlashCommandInfo[];
 
 export type SetActiveToolsHandler = (toolNames: string[]) => void;
 
-export type RefreshToolsHandler = () => void;
+export type RefreshToolsHandler = (options?: { activateNewTools?: boolean }) => void;
 
 export type SetModelHandler = (model: Model<any>) => Promise<boolean>;
 
@@ -1629,6 +1629,8 @@ export interface ExtensionRuntimeState {
 	assertActive: () => void;
 	/** Marks this extension instance as stale after runtime replacement or reload. */
 	invalidate: (message?: string) => void;
+	/** When true, registerTool() refreshes the registry without activating newly registered tools. */
+	suppressNewToolActivation: boolean;
 	/**
 	 * Register or unregister a provider.
 	 *
@@ -1724,10 +1726,25 @@ export interface Extension {
 	shortcuts: Map<KeyId, ExtensionShortcut>;
 }
 
+export type ExtensionLoadMode = "eager" | "deferred";
+
+export interface ExtensionLoadRequest {
+	path: string;
+	load?: ExtensionLoadMode;
+}
+
+export interface DeferredExtension {
+	path: string;
+	sourceInfo?: SourceInfo;
+}
+
 /** Result of loading extensions. */
 export interface LoadExtensionsResult {
 	extensions: Extension[];
+	deferredExtensions: DeferredExtension[];
 	errors: Array<{ path: string; error: string }>;
+	/** Shared event bus used by eager and deferred extensions. */
+	eventBus: EventBus;
 	/** Shared runtime - actions are throwing stubs until runner.initialize() */
 	runtime: ExtensionRuntime;
 }

@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createEventBus } from "../src/core/event-bus.js";
 import { createExtensionRuntime } from "../src/core/extensions/loader.js";
 import type { ResourceLoader } from "../src/core/resource-loader.js";
 import { createAgentSession } from "../src/core/sdk.js";
@@ -52,7 +53,13 @@ This is a test skill.
 
 	it("should have empty skills when resource loader returns none (--no-skills)", async () => {
 		const resourceLoader: ResourceLoader = {
-			getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
+			getExtensions: () => ({
+				extensions: [],
+				deferredExtensions: [],
+				errors: [],
+				eventBus: createEventBus(),
+				runtime: createExtensionRuntime(),
+			}),
 			getSkills: () => ({ skills: [], diagnostics: [] }),
 			getPrompts: () => ({ prompts: [], diagnostics: [] }),
 			getThemes: () => ({ themes: [], diagnostics: [] }),
@@ -85,7 +92,13 @@ This is a test skill.
 		};
 
 		const resourceLoader: ResourceLoader = {
-			getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
+			getExtensions: () => ({
+				extensions: [],
+				deferredExtensions: [],
+				errors: [],
+				eventBus: createEventBus(),
+				runtime: createExtensionRuntime(),
+			}),
 			getSkills: () => ({ skills: [customSkill], diagnostics: [] }),
 			getPrompts: () => ({ prompts: [], diagnostics: [] }),
 			getThemes: () => ({ themes: [], diagnostics: [] }),

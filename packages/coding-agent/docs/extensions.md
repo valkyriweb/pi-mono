@@ -181,6 +181,29 @@ Extensions are loaded via [jiti](https://github.com/unjs/jiti), so TypeScript wo
 
 If the factory returns a `Promise`, pi awaits it before continuing startup. That means async initialization completes before `session_start`, before `resources_discover`, and before provider registrations queued via `pi.registerProvider()` are flushed.
 
+### Eager vs deferred loading
+
+Package manifests can mark optional extensions as deferred:
+
+```json
+{
+  "pi": {
+    "extensions": [
+      "./extensions/provider.ts",
+      { "path": "./extensions/review-ui.ts", "load": "deferred" }
+    ]
+  }
+}
+```
+
+`"eager"` is the default and preserves the old behavior: pi imports the module and awaits the factory during startup.
+
+`"deferred"` keeps only the path in startup metadata. After the session is bound, pi imports the extension in the background. Deferred extensions may register commands, tools, renderers, and telemetry after startup, but they miss the initial `session_start` and `resources_discover` events.
+
+To protect prompt-cache stability, tools registered by deferred extensions are not auto-activated when the background load finishes; activate them explicitly with `pi.setActiveTools()` or the deferred tool-search flow. Keep providers, permission gates, model/tool policy, startup context/resource discovery, prompt/context hooks, and anything needed by the first prompt eager.
+
+This mirrors the same startup rule used by Claude Code/Codex-style CLIs: keep the bootstrap path small, load critical capability eagerly, and move heavy optional UI/integration modules behind explicit or post-start activation.
+
 ### Async factory functions
 
 Use an async factory for one-time startup work such as fetching remote configuration or dynamically discovering available models.

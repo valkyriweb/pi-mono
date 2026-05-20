@@ -198,7 +198,9 @@ export async function createTestExtensionsResult(
 
 	return {
 		extensions,
+		deferredExtensions: [],
 		errors: [],
+		eventBus,
 		runtime,
 	};
 }
@@ -210,7 +212,9 @@ export interface CreateTestResourceLoaderOptions {
 export function createTestResourceLoader(options: CreateTestResourceLoaderOptions = {}): ResourceLoader {
 	const extensionsResult = options.extensionsResult ?? {
 		extensions: [],
+		deferredExtensions: [],
 		errors: [],
+		eventBus: createEventBus(),
 		runtime: createExtensionRuntime(),
 	};
 

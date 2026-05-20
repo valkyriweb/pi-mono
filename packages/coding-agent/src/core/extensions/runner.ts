@@ -7,10 +7,12 @@ import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import type { KeyId } from "@earendil-works/pi-tui";
 import { type Theme, theme } from "../../modes/interactive/theme/theme.js";
 import type { ResourceDiagnostic } from "../diagnostics.js";
+import type { EventBus } from "../event-bus.js";
 import type { KeybindingsConfig } from "../keybindings.js";
 import type { ModelRegistry } from "../model-registry.js";
 import type { SessionManager } from "../session-manager.js";
 import type { BuildSystemPromptOptions } from "../system-prompt.js";
+import { loadDeferredExtension } from "./loader.js";
 import type {
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
@@ -19,6 +21,7 @@ import type {
 	ContextEvent,
 	ContextEventResult,
 	ContextUsage,
+	DeferredExtension,
 	Extension,
 	ExtensionActions,
 	ExtensionCommandContext,
@@ -227,7 +230,10 @@ const noOpUIContext: ExtensionUIContext = {
 
 export class ExtensionRunner {
 	private extensions: Extension[];
+	private deferredExtensions: DeferredExtension[];
+	private deferredLoadPromise: Promise<void> | undefined;
 	private runtime: ExtensionRuntime;
+	private eventBus: EventBus;
 	private uiContext: ExtensionUIContext;
 	private cwd: string;
 	private sessionManager: SessionManager;
@@ -259,13 +265,17 @@ export class ExtensionRunner {
 
 	constructor(
 		extensions: Extension[],
+		deferredExtensions: DeferredExtension[],
 		runtime: ExtensionRuntime,
+		eventBus: EventBus,
 		cwd: string,
 		sessionManager: SessionManager,
 		modelRegistry: ModelRegistry,
 	) {
 		this.extensions = extensions;
+		this.deferredExtensions = deferredExtensions;
 		this.runtime = runtime;
+		this.eventBus = eventBus;
 		this.uiContext = noOpUIContext;
 		this.cwd = cwd;
 		this.sessionManager = sessionManager;
@@ -380,6 +390,45 @@ export class ExtensionRunner {
 
 	getExtensionPaths(): string[] {
 		return this.extensions.map((e) => e.path);
+	}
+
+	getDeferredExtensionPaths(): string[] {
+		return this.deferredExtensions.map((e) => e.path);
+	}
+
+	loadDeferredExtensions(): Promise<void> {
+		this.deferredLoadPromise ??= this.loadDeferredExtensionsOnce();
+		return this.deferredLoadPromise;
+	}
+
+	private async loadDeferredExtensionsOnce(): Promise<void> {
+		const pending = this.deferredExtensions.splice(0);
+		const previousSuppressNewToolActivation = this.runtime.suppressNewToolActivation;
+		this.runtime.suppressNewToolActivation = true;
+		try {
+			for (const deferred of pending) {
+				const { extension, error } = await loadDeferredExtension(deferred, this.cwd, this.eventBus, this.runtime);
+				if (error) {
+					this.emitError({ extensionPath: deferred.path, event: "deferred_load", error });
+					continue;
+				}
+				if (!extension) continue;
+
+				if (deferred.sourceInfo) {
+					extension.sourceInfo = deferred.sourceInfo;
+					for (const command of extension.commands.values()) {
+						command.sourceInfo = extension.sourceInfo;
+					}
+					for (const tool of extension.tools.values()) {
+						tool.sourceInfo = extension.sourceInfo;
+					}
+				}
+				this.extensions.push(extension);
+			}
+		} finally {
+			this.runtime.suppressNewToolActivation = previousSuppressNewToolActivation;
+		}
+		this.runtime.refreshTools({ activateNewTools: false });
 	}
 
 	/** Get all registered tools from all extensions (first registration per name wins). */

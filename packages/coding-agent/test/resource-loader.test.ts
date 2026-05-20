@@ -232,7 +232,9 @@ Project skill`,
 			const modelRegistry = ModelRegistry.create(authStorage);
 			const runner = new ExtensionRunner(
 				extensionsResult.extensions,
+				extensionsResult.deferredExtensions,
 				extensionsResult.runtime,
+				extensionsResult.eventBus,
 				cwd,
 				sessionManager,
 				modelRegistry,
@@ -641,7 +643,9 @@ export default function(pi: ExtensionAPI) {
 			const modelRegistry = ModelRegistry.create(authStorage);
 			const runner = new ExtensionRunner(
 				extensionsResult.extensions,
+				extensionsResult.deferredExtensions,
 				extensionsResult.runtime,
+				extensionsResult.eventBus,
 				cwd,
 				sessionManager,
 				modelRegistry,

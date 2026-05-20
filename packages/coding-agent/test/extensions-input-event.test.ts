@@ -30,7 +30,15 @@ describe("Input Event", () => {
 		const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 		const sm = SessionManager.inMemory();
 		const mr = ModelRegistry.create(AuthStorage.create(path.join(tempDir, "auth.json")));
-		return new ExtensionRunner(result.extensions, result.runtime, tempDir, sm, mr);
+		return new ExtensionRunner(
+			result.extensions,
+			result.deferredExtensions,
+			result.runtime,
+			result.eventBus,
+			tempDir,
+			sm,
+			mr,
+		);
 	}
 
 	it("returns continue when no handlers, undefined return, or explicit continue", async () => {

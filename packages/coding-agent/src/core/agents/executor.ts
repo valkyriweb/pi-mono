@@ -173,12 +173,11 @@ export function resolveEffectiveTools(options: {
 	const effectiveTools = candidates.filter((tool) => parent.has(tool) && !deny.has(tool));
 	const deniedTools = candidates.filter((tool) => deny.has(tool));
 
-	// Bundle the bash job-control trio: when `bash` is granted, also grant
-	// `bash_output`/`bash_kill` if the parent has them active and they're not
-	// denied. Otherwise a child can spawn run_in_background:true jobs but never
-	// read their output or stop them — surfaced as "Tool bash_output not found".
-	if (effectiveTools.includes("bash")) {
-		for (const companion of ["bash_output", "bash_kill"] as const) {
+	// Bundle the bash job-control trio: when `bash`/`Bash` is granted, also grant
+	// the parent's output/kill companions if active and not denied. Otherwise a
+	// child can spawn run_in_background:true jobs but never read or stop them.
+	if (effectiveTools.includes("bash") || effectiveTools.includes("Bash")) {
+		for (const companion of ["bash_output", "BashOutput", "bash_kill", "KillShell"] as const) {
 			if (parent.has(companion) && !deny.has(companion) && !effectiveTools.includes(companion)) {
 				effectiveTools.push(companion);
 			}

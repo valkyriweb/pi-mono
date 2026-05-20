@@ -26,6 +26,7 @@ import {
 	streamSimpleOpenAICodexResponses,
 } from "../../ai/src/providers/openai-codex-responses.js";
 import { AuthStorage } from "../src/core/auth-storage.js";
+import { createEventBus } from "../src/core/event-bus.js";
 import { createExtensionRuntime } from "../src/core/extensions/loader.js";
 import type { ToolDefinition } from "../src/core/extensions/types.js";
 import { ModelRegistry } from "../src/core/model-registry.js";
@@ -172,7 +173,13 @@ function buildPrompt(turn: number): string {
 
 function createMinimalResourceLoader(systemPrompt: string): ResourceLoader {
 	return {
-		getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
+		getExtensions: () => ({
+			extensions: [],
+			deferredExtensions: [],
+			errors: [],
+			eventBus: createEventBus(),
+			runtime: createExtensionRuntime(),
+		}),
 		getSkills: () => ({ skills: [], diagnostics: [] }),
 		getPrompts: () => ({ prompts: [], diagnostics: [] }),
 		getThemes: () => ({ themes: [], diagnostics: [] }),

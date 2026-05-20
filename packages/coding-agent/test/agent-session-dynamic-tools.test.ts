@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getModel } from "@earendil-works/pi-ai";
@@ -87,6 +87,49 @@ describe("AgentSession dynamic tool registration", () => {
 		expect(session.getActiveToolNames()).toContain("dynamic_tool");
 		expect(session.systemPrompt).toContain("- dynamic_tool: Run dynamic test behavior");
 		expect(session.systemPrompt).toContain("- Use dynamic_tool when the user asks for dynamic behavior tests.");
+
+		session.dispose();
+	});
+
+	it("does not activate tools registered while deferred extensions load", async () => {
+		writeFileSync(
+			join(tempDir, "package.json"),
+			JSON.stringify({ pi: { extensions: [{ path: "./deferred-extension.mjs", load: "deferred" }] } }),
+		);
+		writeFileSync(
+			join(tempDir, "deferred-extension.mjs"),
+			`
+				export default function(pi) {
+					pi.registerTool({
+						name: "inactive_dynamic_tool",
+						label: "Inactive Dynamic Tool",
+						description: "Tool registered but not activated",
+						promptSnippet: "Run inactive dynamic test behavior",
+						parameters: { type: "object", properties: {}, additionalProperties: false },
+						execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
+					});
+				}
+			`,
+		);
+
+		const settingsManager = SettingsManager.create(tempDir, agentDir);
+		settingsManager.setProjectPackages([tempDir]);
+		const sessionManager = SessionManager.inMemory();
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir,
+			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			settingsManager,
+			sessionManager,
+		});
+
+		expect(session.getAllTools().map((tool) => tool.name)).not.toContain("inactive_dynamic_tool");
+		await session.bindExtensions({});
+		await new Promise((resolve) => setTimeout(resolve, 350));
+
+		expect(session.getAllTools().map((tool) => tool.name)).toContain("inactive_dynamic_tool");
+		expect(session.getActiveToolNames()).not.toContain("inactive_dynamic_tool");
+		expect(session.systemPrompt).not.toContain("inactive_dynamic_tool");
 
 		session.dispose();
 	});

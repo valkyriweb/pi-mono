@@ -22,10 +22,14 @@ export {
 	type BashToolOptions,
 	createBashKillTool,
 	createBashKillToolDefinition,
+	createBashOutputNativeTool,
+	createBashOutputNativeToolDefinition,
 	createBashOutputTool,
 	createBashOutputToolDefinition,
 	createBashTool,
 	createBashToolDefinition,
+	createKillShellTool,
+	createKillShellToolDefinition,
 	createLocalBashOperations,
 	createUppercaseBashTool,
 	createUppercaseBashToolDefinition,
@@ -93,6 +97,18 @@ export {
 	truncateTail,
 } from "./truncate.js";
 export {
+	createWebFetchTool,
+	createWebFetchToolDefinition,
+	type WebFetchToolInput,
+	type WebFetchToolOptions,
+} from "./web-fetch.js";
+export {
+	createWebSearchTool,
+	createWebSearchToolDefinition,
+	type WebSearchToolInput,
+	type WebSearchToolOptions,
+} from "./web-search.js";
+export {
 	createUppercaseWriteTool,
 	createUppercaseWriteToolDefinition,
 	createWriteTool,
@@ -117,10 +133,14 @@ import {
 	type BashToolOptions,
 	createBashKillTool,
 	createBashKillToolDefinition,
+	createBashOutputNativeTool,
+	createBashOutputNativeToolDefinition,
 	createBashOutputTool,
 	createBashOutputToolDefinition,
 	createBashTool,
 	createBashToolDefinition,
+	createKillShellTool,
+	createKillShellToolDefinition,
 	createUppercaseBashTool,
 	createUppercaseBashToolDefinition,
 } from "./bash.js";
@@ -159,6 +179,8 @@ import {
 	createUppercaseReadToolDefinition,
 	type ReadToolOptions,
 } from "./read.js";
+import { createWebFetchTool, createWebFetchToolDefinition, type WebFetchToolOptions } from "./web-fetch.js";
+import { createWebSearchTool, createWebSearchToolDefinition, type WebSearchToolOptions } from "./web-search.js";
 import {
 	createUppercaseWriteTool,
 	createUppercaseWriteToolDefinition,
@@ -177,7 +199,9 @@ export type ToolName =
 	| "bash"
 	| "Bash"
 	| "bash_output"
+	| "BashOutput"
 	| "bash_kill"
+	| "KillShell"
 	| "edit"
 	| "Edit"
 	| "write"
@@ -188,6 +212,10 @@ export type ToolName =
 	| "Find"
 	| "ls"
 	| "Ls"
+	| "WebFetch"
+	| "web_fetch"
+	| "WebSearch"
+	| "web_search"
 	| "agent"
 	| "Agent"
 	| "Task";
@@ -197,7 +225,9 @@ export const allToolNames: Set<ToolName> = new Set([
 	"bash",
 	"Bash",
 	"bash_output",
+	"BashOutput",
 	"bash_kill",
+	"KillShell",
 	"edit",
 	"Edit",
 	"write",
@@ -222,6 +252,8 @@ export interface ToolsOptions {
 	find?: FindToolOptions;
 	ls?: LsToolOptions;
 	agent?: AgentToolOptions;
+	webFetch?: WebFetchToolOptions;
+	webSearch?: WebSearchToolOptions;
 }
 
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
@@ -236,8 +268,12 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createUppercaseBashToolDefinition(cwd, options?.bash);
 		case "bash_output":
 			return createBashOutputToolDefinition();
+		case "BashOutput":
+			return createBashOutputNativeToolDefinition();
 		case "bash_kill":
 			return createBashKillToolDefinition();
+		case "KillShell":
+			return createKillShellToolDefinition();
 		case "edit":
 			return createEditToolDefinition(cwd, options?.edit);
 		case "Edit":
@@ -258,6 +294,18 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createLsToolDefinition(cwd, options?.ls);
 		case "Ls":
 			return createUppercaseLsToolDefinition(cwd, options?.ls);
+		case "WebFetch":
+			return createWebFetchToolDefinition(cwd, options?.webFetch);
+		case "web_fetch":
+			return createWebFetchToolDefinition(cwd, { ...options?.webFetch, toolName: "web_fetch", label: "web_fetch" });
+		case "WebSearch":
+			return createWebSearchToolDefinition(cwd, options?.webSearch);
+		case "web_search":
+			return createWebSearchToolDefinition(cwd, {
+				...options?.webSearch,
+				toolName: "web_search",
+				label: "web_search",
+			});
 		case "agent":
 			return createAgentToolDefinition(cwd, options?.agent);
 		case "Agent":
@@ -281,8 +329,12 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createUppercaseBashTool(cwd, options?.bash);
 		case "bash_output":
 			return createBashOutputTool();
+		case "BashOutput":
+			return createBashOutputNativeTool();
 		case "bash_kill":
 			return createBashKillTool();
+		case "KillShell":
+			return createKillShellTool();
 		case "edit":
 			return createEditTool(cwd, options?.edit);
 		case "Edit":
@@ -303,6 +355,14 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createLsTool(cwd, options?.ls);
 		case "Ls":
 			return createUppercaseLsTool(cwd, options?.ls);
+		case "WebFetch":
+			return createWebFetchTool(cwd, options?.webFetch);
+		case "web_fetch":
+			return createWebFetchTool(cwd, { ...options?.webFetch, toolName: "web_fetch", label: "web_fetch" });
+		case "WebSearch":
+			return createWebSearchTool(cwd, options?.webSearch);
+		case "web_search":
+			return createWebSearchTool(cwd, { ...options?.webSearch, toolName: "web_search", label: "web_search" });
 		case "agent":
 			return createAgentTool(cwd, options?.agent);
 		case "Agent":
@@ -318,8 +378,8 @@ export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions)
 	return [
 		createUppercaseReadToolDefinition(cwd, options?.read),
 		createUppercaseBashToolDefinition(cwd, options?.bash),
-		createBashOutputToolDefinition(),
-		createBashKillToolDefinition(),
+		createBashOutputNativeToolDefinition(),
+		createKillShellToolDefinition(),
 		createUppercaseEditToolDefinition(cwd, options?.edit),
 		createUppercaseWriteToolDefinition(cwd, options?.write),
 	];
@@ -341,7 +401,9 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		bash: createBashToolDefinition(cwd, options?.bash),
 		Bash: createUppercaseBashToolDefinition(cwd, options?.bash),
 		bash_output: createBashOutputToolDefinition(),
+		BashOutput: createBashOutputNativeToolDefinition(),
 		bash_kill: createBashKillToolDefinition(),
+		KillShell: createKillShellToolDefinition(),
 		edit: createEditToolDefinition(cwd, options?.edit),
 		Edit: createUppercaseEditToolDefinition(cwd, options?.edit),
 		write: createWriteToolDefinition(cwd, options?.write),
@@ -352,6 +414,14 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		Find: createUppercaseFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
 		Ls: createUppercaseLsToolDefinition(cwd, options?.ls),
+		WebFetch: createWebFetchToolDefinition(cwd, options?.webFetch),
+		web_fetch: createWebFetchToolDefinition(cwd, { ...options?.webFetch, toolName: "web_fetch", label: "web_fetch" }),
+		WebSearch: createWebSearchToolDefinition(cwd, options?.webSearch),
+		web_search: createWebSearchToolDefinition(cwd, {
+			...options?.webSearch,
+			toolName: "web_search",
+			label: "web_search",
+		}),
 		agent: createAgentToolDefinition(cwd, options?.agent),
 		Agent: createUppercaseAgentToolDefinition(cwd, options?.agent),
 		Task: createTaskToolDefinition(cwd, options?.agent),
@@ -362,8 +432,8 @@ export function createCodingTools(cwd: string, options?: ToolsOptions): Tool[] {
 	return [
 		createUppercaseReadTool(cwd, options?.read),
 		createUppercaseBashTool(cwd, options?.bash),
-		createBashOutputTool(),
-		createBashKillTool(),
+		createBashOutputNativeTool(),
+		createKillShellTool(),
 		createUppercaseEditTool(cwd, options?.edit),
 		createUppercaseWriteTool(cwd, options?.write),
 	];
@@ -385,7 +455,9 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		bash: createBashTool(cwd, options?.bash),
 		Bash: createUppercaseBashTool(cwd, options?.bash),
 		bash_output: createBashOutputTool(),
+		BashOutput: createBashOutputNativeTool(),
 		bash_kill: createBashKillTool(),
+		KillShell: createKillShellTool(),
 		edit: createEditTool(cwd, options?.edit),
 		Edit: createUppercaseEditTool(cwd, options?.edit),
 		write: createWriteTool(cwd, options?.write),
@@ -396,6 +468,10 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		Find: createUppercaseFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
 		Ls: createUppercaseLsTool(cwd, options?.ls),
+		WebFetch: createWebFetchTool(cwd, options?.webFetch),
+		web_fetch: createWebFetchTool(cwd, { ...options?.webFetch, toolName: "web_fetch", label: "web_fetch" }),
+		WebSearch: createWebSearchTool(cwd, options?.webSearch),
+		web_search: createWebSearchTool(cwd, { ...options?.webSearch, toolName: "web_search", label: "web_search" }),
 		agent: createAgentTool(cwd, options?.agent),
 		Agent: createUppercaseAgentTool(cwd, options?.agent),
 		Task: createTaskTool(cwd, options?.agent),

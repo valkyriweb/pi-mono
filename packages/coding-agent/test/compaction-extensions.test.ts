@@ -10,6 +10,7 @@ import { getModel } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.js";
 import { AuthStorage } from "../src/core/auth-storage.js";
+import { createEventBus } from "../src/core/event-bus.js";
 import {
 	createExtensionRuntime,
 	type Extension,
@@ -102,9 +103,10 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 		const modelRegistry = ModelRegistry.create(authStorage);
 
 		const runtime = createExtensionRuntime();
+		const eventBus = createEventBus();
 		const resourceLoader = {
 			...createTestResourceLoader(),
-			getExtensions: () => ({ extensions, errors: [], runtime }),
+			getExtensions: () => ({ extensions, errors: [], runtime, deferredExtensions: [], eventBus }),
 		};
 
 		session = new AgentSession({

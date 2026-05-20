@@ -29,9 +29,11 @@ import type { ExecOptions } from "../exec.js";
 import { execCommand } from "../exec.js";
 import { createSyntheticSourceInfo } from "../source-info.js";
 import type {
+	DeferredExtension,
 	Extension,
 	ExtensionAPI,
 	ExtensionFactory,
+	ExtensionLoadRequest,
 	ExtensionRuntime,
 	LoadExtensionsResult,
 	MessageRenderer,
@@ -165,6 +167,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		setThinkingLevel: notInitialized,
 		flagValues: new Map(),
 		pendingProviderRegistrations: [],
+		suppressNewToolActivation: false,
 		assertActive,
 		invalidate: (message) => {
 			state.staleMessage ??=
@@ -210,7 +213,7 @@ function createExtensionAPI(
 				definition: tool,
 				sourceInfo: extension.sourceInfo,
 			});
-			runtime.refreshTools();
+			runtime.refreshTools({ activateNewTools: !runtime.suppressNewToolActivation });
 		},
 
 		registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void {
@@ -438,16 +441,40 @@ export async function loadExtensionFromFactory(
 	return extension;
 }
 
+function normalizeLoadRequest(input: string | ExtensionLoadRequest): ExtensionLoadRequest {
+	return typeof input === "string" ? { path: input, load: "eager" } : { load: "eager", ...input };
+}
+
+export async function loadDeferredExtension(
+	deferred: DeferredExtension,
+	cwd: string,
+	eventBus: EventBus,
+	runtime: ExtensionRuntime,
+): Promise<{ extension: Extension | null; error: string | null }> {
+	return loadExtension(deferred.path, cwd, eventBus, runtime);
+}
+
 /**
- * Load extensions from paths.
+ * Load eager extensions now and keep deferred entries as metadata-only stubs.
  */
-export async function loadExtensions(paths: string[], cwd: string, eventBus?: EventBus): Promise<LoadExtensionsResult> {
+export async function loadExtensions(
+	inputs: Array<string | ExtensionLoadRequest>,
+	cwd: string,
+	eventBus?: EventBus,
+): Promise<LoadExtensionsResult> {
 	const extensions: Extension[] = [];
+	const deferredExtensions: DeferredExtension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
 	const resolvedEventBus = eventBus ?? createEventBus();
 	const runtime = createExtensionRuntime();
 
-	for (const extPath of paths) {
+	for (const input of inputs) {
+		const { path: extPath, load } = normalizeLoadRequest(input);
+		if (load === "deferred") {
+			deferredExtensions.push({ path: extPath });
+			continue;
+		}
+
 		const { extension, error } = await loadExtension(extPath, cwd, resolvedEventBus, runtime);
 
 		if (error) {
@@ -462,7 +489,9 @@ export async function loadExtensions(paths: string[], cwd: string, eventBus?: Ev
 
 	return {
 		extensions,
+		deferredExtensions,
 		errors,
+		eventBus: resolvedEventBus,
 		runtime,
 	};
 }
@@ -489,6 +518,10 @@ function readPiManifest(packageJsonPath: string): PiManifest | null {
 
 function isExtensionFile(name: string): boolean {
 	return name.endsWith(".ts") || name.endsWith(".js") || name.endsWith(".mjs");
+}
+
+function isDisabledExtensionEntry(name: string): boolean {
+	return name.endsWith(".disabled") || name.includes(".disabled.");
 }
 
 /**
@@ -556,6 +589,8 @@ function discoverExtensionsInDir(dir: string): string[] {
 		const fileNames = new Set(entries.filter((e) => e.isFile() || e.isSymbolicLink()).map((e) => e.name));
 
 		for (const entry of entries) {
+			if (isDisabledExtensionEntry(entry.name)) continue;
+
 			const entryPath = path.join(dir, entry.name);
 
 			// 1. Direct files: *.ts or *.js

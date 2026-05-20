@@ -18,8 +18,14 @@ import {
 } from "./context-file-imports.js";
 import { createEventBus, type EventBus } from "./event-bus.js";
 import { createExtensionRuntime, loadExtensionFromFactory, loadExtensions } from "./extensions/loader.js";
-import type { Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult } from "./extensions/types.js";
-import { DefaultPackageManager, type PathMetadata } from "./package-manager.js";
+import type {
+	Extension,
+	ExtensionFactory,
+	ExtensionLoadRequest,
+	ExtensionRuntime,
+	LoadExtensionsResult,
+} from "./extensions/types.js";
+import { DefaultPackageManager, type PathMetadata, type ResolvedResource } from "./package-manager.js";
 import type { PromptTemplate } from "./prompt-templates.js";
 import { loadPromptTemplates } from "./prompt-templates.js";
 import { SettingsManager } from "./settings-manager.js";
@@ -281,7 +287,13 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.systemPromptOverride = options.systemPromptOverride;
 		this.appendSystemPromptOverride = options.appendSystemPromptOverride;
 
-		this.extensionsResult = { extensions: [], errors: [], runtime: createExtensionRuntime() };
+		this.extensionsResult = {
+			extensions: [],
+			deferredExtensions: [],
+			errors: [],
+			eventBus: this.eventBus,
+			runtime: createExtensionRuntime(),
+		};
 		this.skills = [];
 		this.skillDiagnostics = [];
 		this.prompts = [];
@@ -381,9 +393,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.extensionThemeSourceInfos = new Map();
 
 		// Helper to extract enabled paths and store metadata
-		const getEnabledResources = (
-			resources: Array<{ path: string; enabled: boolean; metadata: PathMetadata }>,
-		): Array<{ path: string; enabled: boolean; metadata: PathMetadata }> => {
+		const getEnabledResources = (resources: ResolvedResource[]): ResolvedResource[] => {
 			for (const r of resources) {
 				if (!metadataByPath.has(r.path)) {
 					metadataByPath.set(r.path, r.metadata);
@@ -392,10 +402,12 @@ export class DefaultResourceLoader implements ResourceLoader {
 			return resources.filter((r) => r.enabled);
 		};
 
-		const getEnabledPaths = (
-			resources: Array<{ path: string; enabled: boolean; metadata: PathMetadata }>,
-		): string[] => getEnabledResources(resources).map((r) => r.path);
-		const enabledExtensions = getEnabledPaths(resolvedPaths.extensions);
+		const getEnabledPaths = (resources: ResolvedResource[]): string[] =>
+			getEnabledResources(resources).map((r) => r.path);
+		const enabledExtensionRequests = getEnabledResources(resolvedPaths.extensions).map((r) => ({
+			path: r.path,
+			load: r.load,
+		}));
 		const enabledSkillResources = getEnabledResources(resolvedPaths.skills);
 		const enabledPrompts = getEnabledPaths(resolvedPaths.prompts);
 		const enabledThemes = getEnabledPaths(resolvedPaths.themes);
@@ -437,15 +449,16 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 
 		const cliEnabledExtensions = getEnabledPaths(cliExtensionPaths.extensions);
+		const cliEnabledExtensionRequests = cliEnabledExtensions.map((path) => ({ path, load: "eager" as const }));
 		const cliEnabledSkills = getEnabledPaths(cliExtensionPaths.skills);
 		const cliEnabledPrompts = getEnabledPaths(cliExtensionPaths.prompts);
 		const cliEnabledThemes = getEnabledPaths(cliExtensionPaths.themes);
 
-		const extensionPaths = this.noExtensions
-			? cliEnabledExtensions
-			: this.mergePaths(cliEnabledExtensions, enabledExtensions);
+		const extensionRequests = this.noExtensions
+			? this.mergeExtensionRequests(cliEnabledExtensionRequests)
+			: this.mergeExtensionRequests([...cliEnabledExtensionRequests, ...enabledExtensionRequests]);
 
-		const extensionsResult = await loadExtensions(extensionPaths, this.cwd, this.eventBus);
+		const extensionsResult = await loadExtensions(extensionRequests, this.cwd, this.eventBus);
 		const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
 		extensionsResult.extensions.push(...inlineExtensions.extensions);
 		extensionsResult.errors.push(...inlineExtensions.errors);
@@ -464,6 +477,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 		this.extensionsResult = this.extensionsOverride ? this.extensionsOverride(extensionsResult) : extensionsResult;
 		this.applyExtensionSourceInfo(this.extensionsResult.extensions, metadataByPath);
+		this.applyDeferredExtensionSourceInfo(this.extensionsResult.deferredExtensions, metadataByPath);
 
 		const skillPaths = this.noSkills
 			? this.mergePaths(cliEnabledSkills, this.additionalSkillPaths)
@@ -637,6 +651,17 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 	}
 
+	private applyDeferredExtensionSourceInfo(
+		deferredExtensions: LoadExtensionsResult["deferredExtensions"],
+		metadataByPath: Map<string, PathMetadata>,
+	): void {
+		for (const deferred of deferredExtensions) {
+			deferred.sourceInfo =
+				this.findSourceInfoForPath(deferred.path, undefined, metadataByPath) ??
+				this.getDefaultSourceInfoForPath(deferred.path);
+		}
+	}
+
 	private findSourceInfoForPath(
 		resourcePath: string,
 		extraSourceInfos?: Map<string, SourceInfo>,
@@ -726,6 +751,21 @@ export class DefaultResourceLoader implements ResourceLoader {
 			origin: "top-level",
 			baseDir: statSync(normalizedPath).isDirectory() ? normalizedPath : resolve(normalizedPath, ".."),
 		};
+	}
+
+	private mergeExtensionRequests(requests: ExtensionLoadRequest[]): ExtensionLoadRequest[] {
+		const merged: ExtensionLoadRequest[] = [];
+		const seen = new Set<string>();
+
+		for (const request of requests) {
+			const resolved = this.resolveResourcePath(request.path);
+			const canonicalPath = canonicalizePath(resolved);
+			if (seen.has(canonicalPath)) continue;
+			seen.add(canonicalPath);
+			merged.push({ path: resolved, load: request.load ?? "eager" });
+		}
+
+		return merged;
 	}
 
 	private mergePaths(primary: string[], additional: string[]): string[] {

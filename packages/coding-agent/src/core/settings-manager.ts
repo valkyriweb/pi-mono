@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
+import type { ExtensionLoadMode } from "./extensions/types.js";
 
 export interface CompactionSettings {
 	enabled?: boolean; // default: true
@@ -101,6 +102,8 @@ export type PackageSource =
 			skills?: string[];
 			prompts?: string[];
 			themes?: string[];
+			/** Default load mode for the package's extension entries. */
+			load?: ExtensionLoadMode;
 			/**
 			 * Conditional load gate. When set, the package (and all resources it
 			 * provides) is only loaded if the active default model matches one of

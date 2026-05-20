@@ -359,6 +359,19 @@ function extensionForMimeType(mimeType: string): string {
 // AgentSession Class
 // ============================================================================
 
+const CLAUDE_BRIDGE_NATIVE_TOOL_NAMES = ["WebFetch", "WebSearch"] as const;
+const CLAUDE_BRIDGE_NATIVE_TOOL_ALIASES = new Set<string>([
+	...CLAUDE_BRIDGE_NATIVE_TOOL_NAMES,
+	"web_fetch",
+	"web_search",
+]);
+
+function syncClaudeBridgeNativeTools(toolNames: string[], model: Model<any> | undefined): string[] {
+	const withoutNativeTools = toolNames.filter((toolName) => !CLAUDE_BRIDGE_NATIVE_TOOL_ALIASES.has(toolName));
+	if (model?.provider !== "claude-bridge") return withoutNativeTools;
+	return [...withoutNativeTools, ...CLAUDE_BRIDGE_NATIVE_TOOL_NAMES];
+}
+
 export class AgentSession {
 	readonly agent: Agent;
 	readonly sessionManager: SessionManager;
@@ -1219,10 +1232,15 @@ export class AgentSession {
 			}
 		}
 
+		const activeToolNames =
+			this.model?.provider === "claude-bridge"
+				? syncClaudeBridgeNativeTools(orderedNames, this.model)
+				: orderedNames;
+
 		const tools: AgentTool[] = [];
 		const validToolNames: string[] = [];
 		const seenToolNames = new Set<string>();
-		for (const name of orderedNames) {
+		for (const name of activeToolNames) {
 			if (seenToolNames.has(name)) continue;
 			const tool = this._toolRegistry.get(name);
 			if (tool) {
@@ -1933,6 +1951,7 @@ export class AgentSession {
 			previousModel,
 			source,
 		});
+		this.setActiveToolsByName(syncClaudeBridgeNativeTools(this.getActiveToolNames(), nextModel));
 	}
 
 	/**
@@ -2600,6 +2619,16 @@ export class AgentSession {
 		this._applyExtensionBindings(this._extensionRunner);
 		await this._extensionRunner.emit(this._sessionStartEvent);
 		await this.extendResourcesFromExtensions(this._sessionStartEvent.reason === "reload" ? "reload" : "startup");
+		this._scheduleDeferredExtensionLoading();
+	}
+
+	private _scheduleDeferredExtensionLoading(): void {
+		const runner = this._extensionRunner;
+		if (runner.getDeferredExtensionPaths().length === 0) return;
+		setTimeout(() => {
+			if (this._extensionRunner !== runner) return;
+			void runner.loadDeferredExtensions();
+		}, 250);
 	}
 
 	private async extendResourcesFromExtensions(reason: "startup" | "reload"): Promise<void> {
@@ -2971,7 +3000,7 @@ export class AgentSession {
 				getActiveTools: () => this.getActiveToolNames(),
 				getAllTools: () => this.getAllTools(),
 				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
-				refreshTools: () => this._refreshToolRegistry(),
+				refreshTools: (options) => this._refreshToolRegistry(options),
 				getCommands,
 				setModel: async (model) => {
 					if (!this.modelRegistry.hasConfiguredAuth(model)) return false;
@@ -3026,7 +3055,11 @@ export class AgentSession {
 		);
 	}
 
-	private _refreshToolRegistry(options?: { activeToolNames?: string[]; includeAllExtensionTools?: boolean }): void {
+	private _refreshToolRegistry(options?: {
+		activeToolNames?: string[];
+		includeAllExtensionTools?: boolean;
+		activateNewTools?: boolean;
+	}): void {
 		const previousRegistryNames = new Set(this._toolRegistry.keys());
 		const previousActiveToolNames = this.getActiveToolNames();
 		const allowedToolNames = this._allowedToolNames;
@@ -3127,7 +3160,7 @@ export class AgentSession {
 			for (const tool of wrappedExtensionTools) {
 				nextActiveToolNames.push(tool.name);
 			}
-		} else if (!options?.activeToolNames) {
+		} else if (!options?.activeToolNames && options?.activateNewTools !== false) {
 			for (const toolName of this._toolRegistry.keys()) {
 				if (!previousRegistryNames.has(toolName)) {
 					nextActiveToolNames.push(toolName);
@@ -3221,7 +3254,9 @@ export class AgentSession {
 
 		this._extensionRunner = new ExtensionRunner(
 			extensionsResult.extensions,
+			extensionsResult.deferredExtensions,
 			extensionsResult.runtime,
+			extensionsResult.eventBus,
 			this._cwd,
 			this.sessionManager,
 			this._modelRegistry,
@@ -3232,13 +3267,16 @@ export class AgentSession {
 		this._bindExtensionCore(this._extensionRunner);
 		this._applyExtensionBindings(this._extensionRunner);
 
-		// Keep `bash_output`/`bash_kill` in defaults so sessions without
+		// Keep `BashOutput`/`KillShell` in defaults so sessions without
 		// pi-tool-search still get the full bash job-control trio. Without them,
 		// run_in_background:true returns a bgId the model can never read or stop.
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["Read", "Bash", "bash_output", "bash_kill", "Edit", "Write", "Agent", "Task", "Grep", "Find", "Ls"];
-		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
+			: ["Read", "Bash", "BashOutput", "KillShell", "Edit", "Write", "Agent", "Task", "Grep", "Find", "Ls"];
+		const baseActiveToolNames = syncClaudeBridgeNativeTools(
+			options.activeToolNames ?? defaultActiveToolNames,
+			this.model,
+		);
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,
 			includeAllExtensionTools: options.includeAllExtensionTools,
@@ -3265,6 +3303,7 @@ export class AgentSession {
 		if (hasBindings) {
 			await this._extensionRunner.emit({ type: "session_start", reason: "reload" });
 			await this.extendResourcesFromExtensions("reload");
+			this._scheduleDeferredExtensionLoading();
 		}
 	}
 
