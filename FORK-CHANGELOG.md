@@ -38,6 +38,10 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 - Added bounded default timeouts to the built-in `grep` and `find` tools with structured timeout results, partial output when available, AbortSignal preservation, and explicit `timeout` overrides up to 300 seconds.
 - Fixed runtime active-tool changes made during tool execution so the next provider request in the same agent run receives the refreshed tool schema. This makes deferred-tool activators such as `tool_search` able to expose newly activated tools immediately, and deduplicates repeated active tool names.
 
+### Removed
+
+- Removed the fork-retained `packages/web-ui` workspace after upstream deleted it and local audit confirmed zero live consumers. Also removed the stale web-ui references from `tsconfig.json` and the pre-commit browser-smoke trigger.
+
 ## 2026-05-02
 
 - Locally aliased the installed `pi-subagents` manager command from `/agents` to `/subagents` for A/B testing against native `/agents`; this lives under `~/.pi/agent/git/github.com/nicobailon/pi-subagents` and may be overwritten by `pi update`.
