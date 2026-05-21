@@ -356,7 +356,7 @@ function formatProgress(progress: AgentExecutionProgress): string {
 function formatFinalResult(details: AgentToolDetails): string {
 	if (details.background && details.status === "running") {
 		return [
-			`agent ${details.mode}: background running${details.runId ? ` · ${details.runId}` : ""}`,
+			`Agent ${details.mode}: background running${details.runId ? ` · ${details.runId}` : ""}`,
 			details.message,
 			runControlHint(details.runId),
 		]
@@ -368,7 +368,7 @@ function formatFinalResult(details: AgentToolDetails): string {
 	const total = details.runs.length;
 	const noun = total === 1 ? "agent" : "agents";
 	const lines = [
-		`agent ${details.mode}: ${details.status} · ${completed}/${total} ${noun} finished${failed ? ` · ${failed} failed` : ""}`,
+		`Agent ${details.mode}: ${details.status} · ${completed}/${total} ${noun} finished${failed ? ` · ${failed} failed` : ""}`,
 	];
 
 	const summary = summarizeRuns(details.runs);
@@ -472,13 +472,16 @@ export function createAgentToolDefinition(
 	options?: AgentToolOptions,
 ): ToolDefinition<typeof agentToolSchema, AgentToolDetails> {
 	const toolName = options?.toolName ?? "agent";
-	const label = options?.label ?? toolName;
+	// TUI label is capitalized for consistency with Anthropic's "Agent"/"Task" tool naming;
+	// the underlying tool id (toolName) stays lowercase so existing tool-call wiring is unchanged.
+	const label = options?.label ?? toolName.charAt(0).toUpperCase() + toolName.slice(1);
 	return {
 		name: toolName,
 		label,
 		description:
 			options?.description ??
-			"Launch a built-in or configured Pi child agent. Supports single {agent, task}, parallel {tasks}, sequential chain {chain}, background execution, and background run control actions.",
+			"Launch a built-in or configured Pi child agent. Supports single {agent, task}, parallel {tasks: [{agent, task, ...}]}, sequential {chain: [{agent, task, ...}]}, background execution, and background run control actions. `tasks` and `chain` MUST be native JSON arrays of task objects — never a stringified JSON array.",
+
 		promptSnippet: "Delegate a task to a child agent with bounded tools",
 		promptGuidelines: [
 			"Use agent for delegated work that benefits from an isolated child context.",
@@ -486,6 +489,7 @@ export function createAgentToolDefinition(
 			"For broad/token-heavy work, use `decompose`; cheap workers read/scan, parent synthesizes.",
 			"For implementation strategy and risk analysis on a known requirement, prefer `plan` (read-only) before using `agent` for implementation.",
 			"When parallel exploration or review is needed, send multiple agent tool-use blocks in one assistant message; Pi runs those calls concurrently. Use tasks[] only for explicit batched fan-out inside one agent call.",
+			'`tasks` and `chain` must be passed as native JSON arrays of task objects, e.g. `{"tasks": [{"agent": "explore", "task": "..."}]}`. Do not pass a stringified JSON array. Each task object requires `agent` and `task`; other fields (`context`, `description`, `extraContext`, `model`, `thinking`, ...) are optional.',
 			"Use background:true for long-running delegated work that should continue while the parent reports back; control it with action/status/interrupt/cancel/resume and runId.",
 			"When a background agent finishes you receive an automatic agent_completion message with runId, status, summary, result preview, outputPaths, and sessionPaths. Do NOT poll with `agent` action=status/detail while waiting — work on other things, sleep with goal_wait, or hand back to the user. Read sessionPaths or outputPaths on demand if you need the full transcript.",
 			"Do not use agent recursively; child agents cannot call agent.",
@@ -548,7 +552,7 @@ export function createAgentToolDefinition(
 					detail = `${mode.mode}${normalizedArgs.background ? " background" : ""}: ${names}`;
 				}
 			} catch (e) {
-				detail = `${toolName}: ${e instanceof Error ? e.message : "invalid mode"}`;
+				detail = e instanceof Error ? e.message : "invalid mode";
 			}
 			text.setText(`${theme.fg("toolTitle", theme.bold(label))} ${theme.fg("accent", detail)}`);
 			return text;
@@ -564,7 +568,7 @@ export function createAgentToolDefinition(
 			if (options.expanded && result.details) {
 				const details = result.details;
 				const expandedText = [
-					`agent ${details.mode}: ${details.status}`,
+					`Agent ${details.mode}: ${details.status}`,
 					...details.runs.map(formatExpandedRun),
 				].join("\n");
 				component.addChild(new Text(expandedText, 0, 0));

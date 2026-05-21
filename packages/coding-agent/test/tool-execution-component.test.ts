@@ -79,7 +79,8 @@ describe("ToolExecutionComponent parity", () => {
 			process.cwd(),
 		);
 		let rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("agent");
+		// Tool label is capitalized in the TUI ("Agent") while the underlying tool id stays lowercase.
+		expect(rendered).toContain("Agent");
 		expect(rendered).toContain("single: explore");
 
 		component.updateResult(
@@ -93,7 +94,7 @@ describe("ToolExecutionComponent parity", () => {
 		rendered = stripAnsi(component.render(120).join("\n"));
 		// Renderer drives display from structured `details`, not the message content,
 		// so with empty runs the body shows the summary line rather than per-run text.
-		expect(rendered).toContain("agent single");
+		expect(rendered).toContain("Agent single");
 		expect(rendered).toContain("completed");
 	});
 
