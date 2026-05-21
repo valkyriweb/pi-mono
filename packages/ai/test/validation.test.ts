@@ -97,6 +97,48 @@ describe("validateToolArguments", () => {
 		}
 	});
 
+	it("parses stringified JSON arrays/objects when the schema expects structured input", () => {
+		const arrayTool: Tool = {
+			name: "agent",
+			description: "agent",
+			parameters: Type.Object({
+				tasks: Type.Array(Type.Object({ agent: Type.String(), task: Type.String() })),
+				concurrency: Type.Optional(Type.Number()),
+			}),
+		};
+		const arrayCall: ToolCall = {
+			type: "toolCall",
+			id: "t1",
+			name: "agent",
+			arguments: {
+				tasks: '[{"agent":"explore","task":"look"},{"agent":"plan","task":"think"}]',
+				concurrency: "3",
+			} as unknown as Record<string, unknown>,
+		};
+		expect(validateToolArguments(arrayTool, arrayCall)).toEqual({
+			tasks: [
+				{ agent: "explore", task: "look" },
+				{ agent: "plan", task: "think" },
+			],
+			concurrency: 3,
+		});
+
+		const objectTool: Tool = {
+			name: "echo",
+			description: "echo",
+			parameters: Type.Object({
+				payload: Type.Object({ a: Type.Number(), b: Type.String() }),
+			}),
+		};
+		const objectCall: ToolCall = {
+			type: "toolCall",
+			id: "t2",
+			name: "echo",
+			arguments: { payload: '{"a":1,"b":"x"}' } as unknown as Record<string, unknown>,
+		};
+		expect(validateToolArguments(objectTool, objectCall)).toEqual({ payload: { a: 1, b: "x" } });
+	});
+
 	it("rejects invalid coercions for serialized plain JSON schemas", () => {
 		const failingCases: Array<{
 			schema: Tool["parameters"];
