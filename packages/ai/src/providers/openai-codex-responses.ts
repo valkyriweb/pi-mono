@@ -366,6 +366,9 @@ export const streamSimpleOpenAICodexResponses: StreamFunction<"openai-codex-resp
 // Request Building
 // ============================================================================
 
+// Exposed for unit tests; not part of the public package API.
+export { buildRequestBody as _buildRequestBodyForTests };
+
 function buildRequestBody(
 	model: Model<"openai-codex-responses">,
 	context: Context,
@@ -414,11 +417,20 @@ function buildRequestBody(
 		// unaffected; deferred tools that activate later are surfaced via Pi's
 		// `tool_search` fallback active-list mutation (no client-side roundtrip
 		// via the OpenAI API).
-		body.tools = convertResponsesTools(context.tools, {
+		const convertedTools = convertResponsesTools(context.tools, {
 			strict: null,
 			deterministic: true,
 			emitDeferLoading: true,
 		});
+		// OpenAI Responses API rule: any tool with `defer_loading: true` requires a
+		// sibling `{ type: "tool_search" }` entry in the same `tools` array. Without
+		// it the API returns 400 `Invalid Value: 'tools.defer_loading'. Deferred
+		// tools require tools.tool_search.` Observed 2026-05-21 on BER-72 corrective
+		// wake (Kael OpenClaw via openclaw_gateway adapter, Codex 0.130.0).
+		const hasDeferredTool = convertedTools.some((t) => (t as { defer_loading?: boolean }).defer_loading === true);
+		body.tools = hasDeferredTool
+			? [{ type: "tool_search" } as unknown as OpenAITool, ...convertedTools]
+			: convertedTools;
 	}
 
 	if (options?.reasoningEffort !== undefined) {
