@@ -51,12 +51,18 @@ describe("built-in agent definitions", () => {
 		expect(agents.get("reviewer")).toContain("VERDICT: PASS|FAIL|PARTIAL");
 	});
 
-	test("agent tool system guidance keeps explore lightweight", () => {
+	test("agent tool guidance lists explore with routing dials", () => {
 		const agentTool = createAgentToolDefinition("/tmp");
-		const exploreGuideline = agentTool.promptGuidelines?.find((line) => line.includes("prefer `explore`"));
-		expect(exploreGuideline).toContain("no transcript/project context/skills");
-		expect(exploreGuideline).toContain("extraContext");
-		expect(exploreGuideline).toContain('context:"slim"');
+		const joined = agentTool.promptGuidelines?.join("\n") ?? "";
+		// Routing pair lifted from Claude Code: positive trigger + negative foil.
+		expect(joined).toMatch(/Reach for this when/i);
+		expect(joined).toMatch(/single-fact lookup where you already know/i);
+		// Anti-duplication clause.
+		expect(joined).toMatch(/don't also run it yourself/i);
+		// Explore listed with breadth dial.
+		const exploreLine = agentTool.promptGuidelines?.find((line) => line.includes("`explore`"));
+		expect(exploreLine).toContain("no transcript/project context/skills");
+		expect(exploreLine).toMatch(/quick \| medium \| very thorough/);
 	});
 
 	test("built-in agent casing aliases resolve when unique", () => {

@@ -30,8 +30,8 @@ Start with the files that repeatedly collide with upstream changes:
 - UI/footer/custom editor surfaces:
   - `packages/coding-agent/src/modes/interactive/**`
   - `packages/tui/src/index.ts`
-- Deleted-or-diverged upstream packages:
-  - `packages/web-ui/**`
+- Retired deleted-or-diverged upstream packages:
+  - `packages/web-ui/**` — removed from the fork on 2026-05-21 after audit confirmed zero live consumers
 
 ## Refactor direction
 

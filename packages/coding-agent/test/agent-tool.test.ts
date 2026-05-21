@@ -125,7 +125,7 @@ describe("agent tool", () => {
 
 	test("tool guidelines nudge parent toward concurrent tool-use blocks", () => {
 		const tool = createAgentToolDefinition(process.cwd());
-		expect(tool.promptGuidelines?.join("\n")).toContain("multiple agent tool-use blocks");
+		expect(tool.promptGuidelines?.join("\n")).toMatch(/multiple `?agent`? tool-use blocks/);
 	});
 
 	test("collapsed render shows per-agent work activity", () => {
