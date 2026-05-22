@@ -83,6 +83,25 @@ describe("bash run_in_background", () => {
 		expect(readText).not.toContain("[90m");
 	});
 
+	it("bash_output caps long line slices by bytes as well as line count", async () => {
+		const bash = createBashToolDefinition(process.cwd());
+		const out = createBashOutputToolDefinition();
+		const script = `const line = "x".repeat(4096); for (let i = 0; i < 600; i++) console.log(line);`;
+		const r = await bash.execute(
+			"t1",
+			{ command: `node -e ${JSON.stringify(script)}`, run_in_background: true },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const bgId = (r.details as any).bgId as string;
+		await new Promise((res) => setTimeout(res, 500));
+
+		const readText = getText(await out.execute("t2", { bgId, maxLines: 600 }, undefined, undefined, ctx));
+		expect(readText).toContain("capped at 50.0KB");
+		expect(Buffer.byteLength(readText, "utf8")).toBeLessThan(60 * 1024);
+	});
+
 	it("bash_output reports unknown bgId clearly", async () => {
 		const out = createBashOutputToolDefinition();
 		const r = await out.execute("t1", { bgId: "bg_does_not_exist" }, undefined, undefined, ctx);

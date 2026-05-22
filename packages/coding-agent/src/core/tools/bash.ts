@@ -21,7 +21,14 @@ import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/type
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { getTextOutput, invalidArgText, str } from "./render-utils.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "./truncate.ts";
+import {
+	DEFAULT_MAX_BYTES,
+	DEFAULT_MAX_LINES,
+	formatSize,
+	type TruncationResult,
+	truncateHead,
+	truncateTail,
+} from "./truncate.ts";
 
 const bashSchema = Type.Object({
 	command: Type.String({ description: "Bash command to execute" }),
@@ -220,28 +227,33 @@ function sanitizeBashBgDisplayLines(lines: string[]): string[] {
 function readBashBgLog(
 	job: BashBgJob,
 	opts: { mode: "tail" | "head" | "all"; maxLines: number },
-): { lines: string[]; totalLines: number; truncated: boolean } {
+): { text: string; shownLines: number; totalLines: number; truncated: boolean } {
 	let content = "";
 	try {
 		content = readFileSync(job.logPath, "utf8");
 	} catch {
-		return { lines: [], totalLines: 0, truncated: false };
+		return { text: "", shownLines: 0, totalLines: 0, truncated: false };
 	}
 	const all = content.split("\n");
 	// Trailing newline produces an empty last element; drop it.
 	if (all.length > 0 && all[all.length - 1] === "") all.pop();
 	const total = all.length;
 	const max = Math.max(1, Math.min(opts.maxLines, 1000));
-	if (opts.mode === "head") {
-		const slice = all.slice(0, max);
-		return { lines: sanitizeBashBgDisplayLines(slice), totalLines: total, truncated: total > slice.length };
-	}
-	if (opts.mode === "all") {
-		const slice = all.slice(0, max);
-		return { lines: sanitizeBashBgDisplayLines(slice), totalLines: total, truncated: total > slice.length };
-	}
-	const slice = all.slice(Math.max(0, total - max));
-	return { lines: sanitizeBashBgDisplayLines(slice), totalLines: total, truncated: total > slice.length };
+	const slice = opts.mode === "tail" ? all.slice(Math.max(0, total - max)) : all.slice(0, max);
+	const sanitized = sanitizeBashBgDisplayLines(slice).join("\n");
+	const truncation =
+		opts.mode === "tail"
+			? truncateTail(sanitized, { maxLines: max, maxBytes: DEFAULT_MAX_BYTES })
+			: truncateHead(sanitized, { maxLines: max, maxBytes: DEFAULT_MAX_BYTES });
+	const text =
+		truncation.content || (total > 0 ? `[output omitted: first line exceeds ${formatSize(DEFAULT_MAX_BYTES)}]` : "");
+	const shownLines = text ? text.split("\n").length : 0;
+	return {
+		text,
+		shownLines,
+		totalLines: total,
+		truncated: total > slice.length || truncation.truncated,
+	};
 }
 
 export type BashToolInput = Static<typeof bashSchema>;
@@ -1062,7 +1074,7 @@ export function createBashOutputToolDefinition(options?: {
 					details: undefined,
 				};
 			}
-			const { lines, totalLines, truncated } = readBashBgLog(job, {
+			const { text, shownLines, totalLines, truncated } = readBashBgLog(job, {
 				mode: mode ?? "tail",
 				maxLines: maxLines ?? 200,
 			});
@@ -1079,8 +1091,10 @@ export function createBashOutputToolDefinition(options?: {
 				(job.status === "failed" && job.error ? ` (${job.error})` : "") +
 				`\nelapsed: ${elapsed.toFixed(1)}s\n` +
 				`log: ${job.logPath} (${(logSize / 1024).toFixed(1)} KB, ${totalLines} lines)` +
-				(truncated ? ` \u2014 showing ${lines.length} of ${totalLines}` : "");
-			const body = lines.length ? lines.join("\n") : "(no output yet)";
+				(truncated
+					? ` \u2014 showing ${shownLines} of ${totalLines}, capped at ${formatSize(DEFAULT_MAX_BYTES)}`
+					: "");
+			const body = text || "(no output yet)";
 			return {
 				content: [{ type: "text", text: `${header}\n\n${body}` }],
 				details: { ...job, fullOutputPath: job.logPath },
