@@ -149,11 +149,17 @@ export interface ExtensionMainPaneAPI {
  * Factory for an extension-registered main pane. Returns a component the
  * framework mounts into `chatContainer` while the pane is shown.
  */
+export interface ExtensionMainPaneComponent extends Component {
+	dispose?(): void;
+	/** Return true when the pane handled Escape and should remain mounted. */
+	onEscape?(): boolean | undefined;
+}
+
 export type ExtensionMainPaneFactory = (
 	tui: TUI,
 	theme: Theme,
 	api: ExtensionMainPaneAPI,
-) => Component & { dispose?(): void };
+) => ExtensionMainPaneComponent;
 
 /**
  * Per-overlay API surface passed to a registered overlay factory.
