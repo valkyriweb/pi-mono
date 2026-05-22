@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeBashWithOperations } from "../src/core/bash-executor.ts";
 import { type BashOperations, createBashTool, createLocalBashOperations } from "../src/core/tools/bash.ts";
 import { computeEditsDiff } from "../src/core/tools/edit-diff.ts";
-import { buildBfsArgs, buildFdArgs } from "../src/core/tools/find.ts";
+import { buildBfsArgs, buildFdArgs, buildRgFindArgs } from "../src/core/tools/find.ts";
 import { buildRgArgs, buildUgrepArgs } from "../src/core/tools/grep.ts";
 import { createAllToolDefinitions } from "../src/core/tools/index.ts";
 import {
@@ -1098,6 +1098,14 @@ describe("Coding Agent Tools", () => {
 					"-limit",
 					"5",
 				]),
+			);
+		});
+
+		it("should build rg argv for mtime-sorted file discovery", () => {
+			const args = buildRgFindArgs({ pattern: "src/**/*.ts", searchPath: testDir });
+
+			expect(args).toEqual(
+				expect.arrayContaining(["--files", "--hidden", "--sort=modified", "--glob=src/**/*.ts", testDir]),
 			);
 		});
 

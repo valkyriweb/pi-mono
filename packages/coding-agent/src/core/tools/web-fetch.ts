@@ -45,6 +45,7 @@ export function createWebFetchToolDefinition(
 		description:
 			"Fetch web page content using Anthropic/Claude's native web_fetch server tool. Only available for claude-bridge models.",
 		promptSnippet: "Fetch web page content using Anthropic/Claude's native web_fetch server tool.",
+		providers: ["claude-bridge"],
 		parameters: webFetchSchema,
 		prepareArguments: (args) => (args && typeof args === "object" ? (args as WebFetchToolInput) : {}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {

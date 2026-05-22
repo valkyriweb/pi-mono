@@ -71,27 +71,24 @@ describe("claude-bridge native tools", () => {
 		}
 	});
 
-	it("filters native WebFetch/WebSearch when the provider is not claude-bridge", async () => {
+	it("filters native WebFetch/WebSearch definitions when the provider is not claude-bridge", async () => {
 		const { session } = await createSession("anthropic", ["Read", "WebFetch", "WebSearch", "web_search"]);
 		try {
 			expect(session.getActiveToolNames()).toContain("Read");
 			expect(session.getActiveToolNames()).not.toContain("WebFetch");
 			expect(session.getActiveToolNames()).not.toContain("WebSearch");
 			expect(session.getActiveToolNames()).not.toContain("web_search");
+			expect(session.getToolDefinition("WebFetch")).toBeUndefined();
+			expect(session.getToolDefinition("WebSearch")).toBeUndefined();
+			expect(session.getToolDefinition("web_search")).toBeUndefined();
 		} finally {
 			session.dispose();
 		}
 	});
 
 	it("does not restore lowercase bridge aliases for claude-bridge sessions", async () => {
-		const { session } = await createSession("anthropic", ["Read"]);
+		const { session } = await createSession("claude-bridge", ["Read", "web_fetch", "web_search"]);
 		try {
-			session.setActiveToolsByName(["Read", "web_fetch", "web_search"]);
-			expect(session.getActiveToolNames()).toEqual(expect.arrayContaining(["Read", "web_fetch", "web_search"]));
-
-			session.agent.state.model = createModel("claude-bridge");
-			session.setActiveToolsByName(["Read", "WebFetch", "WebSearch"]);
-
 			expect(session.getActiveToolNames()).toContain("Read");
 			expect(session.getActiveToolNames()).toContain("WebFetch");
 			expect(session.getActiveToolNames()).toContain("WebSearch");

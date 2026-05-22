@@ -35,7 +35,7 @@ const DEFAULT_TIMEOUT_SECONDS = 30;
 const MAX_TIMEOUT_SECONDS = 300;
 const VCS_DIRS = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
 
-type FindBackend = "bfs" | "fd";
+type FindBackend = "rg" | "bfs" | "fd";
 
 interface FindBackendCommand {
 	backend: FindBackend;
@@ -55,6 +55,13 @@ export function buildBfsArgs(input: { pattern: string; searchPath: string; limit
 		args.push("-name", input.pattern);
 	}
 	args.push("-print", "-limit", String(input.limit));
+	return args;
+}
+
+export function buildRgFindArgs(input: { pattern: string; searchPath: string }): string[] {
+	const args = ["--files", "--hidden", "--sort=modified", `--glob=${input.pattern}`];
+	for (const vcsDir of VCS_DIRS) args.push(`--glob=!**/${vcsDir}/**`);
+	args.push(input.searchPath);
 	return args;
 }
 
@@ -81,13 +88,20 @@ async function resolveFindBackend(input: {
 	limit: number;
 	backend?: FindBackend | "auto";
 }): Promise<FindBackendCommand | undefined> {
-	if (input.backend !== "fd") {
+	if (input.backend !== "bfs" && input.backend !== "fd") {
+		const rgPath = await ensureTool("rg", true);
+		if (rgPath) return { backend: "rg", command: rgPath, args: buildRgFindArgs(input) };
+	}
+
+	if (input.backend !== "rg" && input.backend !== "fd") {
 		const bfsPath = getOptionalSearchToolPath("bfs");
 		if (bfsPath) return { backend: "bfs", command: bfsPath, args: buildBfsArgs(input) };
 	}
 
-	const fdPath = await ensureTool("fd", true);
-	if (fdPath) return { backend: "fd", command: fdPath, args: buildFdArgs(input) };
+	if (input.backend !== "rg" && input.backend !== "bfs") {
+		const fdPath = await ensureTool("fd", true);
+		if (fdPath) return { backend: "fd", command: fdPath, args: buildFdArgs(input) };
+	}
 	return undefined;
 }
 
@@ -240,7 +254,7 @@ export function createFindToolDefinition(
 	return {
 		name: toolName,
 		label,
-		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Use this tool for file discovery; do not invoke \`find\` via bash — those calls are blocked at runtime. Prefers bfs when available, falling back to fd. The fd fallback respects .gitignore; bfs matches Claude Code Glob behavior and does not filter .gitignore. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
+		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory, sorted by modification time when the rg backend is available. Use this tool for file discovery; do not invoke \`find\` via bash — those calls are blocked at runtime. Prefers rg for Claude Code-style mtime sorting, then bfs, then fd. The rg and fd backends respect .gitignore; bfs does not. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
 		promptSnippet: "Find files by glob pattern",
 		parameters: findSchema,
 		async execute(
@@ -418,7 +432,14 @@ export function createFindToolDefinition(
 						});
 
 						rl.on("line", (line) => {
+							if (backendCommand.backend === "rg" && lines.length >= effectiveLimit) {
+								stopChild?.();
+								return;
+							}
 							lines.push(line);
+							if (backendCommand.backend === "rg" && lines.length >= effectiveLimit) {
+								stopChild?.();
+							}
 						});
 
 						child.on("error", (error) => {
@@ -466,7 +487,8 @@ export function createFindToolDefinition(
 							if (code !== 0) {
 								const backendName = toolDisplayName(backendCommand.command);
 								const errorMsg = stderr.trim() || `${backendName} exited with code ${code}`;
-								if (!output) {
+								const rgNoMatches = backendCommand.backend === "rg" && code === 1 && !stderr.trim();
+								if (!output && !rgNoMatches) {
 									settle(() => reject(new Error(errorMsg)));
 									return;
 								}

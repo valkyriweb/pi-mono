@@ -46,6 +46,7 @@ export function createWebSearchToolDefinition(
 		description:
 			"Search the web using Anthropic/Claude's native web_search server tool. Only available for claude-bridge models.",
 		promptSnippet: "Search the web using Anthropic/Claude's native web_search server tool.",
+		providers: ["claude-bridge"],
 		parameters: webSearchSchema,
 		prepareArguments: normalizeSearchInput,
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
