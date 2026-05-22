@@ -98,8 +98,8 @@ describe("bash run_in_background", () => {
 		await new Promise((res) => setTimeout(res, 500));
 
 		const readText = getText(await out.execute("t2", { bgId, maxLines: 600 }, undefined, undefined, ctx));
-		expect(readText).toContain("capped at 50.0KB");
-		expect(Buffer.byteLength(readText, "utf8")).toBeLessThan(60 * 1024);
+		expect(readText).toContain("capped at 20.0KB");
+		expect(Buffer.byteLength(readText, "utf8")).toBeLessThan(25 * 1024);
 	});
 
 	it("bash_output reports unknown bgId clearly", async () => {

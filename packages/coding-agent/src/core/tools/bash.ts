@@ -179,6 +179,7 @@ function spawnBashBackground(command: string, cwd: string, shellPath?: string, c
 }
 
 const VERTICAL_TUI_RUN_MIN_LINES = 12;
+const BASH_OUTPUT_MAX_BYTES = 20 * 1024;
 
 function stripTrailingCarriageReturn(line: string): string {
 	return line.endsWith("\r") ? line.slice(0, -1) : line;
@@ -243,10 +244,11 @@ function readBashBgLog(
 	const sanitized = sanitizeBashBgDisplayLines(slice).join("\n");
 	const truncation =
 		opts.mode === "tail"
-			? truncateTail(sanitized, { maxLines: max, maxBytes: DEFAULT_MAX_BYTES })
-			: truncateHead(sanitized, { maxLines: max, maxBytes: DEFAULT_MAX_BYTES });
+			? truncateTail(sanitized, { maxLines: max, maxBytes: BASH_OUTPUT_MAX_BYTES })
+			: truncateHead(sanitized, { maxLines: max, maxBytes: BASH_OUTPUT_MAX_BYTES });
 	const text =
-		truncation.content || (total > 0 ? `[output omitted: first line exceeds ${formatSize(DEFAULT_MAX_BYTES)}]` : "");
+		truncation.content ||
+		(total > 0 ? `[output omitted: first line exceeds ${formatSize(BASH_OUTPUT_MAX_BYTES)}]` : "");
 	const shownLines = text ? text.split("\n").length : 0;
 	return {
 		text,
@@ -1092,7 +1094,7 @@ export function createBashOutputToolDefinition(options?: {
 				`\nelapsed: ${elapsed.toFixed(1)}s\n` +
 				`log: ${job.logPath} (${(logSize / 1024).toFixed(1)} KB, ${totalLines} lines)` +
 				(truncated
-					? ` \u2014 showing ${shownLines} of ${totalLines}, capped at ${formatSize(DEFAULT_MAX_BYTES)}`
+					? ` \u2014 showing ${shownLines} of ${totalLines}, capped at ${formatSize(BASH_OUTPUT_MAX_BYTES)}`
 					: "");
 			const body = text || "(no output yet)";
 			return {
