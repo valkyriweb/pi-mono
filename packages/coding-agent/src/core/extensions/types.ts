@@ -1465,7 +1465,7 @@ export interface ExtensionAPI {
 	/**
 	 * Register a running child `AgentSession` under `taskId`. Producers (e.g.
 	 * agent executors) call this immediately before driving the child prompt
-	 * loop; consumers (e.g. zoom transcript views) read via `getLiveSession`.
+	 * loop; UI consumers read via `getLiveSession`.
 	 * Backed by a shared registry — all extensions see the same map.
 	 */
 	registerLiveSession(taskId: string, session: AgentSession): void;

@@ -2,8 +2,8 @@
  * Per-task live event ring buffer.
  *
  * The executor sinks normalized events from `session.subscribe()` here, keyed
- * by task id (= AgentRecentRun.id for local_agent tasks). The TUI subscribes
- * to render a live transcript when zoomed into a running child.
+ * by task id (= AgentRecentRun.id for local_agent tasks). UI consumers can
+ * subscribe to render a live transcript for a running child.
  *
  * Bounded: oldest events are evicted past MAX_EVENTS_PER_TASK to keep memory
  * predictable when a child runs for a long time. Full transcript remains on

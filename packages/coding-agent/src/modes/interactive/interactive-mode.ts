@@ -95,15 +95,8 @@ import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../cor
 import { type SessionContext, SessionManager } from "../../core/session-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
-import {
-	appendTaskMessage,
-	cycleRunningTask,
-	getRunningTasksSorted,
-	isTerminalTaskStatus,
-	LocalAgentTask,
-} from "../../core/tasks/index.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
-import { getBashBgJob, getRunningBashBgJobsSorted, subscribeBashBgJobs } from "../../core/tools/bash.ts";
+import { subscribeBashBgJobs } from "../../core/tools/bash.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
@@ -145,9 +138,6 @@ import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
-import { ZoomedBashComponent } from "./components/zoomed-bash.ts";
-import type { ZoomedSessionConfig } from "./components/zoomed-session-transcript.ts";
-import { ZoomedTaskComponent } from "./components/zoomed-task.ts";
 import {
 	getAvailableThemes,
 	getAvailableThemesWithPaths,
@@ -345,24 +335,15 @@ export class InteractiveMode {
 	// Shutdown state
 	private shutdownRequested = false;
 
-	// Zoom-into-running-agent state.
-	// When zoomed, the main chat pane is replaced by a ZoomedTaskComponent that
-	// renders the live tail from `subscribeTaskMessages(zoomedTaskId,…)`. Editor
-	// Enter routes to `LocalAgentTask.injectMessage` instead of the parent
-	// session. Auto-pop fires `STOPPED_DISPLAY_MS` after a terminal status.
-	private zoomedTaskId: string | undefined = undefined;
-	private zoomedBashBgId: string | undefined = undefined;
-	private zoomedComponent: ZoomedTaskComponent | undefined = undefined;
-	private zoomedBashComponent: ZoomedBashComponent | undefined = undefined;
-	private preZoomChatChildren: Component[] = [];
-	private zoomAutoPopTimer: ReturnType<typeof setTimeout> | undefined = undefined;
-	private unsubscribeZoomStatus?: () => void;
-	private static readonly ZOOM_STOPPED_DISPLAY_MS = 3000;
-
-	// Footer nav selection state.
-	// When footerSelectedTaskId is defined the footer renders selectable pills and
-	// up/down/enter are consumed by the footer nav handler instead of the editor.
-	private footerSelectedTaskId: string | undefined = undefined;
+	// Extension main pane state. The extension runner owns registration; interactive-mode
+	// only mounts/unmounts the selected component in the chat container.
+	private activeMainPane:
+		| { id: string; component: Component & { dispose?(): void }; preChildren: Component[] }
+		| undefined = undefined;
+	private activeOverlay:
+		| { id: string; component: Component & { dispose?(): void }; handle: OverlayHandle }
+		| undefined = undefined;
+	private selectedExtensionFooterId: string | undefined = undefined;
 
 	// Extension UI state
 	private extensionSelector: ExtensionSelectorComponent | undefined = undefined;
@@ -741,22 +722,11 @@ export class InteractiveMode {
 		});
 
 		this.unsubscribeAgentRuns = subscribeAgentRecentRuns(() => {
-			// If the footer-selected agent just terminated, clear the selection.
-			if (this.footerSelectedTaskId?.startsWith("agent:")) {
-				const taskId = this.footerSelectedTaskId.slice("agent:".length);
-				const still = getRunningTasksSorted().find((t) => t.id === taskId);
-				if (!still) this.clearFooterFocus();
-			}
 			this.footer.invalidate();
 			this.ui.requestRender();
 		});
 
 		this.unsubscribeBashBgJobs = subscribeBashBgJobs(() => {
-			if (this.footerSelectedTaskId?.startsWith("bash:")) {
-				const bgId = this.footerSelectedTaskId.slice("bash:".length);
-				const still = getRunningBashBgJobsSorted().find((job) => job.id === bgId);
-				if (!still) this.clearFooterFocus();
-			}
 			this.footer.invalidate();
 			this.ui.requestRender();
 		});
@@ -1630,6 +1600,12 @@ export class InteractiveMode {
 		this.setupAutocompleteProvider();
 
 		const extensionRunner = this.session.extensionRunner;
+		extensionRunner.bindSlotUI({
+			showMainPane: (id, payload) => this.showExtensionMainPane(id, payload),
+			hideMainPane: (id) => this.hideExtensionMainPane(id),
+			showOverlay: (id, payload) => this.showExtensionOverlay(id, payload),
+			hideOverlay: (id) => this.hideExtensionOverlay(id),
+		});
 		this.setupExtensionShortcuts(extensionRunner);
 		this.showLoadedResources({ force: false, showDiagnosticsWhenQuiet: true });
 		this.showStartupNoticesIfNeeded();
@@ -2017,6 +1993,96 @@ export class InteractiveMode {
 		}
 
 		this.ui.requestRender();
+	}
+
+	private showExtensionMainPane(id: string, payload: unknown): void {
+		const factory = this.session.extensionRunner.getRegisteredMainPane(id);
+		if (!factory) return;
+		if (this.activeMainPane) this.hideExtensionMainPane(this.activeMainPane.id);
+		const preChildren = [...this.chatContainer.children];
+		const component = factory(this.ui, theme, {
+			payload,
+			requestHide: () => this.hideExtensionMainPane(id),
+		});
+		this.chatContainer.clear();
+		this.chatContainer.addChild(component);
+		this.activeMainPane = { id, component, preChildren };
+		this.ui.requestRender();
+	}
+
+	private hideExtensionMainPane(id: string): void {
+		if (!this.activeMainPane || this.activeMainPane.id !== id) return;
+		this.activeMainPane.component.dispose?.();
+		const preChildren = this.activeMainPane.preChildren;
+		this.activeMainPane = undefined;
+		this.chatContainer.clear();
+		for (const child of preChildren) this.chatContainer.addChild(child);
+		this.ui.requestRender();
+	}
+
+	private showExtensionOverlay(id: string, payload: unknown): void {
+		const factory = this.session.extensionRunner.getRegisteredOverlay(id);
+		if (!factory) return;
+		if (this.activeOverlay) this.hideExtensionOverlay(this.activeOverlay.id);
+		const component = factory(this.ui, theme, {
+			payload,
+			requestHide: () => this.hideExtensionOverlay(id),
+		});
+		const handle = this.ui.showOverlay(component);
+		this.activeOverlay = { id, component, handle };
+		this.ui.requestRender();
+	}
+
+	private hideExtensionOverlay(id: string): void {
+		if (!this.activeOverlay || this.activeOverlay.id !== id) return;
+		this.activeOverlay.component.dispose?.();
+		this.activeOverlay.handle.hide();
+		this.activeOverlay = undefined;
+		this.ui.requestRender();
+	}
+
+	private getVisibleExtensionFooterIds(): string[] {
+		return this.session.extensionRunner
+			.getRegisteredFooters()
+			.filter(({ spec }) => spec.visible?.() ?? true)
+			.sort((a, b) => (a.spec.order ?? 0) - (b.spec.order ?? 0))
+			.map(({ id }) => id);
+	}
+
+	private setSelectedExtensionFooterId(id: string | undefined): void {
+		this.selectedExtensionFooterId = id;
+		this.footer.setSelectedExtensionFooterId(id);
+		this.ui.requestRender();
+	}
+
+	private handleExtensionFooterNavInput(data: string): boolean {
+		const ids = this.getVisibleExtensionFooterIds();
+		if (
+			(matchesKey(data, "up") || matchesKey(data, "down")) &&
+			this.defaultEditor.getText().length === 0 &&
+			ids.length > 0
+		) {
+			const direction = matchesKey(data, "up") ? "prev" : "next";
+			if (!this.selectedExtensionFooterId) {
+				this.setSelectedExtensionFooterId(direction === "next" ? ids[0] : ids[ids.length - 1]);
+				return true;
+			}
+			const index = ids.indexOf(this.selectedExtensionFooterId);
+			const offset = direction === "next" ? 1 : -1;
+			const nextIndex =
+				index === -1 ? (direction === "next" ? 0 : ids.length - 1) : (index + offset + ids.length) % ids.length;
+			this.setSelectedExtensionFooterId(ids[nextIndex]);
+			return true;
+		}
+		if (matchesKey(data, "enter") && this.selectedExtensionFooterId) {
+			const footer = this.session.extensionRunner
+				.getRegisteredFooters()
+				.find(({ id }) => id === this.selectedExtensionFooterId);
+			this.setSelectedExtensionFooterId(undefined);
+			footer?.spec.onActivate({ close: () => this.setSelectedExtensionFooterId(undefined) });
+			return true;
+		}
+		return false;
 	}
 
 	private addExtensionTerminalInputListener(
@@ -2456,9 +2522,12 @@ export class InteractiveMode {
 		// Set up handlers on defaultEditor - they use this.editor for text access
 		// so they work correctly regardless of which editor is active
 		this.defaultEditor.onEscape = () => {
-			// Footer nav takes priority: escape clears the selection without zooming.
-			if (this.footerSelectedTaskId) {
-				this.clearFooterFocus();
+			if (this.selectedExtensionFooterId) {
+				this.setSelectedExtensionFooterId(undefined);
+				return;
+			}
+			if (this.activeMainPane) {
+				this.hideExtensionMainPane(this.activeMainPane.id);
 				return;
 			}
 			if (this.session.isStreaming) {
@@ -2508,26 +2577,10 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
 		this.defaultEditor.onAction("app.session.fork", () => this.showUserMessageSelector());
 		this.defaultEditor.onAction("app.session.resume", () => this.showSessionSelector());
-		this.defaultEditor.onAction("app.agents.zoom.enter", () => this.enterZoomFromHotkey());
-		this.defaultEditor.onAction("app.agents.zoom.exit", () => this.exitZoom());
-		this.defaultEditor.onAction("app.agents.zoom.cycleNext", () => this.cycleZoom("next"));
-		this.defaultEditor.onAction("app.agents.zoom.cyclePrev", () => this.cycleZoom("prev"));
-		this.defaultEditor.onAction("app.agents.zoom.requestShutdown", () => {
-			void this.runZoomedTaskVerb("requestShutdown");
-		});
-		this.defaultEditor.onAction("app.agents.zoom.kill", () => {
-			void this.runZoomedTaskVerb("kill");
-		});
-
-		// Footer nav: pre-input hook so up/down/enter fall through to the editor
-		// when conditions are not met (editor non-empty or no running tasks).
-		this.defaultEditor.onPreInput = (data: string) => this.handleFooterNavInput(data);
+		this.defaultEditor.onPreInput = (data: string) => this.handleExtensionFooterNavInput(data);
 
 		this.defaultEditor.onChange = (text: string) => {
-			// Typing into the editor cancels footer nav selection.
-			if (text.length > 0 && this.footerSelectedTaskId) {
-				this.clearFooterFocus();
-			}
+			if (text.length > 0 && this.selectedExtensionFooterId) this.setSelectedExtensionFooterId(undefined);
 			const wasBashMode = this.isBashMode;
 			this.isBashMode = text.trimStart().startsWith("!");
 			if (wasBashMode !== this.isBashMode) {
@@ -2567,23 +2620,6 @@ export class InteractiveMode {
 		this.defaultEditor.onSubmit = async (text: string) => {
 			text = text.trim();
 			if (!text) return;
-
-			// While zoomed, Enter steers the child agent instead of the parent session.
-			// `/exit-zoom` is a safety hatch in case the keybinding is rebound.
-			if (this.zoomedTaskId) {
-				this.editor.setText("");
-				if (text === "/exit-zoom") {
-					this.exitZoom();
-					return;
-				}
-				this.injectIntoZoomedTask(text);
-				return;
-			}
-			if (this.zoomedBashBgId) {
-				this.editor.setText("");
-				if (text === "/exit-zoom") this.exitZoom();
-				return;
-			}
 
 			// Handle commands
 			if (text === "/settings") {
@@ -3394,300 +3430,6 @@ export class InteractiveMode {
 	 * repaint the final frame while the process is exiting.
 	 */
 	private isShuttingDown = false;
-
-	// ──────────────────────────────────────────────────────────────────────
-	// Zoom-into-running-agent view
-	// ──────────────────────────────────────────────────────────────────────
-
-	// -------------------------------------------------------------------------
-	// Footer nav
-	// -------------------------------------------------------------------------
-
-	/**
-	 * Conditionally handle up/down/enter for footer pill navigation.
-	 * Returns true if the input was consumed, false to fall through to the editor.
-	 */
-	private handleFooterNavInput(data: string): boolean {
-		if (this.keybindings.matches(data, "app.agents.footer.focusPrev")) {
-			if (this.defaultEditor.getText().length === 0 && this.getFooterNavItemIds().length > 0) {
-				this.footerFocusPrev();
-				return true;
-			}
-			return false;
-		}
-		if (this.keybindings.matches(data, "app.agents.footer.focusNext")) {
-			if (this.defaultEditor.getText().length === 0 && this.getFooterNavItemIds().length > 0) {
-				this.footerFocusNext();
-				return true;
-			}
-			return false;
-		}
-		if (this.keybindings.matches(data, "app.agents.footer.zoom")) {
-			if (this.footerSelectedTaskId) {
-				this.enterZoomFromFooter();
-				return true;
-			}
-			return false;
-		}
-		return false;
-	}
-
-	private getFooterNavItemIds(): string[] {
-		return [
-			...getRunningTasksSorted().map((task) => `agent:${task.id}`),
-			...getRunningBashBgJobsSorted().map((job) => `bash:${job.id}`),
-		];
-	}
-
-	/** Highlight the previous running footer item pill (wraps around). */
-	private footerFocusPrev(): void {
-		const ids = this.getFooterNavItemIds();
-		if (ids.length === 0) {
-			this.clearFooterFocus();
-			return;
-		}
-		if (!this.footerSelectedTaskId) {
-			this.setFooterSelectedTaskId(ids[ids.length - 1]);
-			return;
-		}
-		const idx = ids.indexOf(this.footerSelectedTaskId);
-		const prevIdx = idx <= 0 ? ids.length - 1 : idx - 1;
-		this.setFooterSelectedTaskId(ids[prevIdx]);
-	}
-
-	/** Highlight the next running footer item pill (wraps around). */
-	private footerFocusNext(): void {
-		const ids = this.getFooterNavItemIds();
-		if (ids.length === 0) {
-			this.clearFooterFocus();
-			return;
-		}
-		if (!this.footerSelectedTaskId) {
-			this.setFooterSelectedTaskId(ids[0]);
-			return;
-		}
-		const idx = ids.indexOf(this.footerSelectedTaskId);
-		const nextIdx = idx < 0 || idx >= ids.length - 1 ? 0 : idx + 1;
-		this.setFooterSelectedTaskId(ids[nextIdx]);
-	}
-
-	private setFooterSelectedTaskId(id: string | undefined): void {
-		this.footerSelectedTaskId = id;
-		this.footer.setFooterSelectedTaskId(id);
-		this.ui.requestRender();
-	}
-
-	/** Clear footer nav selection without zooming. */
-	private clearFooterFocus(): void {
-		if (!this.footerSelectedTaskId) return;
-		this.setFooterSelectedTaskId(undefined);
-	}
-
-	/** Zoom into the currently highlighted footer pill and clear the selection. */
-	private enterZoomFromFooter(): void {
-		const selectedId = this.footerSelectedTaskId;
-		if (!selectedId) return;
-		this.clearFooterFocus();
-		if (selectedId.startsWith("bash:")) {
-			this.enterBashZoom(selectedId.slice("bash:".length));
-			return;
-		}
-		this.enterZoom(selectedId.startsWith("agent:") ? selectedId.slice("agent:".length) : selectedId);
-	}
-
-	// -------------------------------------------------------------------------
-	// Zoom
-	// -------------------------------------------------------------------------
-
-	/**
-	 * Enter zoom view from the global hotkey. Picks the most recently started
-	 * running task (last in sort order). Returns silently with a warning if no
-	 * running task exists.
-	 */
-	private enterZoomFromHotkey(): void {
-		const tasks = getRunningTasksSorted();
-		const target = tasks[tasks.length - 1];
-		if (!target) {
-			this.showWarning("No running background agent to zoom into.");
-			return;
-		}
-		this.enterZoom(target.id);
-	}
-
-	private makeZoomedSessionConfig(): ZoomedSessionConfig {
-		return {
-			cwd: this.sessionManager.getCwd(),
-			hideThinkingBlock: this.hideThinkingBlock,
-			markdownTheme: this.getMarkdownThemeWithSettings(),
-			showImages: this.settingsManager.getShowImages(),
-			imageWidthCells: this.settingsManager.getImageWidthCells(),
-		};
-	}
-
-	private enterZoom(taskId: string): void {
-		if (this.zoomedTaskId === taskId) return;
-		const sessionConfig = this.makeZoomedSessionConfig();
-		// If already zoomed into a different item, swap component in place to
-		// avoid restoring + re-clearing the chat container twice.
-		if (this.zoomedTaskId || this.zoomedBashBgId) {
-			this.disposeZoomedComponent();
-			this.zoomedTaskId = taskId;
-			this.zoomedBashBgId = undefined;
-			this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui, sessionConfig);
-			this.chatContainer.addChild(this.zoomedComponent);
-			this.scheduleZoomTerminalCheck();
-			this.footer.invalidate();
-			this.ui.requestRender();
-			return;
-		}
-		this.zoomedTaskId = taskId;
-		this.preZoomChatChildren = [...this.chatContainer.children];
-		this.chatContainer.clear();
-		this.zoomedComponent = new ZoomedTaskComponent(taskId, this.ui, sessionConfig);
-		this.chatContainer.addChild(this.zoomedComponent);
-		// Watch for terminal status on this task to auto-pop.
-		this.unsubscribeZoomStatus = subscribeAgentRecentRuns(() => this.scheduleZoomTerminalCheck());
-		this.scheduleZoomTerminalCheck();
-		this.footer.invalidate();
-		this.ui.requestRender();
-	}
-
-	private enterBashZoom(bgId: string): void {
-		if (this.zoomedBashBgId === bgId) return;
-		if (!getBashBgJob(bgId)) {
-			this.showWarning(`No background shell job with id ${bgId}.`);
-			return;
-		}
-		if (this.zoomedTaskId || this.zoomedBashBgId) {
-			this.disposeZoomedComponent();
-			this.unsubscribeZoomStatus?.();
-			this.unsubscribeZoomStatus = undefined;
-			if (this.zoomAutoPopTimer) {
-				clearTimeout(this.zoomAutoPopTimer);
-				this.zoomAutoPopTimer = undefined;
-			}
-			this.zoomedTaskId = undefined;
-			this.zoomedBashBgId = bgId;
-			this.zoomedBashComponent = new ZoomedBashComponent(bgId, this.ui);
-			this.chatContainer.addChild(this.zoomedBashComponent);
-			this.footer.invalidate();
-			this.ui.requestRender();
-			return;
-		}
-		this.zoomedBashBgId = bgId;
-		this.preZoomChatChildren = [...this.chatContainer.children];
-		this.chatContainer.clear();
-		this.zoomedBashComponent = new ZoomedBashComponent(bgId, this.ui);
-		this.chatContainer.addChild(this.zoomedBashComponent);
-		this.footer.invalidate();
-		this.ui.requestRender();
-	}
-
-	private exitZoom(): void {
-		if (!this.zoomedTaskId && !this.zoomedBashBgId) return;
-		this.disposeZoomedComponent();
-		this.unsubscribeZoomStatus?.();
-		this.unsubscribeZoomStatus = undefined;
-		if (this.zoomAutoPopTimer) {
-			clearTimeout(this.zoomAutoPopTimer);
-			this.zoomAutoPopTimer = undefined;
-		}
-		this.zoomedTaskId = undefined;
-		this.zoomedBashBgId = undefined;
-		// Restore the chat container's pre-zoom children plus anything that may
-		// have been appended while zoomed (we currently drop those — chat
-		// appends during zoom are rare; if it becomes a problem, capture them
-		// via a separate container).
-		this.chatContainer.clear();
-		for (const child of this.preZoomChatChildren) this.chatContainer.addChild(child);
-		this.preZoomChatChildren = [];
-		this.footer.invalidate();
-		this.ui.requestRender();
-	}
-
-	private disposeZoomedComponent(): void {
-		if (this.zoomedComponent) {
-			this.zoomedComponent.dispose();
-			this.chatContainer.removeChild(this.zoomedComponent);
-			this.zoomedComponent = undefined;
-		}
-		if (this.zoomedBashComponent) {
-			this.zoomedBashComponent.dispose();
-			this.chatContainer.removeChild(this.zoomedBashComponent);
-			this.zoomedBashComponent = undefined;
-		}
-	}
-
-	private cycleZoom(direction: "next" | "prev"): void {
-		if (!this.zoomedTaskId) {
-			this.enterZoomFromHotkey();
-			return;
-		}
-		const next = cycleRunningTask(this.zoomedTaskId, direction);
-		if (!next) {
-			this.exitZoom();
-			return;
-		}
-		this.enterZoom(next.id);
-	}
-
-	private injectIntoZoomedTask(text: string): void {
-		const taskId = this.zoomedTaskId;
-		if (!taskId) return;
-		// 1) Render the injected message *immediately* (synchronous append) so
-		//    the user sees the → line before the child agent picks it up.
-		appendTaskMessage(taskId, { kind: "user_injected", ts: Date.now(), text });
-		this.ui.requestRender();
-		// 2) Fire the underlying interrupt+resume in the background. Awaiting it
-		//    here would block Enter for up to a tool boundary (5–30s on a
-		//    streaming LLM turn), which the user perceives as a timeout. The
-		//    pending-message buffer means the inject still lands at the next
-		//    turn boundary; the await would only have given us a synchronous
-		//    failure path, which we surface async via the warning toast.
-		void (async () => {
-			try {
-				const result = await LocalAgentTask.injectMessage?.(taskId, text);
-				if (result && !result.ok) {
-					this.showWarning(`Inject failed: ${result.message}`);
-				}
-			} catch (error) {
-				this.showWarning(`Inject failed: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		})();
-	}
-
-	private async runZoomedTaskVerb(verb: "requestShutdown" | "kill"): Promise<void> {
-		const taskId = this.zoomedTaskId;
-		if (!taskId) return;
-		const fn = verb === "requestShutdown" ? LocalAgentTask.requestShutdown : LocalAgentTask.kill;
-		if (!fn) return;
-		const result = await fn(taskId);
-		if (!result.ok) {
-			this.showWarning(`${verb} failed: ${result.message}`);
-		}
-	}
-
-	/**
-	 * If the currently zoomed task is in a terminal state, schedule an
-	 * auto-pop after `ZOOM_STOPPED_DISPLAY_MS`. Re-entrant: if a timer is
-	 * already armed it stays armed. Mirrors Claude's STOPPED_DISPLAY_MS.
-	 */
-	private scheduleZoomTerminalCheck(): void {
-		const taskId = this.zoomedTaskId;
-		if (!taskId) return;
-		if (this.zoomAutoPopTimer) return;
-		const snapshot = LocalAgentTask.snapshot(taskId);
-		if (!snapshot || !isTerminalTaskStatus(snapshot.status)) return;
-		this.zoomAutoPopTimer = setTimeout(() => {
-			this.zoomAutoPopTimer = undefined;
-			// Only auto-pop if we are still zoomed on the same task and it is
-			// still in a terminal state (defensive against late status thrash).
-			if (this.zoomedTaskId !== taskId) return;
-			const current = LocalAgentTask.snapshot(taskId);
-			if (current && !isTerminalTaskStatus(current.status)) return;
-			this.exitZoom();
-		}, InteractiveMode.ZOOM_STOPPED_DISPLAY_MS);
-	}
 
 	private async shutdown(): Promise<void> {
 		if (this.isShuttingDown) return;
@@ -6162,7 +5904,8 @@ export class InteractiveMode {
 			this.unsubscribeBashBgJobs();
 			this.unsubscribeBashBgJobs = undefined;
 		}
-		this.disposeZoomedComponent();
+		if (this.activeMainPane) this.hideExtensionMainPane(this.activeMainPane.id);
+		if (this.activeOverlay) this.hideExtensionOverlay(this.activeOverlay.id);
 		if (this.unsubscribe) {
 			this.unsubscribe();
 		}

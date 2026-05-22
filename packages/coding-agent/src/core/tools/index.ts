@@ -12,6 +12,7 @@ export {
 } from "./agent.ts";
 export {
 	type BashBgDetails,
+	type BashBgJob,
 	type BashKillToolInput,
 	type BashOperations,
 	type BashOutputToolInput,
@@ -33,8 +34,20 @@ export {
 	createLocalBashOperations,
 	createUppercaseBashTool,
 	createUppercaseBashToolDefinition,
+	getBashBgJob,
+	getRunningBashBgJobsSorted,
 	listBashBgJobs,
+	subscribeBashBgJobs,
 } from "./bash.ts";
+export {
+	type BuildInterfaceDetails,
+	type BuildInterfaceInput,
+	type BuildInterfaceToolOptions,
+	buildInterfaceSchema,
+	createBuildInterfaceToolDefinition,
+	dispatchBuildInterface,
+	executeBuildInterface,
+} from "./build-interface.ts";
 export {
 	createEditTool,
 	createEditToolDefinition,
@@ -66,6 +79,21 @@ export {
 	type GrepToolInput,
 	type GrepToolOptions,
 } from "./grep.ts";
+export type {
+	LayoutAction,
+	LayoutAlign,
+	LayoutGraph,
+	LayoutNode,
+	LayoutOption,
+	LayoutResponse,
+	LayoutTextStyle,
+} from "./layout-graph.ts";
+export {
+	actionSchema,
+	LAYOUT_GRAPH_VERSION,
+	layoutGraphSchema,
+	nodeSchema,
+} from "./layout-graph.ts";
 export {
 	createLsTool,
 	createLsToolDefinition,
@@ -76,6 +104,10 @@ export {
 	type LsToolInput,
 	type LsToolOptions,
 } from "./ls.ts";
+export {
+	createPiModelCaller,
+	type PiModelCallerOptions,
+} from "./pi-model-caller.ts";
 export {
 	createReadTool,
 	createReadToolDefinition,
@@ -96,6 +128,23 @@ export {
 	truncateLine,
 	truncateTail,
 } from "./truncate.ts";
+export {
+	CATALOG_PROMPT,
+	createLLMHarness,
+	type ExampleQuestionsData,
+	exampleQuestionsHarness,
+	exampleQuestionsInputId,
+	formatHarnessUserPrompt,
+	HarnessParseError,
+	HarnessValidationError,
+	type LLMHarnessOptions,
+	type ModelCaller,
+	parseHarnessJSON,
+	recordingHarness,
+	staticHarness,
+	type UIHarness,
+	validateLayoutGraph,
+} from "./ui-harness.ts";
 export {
 	createWebFetchTool,
 	createWebFetchToolDefinition,

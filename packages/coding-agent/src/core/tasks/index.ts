@@ -17,6 +17,5 @@ export {
 	registerTaskAdapter,
 	subscribeTasks,
 } from "./registry.ts";
-export { cycleRunningTask, getRunningTasksSorted } from "./sort.ts";
 export type { Task, TaskControlResult, TaskListener, TaskSnapshot, TaskStatus, TaskType } from "./types.ts";
 export { isTerminalTaskStatus } from "./types.ts";

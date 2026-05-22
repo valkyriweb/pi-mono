@@ -1,7 +1,7 @@
 /**
  * Module-level registry of live child `AgentSession` objects, keyed by
  * `AgentRecentRun` / task id. Written by `executor.ts` during a child run;
- * read by `ZoomedSessionTranscript` to subscribe to the child's event stream.
+ * read by UI consumers that subscribe to the child's event stream.
  *
  * A separate module (not part of `status.ts`) avoids coupling the pure
  * status store to the session object graph.

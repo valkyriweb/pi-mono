@@ -1,9 +1,6 @@
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
-import { formatAgentFooterStatus } from "../../../core/agents/status.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
-import { getRunningTasksSorted } from "../../../core/tasks/index.ts";
-import { type BashBgJob, getRunningBashBgJobsSorted } from "../../../core/tools/bash.ts";
 import { theme } from "../theme/theme.ts";
 
 /**
@@ -27,15 +24,6 @@ function formatTokens(count: number): string {
 	if (count < 1000000) return `${Math.round(count / 1000)}k`;
 	if (count < 10000000) return `${(count / 1000000).toFixed(1)}M`;
 	return `${Math.round(count / 1000000)}M`;
-}
-
-function shortBgId(id: string): string {
-	return id.startsWith("bg_") ? id.slice(3, 9) : id.slice(0, 6);
-}
-
-function formatBashFooterStatus(jobs: BashBgJob[]): string {
-	if (jobs.length === 1) return `shell ${shortBgId(jobs[0]!.id)} running`;
-	return `${jobs.length} shells running`;
 }
 
 interface UsageTotals {
@@ -62,17 +50,15 @@ export class FooterComponent implements Component {
 		totalCacheWrite: 0,
 		totalCost: 0,
 	};
-
-	/** Footer item currently highlighted in nav mode, or undefined when inactive. */
-	private footerSelectedTaskId: string | undefined = undefined;
+	private selectedExtensionFooterId: string | undefined = undefined;
 
 	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
 		this.session = session;
 		this.footerData = footerData;
 	}
 
-	setFooterSelectedTaskId(id: string | undefined): void {
-		this.footerSelectedTaskId = id;
+	setSelectedExtensionFooterId(id: string | undefined): void {
+		this.selectedExtensionFooterId = id;
 	}
 
 	setSession(session: AgentSession): void {
@@ -99,49 +85,18 @@ export class FooterComponent implements Component {
 		// Git watcher cleanup handled by provider
 	}
 
-	/**
-	 * Render the background work status line at the bottom of the footer.
-	 *
-	 * When footer-nav mode is active (`footerSelectedTaskId` is set), render a
-	 * pill-per-running-task/job row so the user can see which item is highlighted.
-	 * Otherwise fall back to compact agent + shell summaries.
-	 */
+	/** Render extension-contributed footer pills at the bottom of the footer. */
 	private renderBackgroundStatusLine(width: number): string | undefined {
-		if (this.footerSelectedTaskId !== undefined) {
-			const items = this.getFooterNavItems();
-			if (items.length === 0) return undefined;
-			const pills = items.map((item) => {
-				const label = ` ${item.label} `;
-				return item.id === this.footerSelectedTaskId
-					? theme.fg(item.kind === "bash" ? "bashMode" : "accent", theme.bold(`[${item.label}]`))
-					: theme.fg("dim", label);
-			});
-			const hint = theme.fg("muted", " ↑↓ select · enter=zoom · esc=cancel");
-			const row = pills.join("") + hint;
-			return truncateToWidth(row, width, theme.fg("dim", "..."));
-		}
-
-		const parts: string[] = [];
-		const agentStatus = formatAgentFooterStatus();
-		if (agentStatus) parts.push(sanitizeStatusText(agentStatus));
-		const bashJobs = getRunningBashBgJobsSorted();
-		if (bashJobs.length > 0) parts.push(formatBashFooterStatus(bashJobs));
+		const parts = this.session.extensionRunner
+			.getRegisteredFooters()
+			.filter(({ spec }) => spec.visible?.() ?? true)
+			.sort((a, b) => (a.spec.order ?? 0) - (b.spec.order ?? 0))
+			.map(({ id, spec }) =>
+				sanitizeStatusText(spec.render({ width, theme, selected: id === this.selectedExtensionFooterId })),
+			)
+			.filter((part) => part.length > 0);
 		if (parts.length === 0) return undefined;
 		return truncateToWidth(theme.fg("dim", parts.join(" · ")), width, theme.fg("dim", "..."));
-	}
-
-	private getFooterNavItems(): Array<{ id: string; kind: "agent" | "bash"; label: string }> {
-		const agents = getRunningTasksSorted().map((task) => ({
-			id: `agent:${task.id}`,
-			kind: "agent" as const,
-			label: task.id,
-		}));
-		const bashJobs = getRunningBashBgJobsSorted().map((job) => ({
-			id: `bash:${job.id}`,
-			kind: "bash" as const,
-			label: `sh:${shortBgId(job.id)}`,
-		}));
-		return [...agents, ...bashJobs];
 	}
 
 	private getUsageTotals(): UsageTotals {

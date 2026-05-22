@@ -67,7 +67,12 @@ export type {
 	ExtensionEvent,
 	ExtensionFactory,
 	ExtensionFlag,
+	ExtensionFooterSpec,
 	ExtensionHandler,
+	ExtensionMainPaneAPI,
+	ExtensionMainPaneFactory,
+	ExtensionOverlayAPI,
+	ExtensionOverlayFactory,
 	// Runtime
 	ExtensionRuntime,
 	ExtensionShortcut,
