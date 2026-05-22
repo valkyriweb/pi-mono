@@ -33,6 +33,7 @@ export interface AgentRecentRunController {
 	interrupt?: () => void | Promise<void>;
 	cancel?: () => void | Promise<void>;
 	resume?: (prompt?: string) => void | Promise<void>;
+	inject?: (message: string) => void | Promise<void>;
 }
 
 export interface AgentRunControlResult {
@@ -354,6 +355,17 @@ export async function resumeAgentRecentRun(runId: string, prompt?: string): Prom
 		return { ok: false, message: `${runId} cannot resume in this process`, run: cloneRecentRun(run) };
 	await controller.resume(prompt);
 	return { ok: true, message: `Resumed ${runId}`, run: cloneRecentRun(run) };
+}
+
+export async function injectAgentRecentRun(runId: string, message: string): Promise<AgentRunControlResult> {
+	const run = findMutableRun(runId);
+	if (!run) return { ok: false, message: `Run not found: ${runId}` };
+	if (run.status !== "running")
+		return { ok: false, message: `${runId} is not running (status: ${run.status})`, run: cloneRecentRun(run) };
+	const controller = liveRunControllers.get(runId);
+	if (!controller?.inject) return { ok: false, message: `${runId} is not injectable`, run: cloneRecentRun(run) };
+	await controller.inject(message);
+	return { ok: true, message: `Queued message for ${runId}`, run: cloneRecentRun(run) };
 }
 
 export function listAgentRecentRuns(): AgentRecentRun[] {
