@@ -365,10 +365,12 @@ export function createEditToolDefinition(
 		promptSnippet:
 			"Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
 		promptGuidelines: [
-			"Use edit for precise changes (edits[].oldText must match exactly)",
+			"edits[].oldText must match the file exactly, including whitespace and newlines. Prefer text copied from recent Read output or another current tool result.",
+			"When using text from Read output, preserve the actual file content exactly; do not include display-only line numbers, prefixes, or separators.",
 			"When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
 			"Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
-			"Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+			"Keep edits[].oldText as small as possible while still being unique in the file. Prefer the shortest stable surrounding lines over large copied blocks.",
+			"If edit reports that oldText was not found, read the target region and retry with exact current text; do not repeat the same oldText.",
 		],
 		parameters: editSchema,
 		renderShell: "self",
