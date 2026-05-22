@@ -379,11 +379,13 @@ function syncClaudeBridgeNativeTools(toolNames: string[], model: Model<any> | un
 	return [...withoutNativeTools, ...CLAUDE_BRIDGE_NATIVE_TOOL_NAMES];
 }
 
-function isToolAvailableForModel(
-	definition: Pick<ToolDefinition, "providers">,
-	model: Model<any> | undefined,
-): boolean {
-	return !definition.providers || (!!model?.provider && definition.providers.includes(model.provider));
+function isToolAvailableForModel(definition: unknown, model: Model<any> | undefined): boolean {
+	const providers =
+		typeof definition === "object" && definition !== null && "providers" in definition
+			? (definition as { providers?: unknown }).providers
+			: undefined;
+	if (!Array.isArray(providers)) return true;
+	return !!model?.provider && providers.includes(model.provider);
 }
 
 export class AgentSession {
