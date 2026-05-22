@@ -25,6 +25,7 @@ export type {
 	AgentEndEvent,
 	AgentHandle,
 	AgentStartEvent,
+	AgentTelemetry,
 	// Re-exports
 	AgentToolResult,
 	AgentToolUpdateCallback,
@@ -139,6 +140,7 @@ export type {
 	SetLabelHandler,
 	SetModelHandler,
 	SetThinkingLevelHandler,
+	TelemetryEvent,
 	TerminalInputHandler,
 	// Events - Tool
 	ToolCallEvent,
