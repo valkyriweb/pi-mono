@@ -12,6 +12,7 @@ export {
 } from "./loader.ts";
 export type {
 	ExtensionErrorListener,
+	ExtensionSlotUIActions,
 	ForkHandler,
 	NavigateTreeHandler,
 	NewSessionHandler,

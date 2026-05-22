@@ -1,4 +1,5 @@
 import { getBuiltinAgentDefinitions } from "./definitions.ts";
+import { getAgentExtensionDefinitions } from "./extension-source.ts";
 import { findNearestProjectAgentsDir, getUserAgentsDir, loadAgentDefinitionsFromDirectory } from "./loader.ts";
 import type { AgentDefinition, AgentRegistry, AgentScope } from "./types.ts";
 
@@ -17,7 +18,18 @@ function mergeDefinitions(base: AgentRegistry, next: AgentRegistry): AgentRegist
 	};
 }
 
-export async function loadAgentRegistry(options: { cwd: string; agentScope?: AgentScope }): Promise<AgentRegistry> {
+export async function loadAgentRegistry(options: {
+	cwd: string;
+	agentScope?: AgentScope;
+	/**
+	 * Optional agent definitions contributed by extensions, merged after the
+	 * user/project on-disk sources so an extension-registered definition can
+	 * override a same-id user/project definition. When omitted, the module-
+	 * level extension provider installed by the runner is consulted instead;
+	 * pass an empty array to opt out entirely.
+	 */
+	extensionDefinitions?: AgentDefinition[];
+}): Promise<AgentRegistry> {
 	const scope = options.agentScope ?? "user";
 	let registry: AgentRegistry = {
 		agents: getBuiltinAgentDefinitions(),
@@ -36,6 +48,14 @@ export async function loadAgentRegistry(options: { cwd: string; agentScope?: Age
 				projectAgentsDir,
 			});
 		}
+	}
+
+	const extensionAgents = options.extensionDefinitions ?? getAgentExtensionDefinitions();
+	if (extensionAgents.length > 0) {
+		registry = mergeDefinitions(registry, {
+			agents: extensionAgents,
+			diagnostics: [],
+		});
 	}
 
 	registry.agents.sort((a, b) => a.id.localeCompare(b.id));

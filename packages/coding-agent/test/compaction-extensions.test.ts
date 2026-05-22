@@ -80,9 +80,17 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 			handlers,
 			tools: new Map(),
 			messageRenderers: new Map(),
+			defaultMessageRenderers: new Map(),
 			commands: new Map(),
 			flags: new Map(),
 			shortcuts: new Map(),
+			disposeHandlers: [],
+			registeredAgentDefinitions: [],
+			registeredAgentChains: [],
+			registeredContextModes: new Map(),
+			registeredMainPanes: new Map(),
+			registeredOverlays: new Map(),
+			registeredFooters: new Map(),
 		};
 	}
 
@@ -255,9 +263,17 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 			]),
 			tools: new Map(),
 			messageRenderers: new Map(),
+			defaultMessageRenderers: new Map(),
 			commands: new Map(),
 			flags: new Map(),
 			shortcuts: new Map(),
+			disposeHandlers: [],
+			registeredAgentDefinitions: [],
+			registeredAgentChains: [],
+			registeredContextModes: new Map(),
+			registeredMainPanes: new Map(),
+			registeredOverlays: new Map(),
+			registeredFooters: new Map(),
 		};
 
 		createSession([throwingExtension]);
@@ -304,9 +320,17 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 			]),
 			tools: new Map(),
 			messageRenderers: new Map(),
+			defaultMessageRenderers: new Map(),
 			commands: new Map(),
 			flags: new Map(),
 			shortcuts: new Map(),
+			disposeHandlers: [],
+			registeredAgentDefinitions: [],
+			registeredAgentChains: [],
+			registeredContextModes: new Map(),
+			registeredMainPanes: new Map(),
+			registeredOverlays: new Map(),
+			registeredFooters: new Map(),
 		};
 
 		const extension2: Extension = {
@@ -335,9 +359,17 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 			]),
 			tools: new Map(),
 			messageRenderers: new Map(),
+			defaultMessageRenderers: new Map(),
 			commands: new Map(),
 			flags: new Map(),
 			shortcuts: new Map(),
+			disposeHandlers: [],
+			registeredAgentDefinitions: [],
+			registeredAgentChains: [],
+			registeredContextModes: new Map(),
+			registeredMainPanes: new Map(),
+			registeredOverlays: new Map(),
+			registeredFooters: new Map(),
 		};
 
 		createSession([extension1, extension2]);

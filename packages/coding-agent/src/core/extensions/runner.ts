@@ -6,6 +6,9 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import type { KeyId } from "@earendil-works/pi-tui";
 import { type Theme, theme } from "../../modes/interactive/theme/theme.ts";
+import type { AgentChainDefinition } from "../agents/chains.ts";
+import { setAgentExtensionDefinitionsProvider } from "../agents/extension-source.ts";
+import type { AgentDefinition } from "../agents/types.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { EventBus } from "../event-bus.ts";
 import type { KeybindingsConfig } from "../keybindings.ts";
@@ -14,6 +17,7 @@ import type { SessionManager } from "../session-manager.ts";
 import type { BuildSystemPromptOptions } from "../system-prompt.ts";
 import { loadDeferredExtension } from "./loader.ts";
 import type {
+	AgentTelemetry,
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
 	BeforeProviderRequestEvent,
@@ -28,9 +32,13 @@ import type {
 	ExtensionCommandContextActions,
 	ExtensionContext,
 	ExtensionContextActions,
+	ExtensionContextModePolicy,
 	ExtensionError,
 	ExtensionEvent,
 	ExtensionFlag,
+	ExtensionFooterSpec,
+	ExtensionMainPaneFactory,
+	ExtensionOverlayFactory,
 	ExtensionRuntime,
 	ExtensionShortcut,
 	ExtensionUIContext,
@@ -49,6 +57,7 @@ import type {
 	ResolvedCommand,
 	ResourcesDiscoverEvent,
 	ResourcesDiscoverResult,
+	RunRegistry,
 	SessionBeforeCompactResult,
 	SessionBeforeForkResult,
 	SessionBeforeSwitchResult,
@@ -63,6 +72,19 @@ import type {
 	UserBashEvent,
 	UserBashEventResult,
 } from "./types.ts";
+
+/**
+ * Actions wired into the extension runner by a UI-capable mode (today only
+ * interactive-mode) to back the B5 imperative show/hide API. Non-UI modes
+ * skip the bind call so the default no-op stubs stay in place and the API
+ * silently swallows the requests.
+ */
+export interface ExtensionSlotUIActions {
+	showMainPane: (id: string, payload: unknown) => void;
+	hideMainPane: (id: string) => void;
+	showOverlay: (id: string, payload: unknown) => void;
+	hideOverlay: (id: string) => void;
+}
 
 // Extension shortcuts compete with canonical keybinding ids from keybindings.json.
 // Only editor-global shortcuts are reserved here. Picker-specific bindings are not.
@@ -305,6 +327,11 @@ export class ExtensionRunner {
 		this.runtime.setModel = actions.setModel;
 		this.runtime.getThinkingLevel = actions.getThinkingLevel;
 		this.runtime.setThinkingLevel = actions.setThinkingLevel;
+
+		// Publish extension-registered agent definitions through the module-level
+		// bridge so `loadAgentRegistry` can merge them in without an import edge
+		// from core to the package that owns the agents (e.g. `pi-agents`).
+		setAgentExtensionDefinitionsProvider(() => this.getRegisteredAgentDefinitions());
 
 		// Context actions (required)
 		this.getModel = contextActions.getModel;
@@ -568,6 +595,156 @@ export class ExtensionRunner {
 			}
 		}
 		return undefined;
+	}
+
+	/**
+	 * Return the first default renderer registered for `customType` via
+	 * `ctx.setDefaultMessageRenderer`, or undefined if none. Intended as a
+	 * fallback consulted after `getMessageRenderer`.
+	 */
+	getDefaultMessageRenderer(customType: string): MessageRenderer | undefined {
+		for (const ext of this.extensions) {
+			const renderer = ext.defaultMessageRenderers.get(customType);
+			if (renderer) {
+				return renderer;
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * Fire all handlers registered via `ctx.onSessionDispose`. Called
+	 * synchronously from `AgentSession.dispose()` before the runner is
+	 * invalidated. Per-handler errors are surfaced through the runner's error
+	 * stream and do not skip remaining handlers.
+	 */
+	fireSessionDispose(): void {
+		for (const ext of this.extensions) {
+			for (const handler of ext.disposeHandlers) {
+				try {
+					handler();
+				} catch (err) {
+					this.emitError({
+						extensionPath: ext.path,
+						event: "session_dispose",
+						error: err instanceof Error ? err.message : String(err),
+						stack: err instanceof Error ? err.stack : undefined,
+					});
+				}
+			}
+		}
+	}
+
+	/**
+	 * Snapshot of every agent definition registered through
+	 * `ctx.registerAgentDefinitions`. Iteration order matches extension load
+	 * order. Consumers (e.g. the future `pi-agents` loader) merge this with
+	 * the built-in / user / project sources.
+	 */
+	getRegisteredAgentDefinitions(): AgentDefinition[] {
+		const defs: AgentDefinition[] = [];
+		for (const ext of this.extensions) {
+			defs.push(...ext.registeredAgentDefinitions);
+		}
+		return defs;
+	}
+
+	/**
+	 * Snapshot of every agent chain registered through
+	 * `ctx.registerAgentChains`.
+	 */
+	getRegisteredAgentChains(): AgentChainDefinition[] {
+		const chains: AgentChainDefinition[] = [];
+		for (const ext of this.extensions) {
+			chains.push(...ext.registeredAgentChains);
+		}
+		return chains;
+	}
+
+	/**
+	 * Resolved policy for a context mode registered through
+	 * `ctx.registerContextMode`. Returns undefined when the name is unknown.
+	 * Built-in modes (`default`/`fork`/`slim`/`none`) are NOT included here;
+	 * core resolves those directly.
+	 */
+	getRegisteredContextMode(name: string): ExtensionContextModePolicy | undefined {
+		for (const ext of this.extensions) {
+			const policy = ext.registeredContextModes.get(name);
+			if (policy) return policy;
+		}
+		return undefined;
+	}
+
+	/**
+	 * The currently registered agent run registry, or undefined if no
+	 * extension has published one.
+	 */
+	getRunRegistry(): RunRegistry | undefined {
+		return this.runtime.getRunRegistry();
+	}
+
+	/**
+	 * The currently registered telemetry sink, or undefined if no extension
+	 * has published one. Intended for memory / goal / audit / eval extensions
+	 * that fan their events into the same observability impl without an
+	 * import edge on the producer package.
+	 */
+	getTelemetry(): AgentTelemetry | undefined {
+		return this.runtime.getTelemetry();
+	}
+
+	/**
+	 * Wire show/hide handlers from the UI-capable mode (interactive-mode). The
+	 * runner forwards `pi.showMainPane` / `pi.hideMainPane` / `pi.showOverlay`
+	 * / `pi.hideOverlay` calls through these handlers. Non-UI modes skip this
+	 * bind so the default no-ops apply.
+	 */
+	bindSlotUI(actions: ExtensionSlotUIActions): void {
+		this.runtime.showMainPaneFn = actions.showMainPane;
+		this.runtime.hideMainPaneFn = actions.hideMainPane;
+		this.runtime.showOverlayFn = actions.showOverlay;
+		this.runtime.hideOverlayFn = actions.hideOverlay;
+	}
+
+	/**
+	 * Lookup a main pane factory registered through `pi.registerMainPane`.
+	 * Walks all extensions in load order and returns the first match.
+	 * Returns `undefined` if no extension has registered the given id.
+	 */
+	getRegisteredMainPane(id: string): ExtensionMainPaneFactory | undefined {
+		for (const ext of this.extensions) {
+			const factory = ext.registeredMainPanes.get(id);
+			if (factory) return factory;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Lookup an overlay factory registered through `pi.registerOverlay`.
+	 * Walks all extensions in load order and returns the first match.
+	 */
+	getRegisteredOverlay(id: string): ExtensionOverlayFactory | undefined {
+		for (const ext of this.extensions) {
+			const factory = ext.registeredOverlays.get(id);
+			if (factory) return factory;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Snapshot of every footer pill registered through `pi.registerFooter`,
+	 * keyed by id. Iteration order matches extension load order; ties broken
+	 * by registration order within an extension. Interactive-mode reads this
+	 * on every footer invalidate to assemble the focus chain.
+	 */
+	getRegisteredFooters(): Array<{ id: string; spec: ExtensionFooterSpec; extensionPath: string }> {
+		const result: Array<{ id: string; spec: ExtensionFooterSpec; extensionPath: string }> = [];
+		for (const ext of this.extensions) {
+			for (const [id, spec] of ext.registeredFooters) {
+				result.push({ id, spec, extensionPath: ext.path });
+			}
+		}
+		return result;
 	}
 
 	private resolveRegisteredCommands(): ResolvedCommand[] {

@@ -24,21 +24,36 @@ import { CONFIG_DIR_NAME, getAgentDir, isBunBinary } from "../../config.ts";
 // NOTE: This import works because loader.ts exports are NOT re-exported from index.ts,
 // avoiding a circular dependency. Extensions can import from @earendil-works/pi-coding-agent.
 import * as _bundledPiCodingAgent from "../../index.ts";
+import type { AgentSession } from "../agent-session.ts";
+import type { AgentChainDefinition } from "../agents/chains.ts";
+import {
+	getLiveSession as getLiveSessionFromRegistry,
+	registerLiveSession as registerLiveSessionInRegistry,
+	unregisterLiveSession as unregisterLiveSessionInRegistry,
+} from "../agents/live-sessions.ts";
+import type { AgentDefinition } from "../agents/types.ts";
 import { createEventBus, type EventBus } from "../event-bus.ts";
 import type { ExecOptions } from "../exec.ts";
 import { execCommand } from "../exec.ts";
 import { createSyntheticSourceInfo } from "../source-info.ts";
 import type {
+	AgentTelemetry,
 	DeferredExtension,
 	Extension,
 	ExtensionAPI,
+	ExtensionContextModePolicy,
 	ExtensionFactory,
+	ExtensionFooterSpec,
 	ExtensionLoadRequest,
+	ExtensionMainPaneFactory,
+	ExtensionOverlayFactory,
 	ExtensionRuntime,
 	LoadExtensionsResult,
 	MessageRenderer,
 	ProviderConfig,
 	RegisteredCommand,
+	RunRegistry,
+	SessionDisposeHandler,
 	ToolDefinition,
 } from "./types.ts";
 
@@ -142,7 +157,11 @@ export function createExtensionRuntime(): ExtensionRuntime {
 	const notInitialized = () => {
 		throw new Error("Extension runtime not initialized. Action methods cannot be called during extension loading.");
 	};
-	const state: { staleMessage?: string } = {};
+	const state: { staleMessage?: string; runRegistry?: RunRegistry; telemetry?: AgentTelemetry } = {};
+	// Default no-op stubs for B5 show/hide handlers. interactive-mode replaces
+	// these via `ExtensionRunner.bindSlotUI()`; non-UI modes silently swallow
+	// show/hide requests.
+	const slotNoOp: (..._args: unknown[]) => void = () => {};
 	const assertActive = () => {
 		if (state.staleMessage) {
 			throw new Error(state.staleMessage);
@@ -182,6 +201,18 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		unregisterProvider: (name) => {
 			runtime.pendingProviderRegistrations = runtime.pendingProviderRegistrations.filter((r) => r.name !== name);
 		},
+		setRunRegistry: (registry) => {
+			if (!state.runRegistry) state.runRegistry = registry;
+		},
+		getRunRegistry: () => state.runRegistry,
+		setTelemetry: (telemetry) => {
+			if (!state.telemetry) state.telemetry = telemetry;
+		},
+		getTelemetry: () => state.telemetry,
+		showMainPaneFn: slotNoOp,
+		hideMainPaneFn: slotNoOp,
+		showOverlayFn: slotNoOp,
+		hideOverlayFn: slotNoOp,
 	};
 
 	return runtime;
@@ -250,6 +281,101 @@ function createExtensionAPI(
 		registerMessageRenderer<T>(customType: string, renderer: MessageRenderer<T>): void {
 			runtime.assertActive();
 			extension.messageRenderers.set(customType, renderer as MessageRenderer);
+		},
+
+		setDefaultMessageRenderer<T>(customType: string, renderer: MessageRenderer<T>): void {
+			runtime.assertActive();
+			extension.defaultMessageRenderers.set(customType, renderer as MessageRenderer);
+		},
+
+		onSessionDispose(handler: SessionDisposeHandler): void {
+			runtime.assertActive();
+			extension.disposeHandlers.push(handler);
+		},
+
+		registerLiveSession(taskId: string, session: AgentSession): void {
+			runtime.assertActive();
+			registerLiveSessionInRegistry(taskId, session);
+		},
+
+		unregisterLiveSession(taskId: string): void {
+			runtime.assertActive();
+			unregisterLiveSessionInRegistry(taskId);
+		},
+
+		getLiveSession(taskId: string): AgentSession | undefined {
+			runtime.assertActive();
+			return getLiveSessionFromRegistry(taskId);
+		},
+
+		registerAgentDefinitions(definitions: AgentDefinition[]): void {
+			runtime.assertActive();
+			extension.registeredAgentDefinitions.push(...definitions);
+		},
+
+		registerAgentChains(chains: AgentChainDefinition[]): void {
+			runtime.assertActive();
+			extension.registeredAgentChains.push(...chains);
+		},
+
+		registerContextMode(name: string, policy: ExtensionContextModePolicy): void {
+			runtime.assertActive();
+			extension.registeredContextModes.set(name, policy);
+		},
+
+		registerRunRegistry(registry: RunRegistry): void {
+			runtime.assertActive();
+			runtime.setRunRegistry(registry);
+		},
+
+		getRunRegistry(): RunRegistry | undefined {
+			runtime.assertActive();
+			return runtime.getRunRegistry();
+		},
+
+		registerTelemetry(telemetry: AgentTelemetry): void {
+			runtime.assertActive();
+			runtime.setTelemetry(telemetry);
+		},
+
+		getTelemetry(): AgentTelemetry | undefined {
+			runtime.assertActive();
+			return runtime.getTelemetry();
+		},
+
+		registerMainPane(id: string, factory: ExtensionMainPaneFactory): void {
+			runtime.assertActive();
+			extension.registeredMainPanes.set(id, factory);
+		},
+
+		showMainPane(id: string, payload?: unknown): void {
+			runtime.assertActive();
+			runtime.showMainPaneFn(id, payload);
+		},
+
+		hideMainPane(id: string): void {
+			runtime.assertActive();
+			runtime.hideMainPaneFn(id);
+		},
+
+		registerOverlay(id: string, factory: ExtensionOverlayFactory): void {
+			runtime.assertActive();
+			extension.registeredOverlays.set(id, factory);
+		},
+
+		showOverlay(id: string, payload?: unknown): void {
+			runtime.assertActive();
+			runtime.showOverlayFn(id, payload);
+		},
+
+		hideOverlay(id: string): void {
+			runtime.assertActive();
+			runtime.hideOverlayFn(id);
+		},
+
+		registerFooter(id: string, spec: ExtensionFooterSpec): void {
+			runtime.assertActive();
+			extension.registeredFooters.set(id, spec);
 		},
 
 		// Flag access - checks extension registered it, reads from runtime
@@ -394,9 +520,17 @@ function createExtension(extensionPath: string, resolvedPath: string): Extension
 		handlers: new Map(),
 		tools: new Map(),
 		messageRenderers: new Map(),
+		defaultMessageRenderers: new Map(),
 		commands: new Map(),
 		flags: new Map(),
 		shortcuts: new Map(),
+		disposeHandlers: [],
+		registeredAgentDefinitions: [],
+		registeredAgentChains: [],
+		registeredContextModes: new Map(),
+		registeredMainPanes: new Map(),
+		registeredOverlays: new Map(),
+		registeredFooters: new Map(),
 	};
 }
 

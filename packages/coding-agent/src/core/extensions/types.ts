@@ -42,7 +42,9 @@ import type {
 } from "@earendil-works/pi-tui";
 import type { Static, TSchema } from "typebox";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
-import type { AgentToolDetails, AgentToolStatus } from "../agents/types.ts";
+import type { AgentSession } from "../agent-session.ts";
+import type { AgentChainDefinition } from "../agents/chains.ts";
+import type { AgentDefinition, AgentToolDetails, AgentToolStatus } from "../agents/types.ts";
 import type { BashResult } from "../bash-executor.ts";
 import type { CompactionPreparation, CompactionResult } from "../compaction/index.ts";
 import type { EventBus } from "../event-bus.ts";
@@ -118,6 +120,92 @@ export interface WorkingIndicatorOptions {
 /** Wrap the current autocomplete provider with additional behavior. */
 export type AutocompleteProviderFactory = (current: AutocompleteProvider) => AutocompleteProvider;
 export type EditorFactory = (tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => EditorComponent;
+
+// ============================================================================
+// B5 TUI Extension Slots — Main Pane / Overlay / Footer
+// ============================================================================
+//
+// Slot/extension points (spatial). Distinct from temporal hooks (`on*`):
+//   - register<Position>() places a component in a named slot.
+//   - show<Position>(id, payload?) / hide<Position>(id) imperatively activate/deactivate.
+//   - Footer is reactive (visible() predicate) rather than imperative show/hide.
+//
+// Design lives in docs/plans/b5-tui-hooks-design-proposal-2026-05-21.md.
+// Naming follows VS Code's extension API (registerWebviewViewProvider style).
+
+/**
+ * Per-pane API surface passed to a registered main-pane factory.
+ * The component requests its own hide via `requestHide()`; the framework owns
+ * save/restore of the prior `chatContainer` children.
+ */
+export interface ExtensionMainPaneAPI {
+	/** Caller payload passed via `showMainPane(id, payload)`. */
+	payload: unknown;
+	/** Ask the framework to hide this pane and restore prior content. */
+	requestHide(): void;
+}
+
+/**
+ * Factory for an extension-registered main pane. Returns a component the
+ * framework mounts into `chatContainer` while the pane is shown.
+ */
+export type ExtensionMainPaneFactory = (
+	tui: TUI,
+	theme: Theme,
+	api: ExtensionMainPaneAPI,
+) => Component & { dispose?(): void };
+
+/**
+ * Per-overlay API surface passed to a registered overlay factory.
+ * Mirrors `ExtensionMainPaneAPI` semantics — distinct interface so callers
+ * cannot accidentally mix mainPane / overlay payloads at the type level.
+ */
+export interface ExtensionOverlayAPI {
+	/** Caller payload passed via `showOverlay(id, payload)`. */
+	payload: unknown;
+	/** Ask the framework to hide this overlay. */
+	requestHide(): void;
+}
+
+/**
+ * Factory for an extension-registered overlay. Returns a component the
+ * framework mounts as an overlay on the topmost stack position while shown.
+ */
+export type ExtensionOverlayFactory = (
+	tui: TUI,
+	theme: Theme,
+	api: ExtensionOverlayAPI,
+) => Component & { dispose?(): void };
+
+/** Render context passed to a footer pill's `render()` callback. */
+export interface ExtensionFooterRenderCtx {
+	width: number;
+	theme: Theme;
+	selected: boolean;
+}
+
+/**
+ * Extension-registered footer pill spec. Contributes a focusable into the
+ * existing footer nav chain without owning the whole footer (use
+ * `ui.setFooter(factory)` for whole-region replacement).
+ *
+ * Visibility is reactive: `visible()` is evaluated on every footer invalidate,
+ * so pills appear/disappear based on extension state without imperative
+ * `show/hide` calls.
+ */
+export interface ExtensionFooterSpec {
+	/** Render the pill content. Framework wraps it in the standard pill chrome. */
+	render(ctx: ExtensionFooterRenderCtx): string;
+	/** Reactive visibility predicate. Defaults to always-visible. */
+	visible?: () => boolean;
+	/** Called when the user activates the pill (Enter / click). */
+	onActivate(api: { close(): void }): void;
+	/**
+	 * Optional sort key relative to built-in pills. Built-in pills use
+	 * implementation-defined orders; default behavior is to append after them.
+	 */
+	order?: number;
+}
 
 /**
  * UI context for extensions to request interactive UI.
@@ -600,6 +688,8 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	alwaysLoad?: boolean;
 	/** Concise searchable hint used by tool discovery surfaces. */
 	searchHint?: string;
+	/** Optional provider allow-list. When set, hide the tool from other providers' active/deferred surfaces. */
+	providers?: string[];
 	/** Parameter schema (TypeBox) */
 	parameters: TParams;
 	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */
@@ -1344,6 +1434,168 @@ export interface ExtensionAPI {
 	/** Register a custom renderer for CustomMessageEntry. */
 	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
 
+	/**
+	 * Register a default renderer for `customType` that pi-core may fall back to
+	 * when no per-extension renderer was registered for that type. Used by
+	 * packages that own built-in custom-message kinds (e.g. transcript notices)
+	 * so the renderer lives outside core. If multiple extensions register a
+	 * default for the same `customType`, the first one wins.
+	 */
+	setDefaultMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
+
+	// =========================================================================
+	// Lifecycle
+	// =========================================================================
+
+	/**
+	 * Register a handler invoked synchronously during `AgentSession.dispose()`,
+	 * before the extension runner is invalidated. Use for resource reaping
+	 * (background processes, timers, registries) owned by the extension.
+	 * Handlers run synchronously; async work is best moved to the
+	 * `session_shutdown` event which fires earlier and is awaited.
+	 * Handler errors are isolated per extension — one failure does not skip
+	 * the remaining handlers.
+	 */
+	onSessionDispose(handler: SessionDisposeHandler): void;
+
+	// =========================================================================
+	// Live Session Registry
+	// =========================================================================
+
+	/**
+	 * Register a running child `AgentSession` under `taskId`. Producers (e.g.
+	 * agent executors) call this immediately before driving the child prompt
+	 * loop; consumers (e.g. zoom transcript views) read via `getLiveSession`.
+	 * Backed by a shared registry — all extensions see the same map.
+	 */
+	registerLiveSession(taskId: string, session: AgentSession): void;
+
+	/**
+	 * Deregister a live session. Producers call this once the child finishes.
+	 */
+	unregisterLiveSession(taskId: string): void;
+
+	/**
+	 * Return the live session registered under `taskId`, or `undefined` if no
+	 * session is currently registered.
+	 */
+	getLiveSession(taskId: string): AgentSession | undefined;
+
+	// =========================================================================
+	// Agent Engine Registries (B2)
+	// =========================================================================
+
+	/**
+	 * Register additional agent definitions contributed by this extension.
+	 * Extensions calling this become a third source of agent definitions
+	 * alongside the built-in catalog and user/project on-disk agents. Core
+	 * exposes the registered set through the runner so consumer packages (e.g.
+	 * the future `pi-agents` engine) can merge it with the existing loader
+	 * sources without having to import the producer package.
+	 */
+	registerAgentDefinitions(definitions: AgentDefinition[]): void;
+
+	/**
+	 * Register additional agent chain definitions contributed by this extension.
+	 * Mirrors `registerAgentDefinitions` for chain configs.
+	 */
+	registerAgentChains(chains: AgentChainDefinition[]): void;
+
+	/**
+	 * Register a named context mode policy that consumer packages may look up
+	 * by `name`. The built-in `default` / `fork` / `slim` / `none` modes are
+	 * resolved by core directly; extensions register additional modes here.
+	 * Last registration wins when two extensions share a name.
+	 */
+	registerContextMode(name: string, policy: ExtensionContextModePolicy): void;
+
+	// =========================================================================
+	// Run Registry (B3)
+	// =========================================================================
+
+	/**
+	 * Register the agent run registry implementation contributed by this
+	 * extension. Intended for the package that owns run lifecycle (e.g. the
+	 * future `pi-agents`) to publish its run store so consumer packages (e.g.
+	 * `pi-agent-ui` selector overlays) can read it through core without an
+	 * import edge. The first registration wins; later registrations are
+	 * ignored so accidental double-loads do not silently swap the registry.
+	 */
+	registerRunRegistry(registry: RunRegistry): void;
+
+	/**
+	 * Return the agent run registry, or `undefined` if no extension has
+	 * registered one. Vendor-neutral by design: the registry shape is opaque
+	 * to core, and consumers cast it to their package-owned interface.
+	 */
+	getRunRegistry(): RunRegistry | undefined;
+
+	// =========================================================================
+	// Telemetry (B4)
+	// =========================================================================
+
+	/**
+	 * Register the session's `AgentTelemetry` implementation. Intended for the
+	 * package that owns observability (e.g. `pi-observability`) so other
+	 * extensions (memory, goal enforcement, audit/eval) can fan their events
+	 * into a single telemetry sink without an import edge. First registration
+	 * wins so a second observability extension does not silently swap the
+	 * sink under live consumers.
+	 */
+	registerTelemetry(telemetry: AgentTelemetry): void;
+
+	/**
+	 * Return the registered telemetry implementation, or `undefined` if no
+	 * extension has published one. The shape is opaque to core; consumers
+	 * cast to their package-owned interface as needed.
+	 */
+	getTelemetry(): AgentTelemetry | undefined;
+
+	// =========================================================================
+	// TUI Slot Hooks (B5) — Main Pane / Overlay / Footer
+	// =========================================================================
+
+	/**
+	 * Register a content component for the main pane (`chatContainer`'s content
+	 * stack). Registration is inert until `showMainPane(id)` activates it.
+	 * The framework saves the prior children on show and restores them on hide.
+	 * Only one main pane may be shown at a time; activating another implicitly
+	 * hides the current one.
+	 *
+	 * Distinct from `ui.setFooter` / `ui.setHeader` (whole-region replacement):
+	 * `registerMainPane` contributes a child for `chatContainer`. Header, footer,
+	 * editor, and working indicator remain framework-owned.
+	 */
+	registerMainPane(id: string, factory: ExtensionMainPaneFactory): void;
+
+	/** Show the registered main pane with the given id. No-op when no UI. */
+	showMainPane(id: string, payload?: unknown): void;
+
+	/** Hide the main pane with the given id. No-op when no UI or not shown. */
+	hideMainPane(id: string): void;
+
+	/**
+	 * Register an overlay component. Distinct from the existing one-shot
+	 * `ui.custom()` in that the framework retains the factory and the
+	 * extension shows/hides imperatively by id. Overlays stack; the topmost
+	 * receives keyboard input; the built-in escape key pops the topmost.
+	 */
+	registerOverlay(id: string, factory: ExtensionOverlayFactory): void;
+
+	/** Show the registered overlay with the given id, stacked atop any others. */
+	showOverlay(id: string, payload?: unknown): void;
+
+	/** Hide the registered overlay with the given id from the stack. */
+	hideOverlay(id: string): void;
+
+	/**
+	 * Register a footer pill that contributes into the existing footer's nav
+	 * chain. Reactive: `spec.visible()` is evaluated on every footer
+	 * invalidate. `ui.setFooter(factory)` keeps working for whole-footer
+	 * replacement; `registerFooter` only adds focusable children.
+	 */
+	registerFooter(id: string, spec: ExtensionFooterSpec): void;
+
 	// =========================================================================
 	// Actions
 	// =========================================================================
@@ -1639,6 +1891,36 @@ export interface ExtensionRuntimeState {
 	 */
 	registerProvider: (name: string, config: ProviderConfig, extensionPath?: string) => void;
 	unregisterProvider: (name: string, extensionPath?: string) => void;
+	/**
+	 * Set the shared agent run registry. First call wins; later calls are
+	 * silently ignored so accidental double-loads do not swap the registry
+	 * underneath consumers.
+	 */
+	setRunRegistry: (registry: RunRegistry) => void;
+	/** Read the shared agent run registry, or undefined if unset. */
+	getRunRegistry: () => RunRegistry | undefined;
+	/**
+	 * Set the shared telemetry sink. First call wins; later calls are
+	 * silently ignored so accidental double-loads do not swap the sink under
+	 * live consumers.
+	 */
+	setTelemetry: (telemetry: AgentTelemetry) => void;
+	/** Read the shared telemetry sink, or undefined if unset. */
+	getTelemetry: () => AgentTelemetry | undefined;
+	/**
+	 * Imperative show/hide handlers for B5 main panes and overlays. Default to
+	 * no-op stubs so RPC/print modes silently swallow show/hide requests; the
+	 * interactive mode binds real implementations via
+	 * `ExtensionRunner.bindSlotUI()`.
+	 *
+	 * The handler is responsible for looking up the registered factory through
+	 * the runner's getters (`getRegisteredMainPane` / `getRegisteredOverlay`)
+	 * and mounting it. Calls for unknown ids are no-ops.
+	 */
+	showMainPaneFn: (id: string, payload: unknown) => void;
+	hideMainPaneFn: (id: string) => void;
+	showOverlayFn: (id: string, payload: unknown) => void;
+	hideOverlayFn: (id: string) => void;
 }
 
 /**
@@ -1721,9 +2003,97 @@ export interface Extension {
 	handlers: Map<string, HandlerFn[]>;
 	tools: Map<string, RegisteredTool>;
 	messageRenderers: Map<string, MessageRenderer>;
+	/** Default renderers consulted when no per-extension renderer matched. */
+	defaultMessageRenderers: Map<string, MessageRenderer>;
 	commands: Map<string, RegisteredCommand>;
 	flags: Map<string, ExtensionFlag>;
 	shortcuts: Map<KeyId, ExtensionShortcut>;
+	/** Handlers fired synchronously from `AgentSession.dispose()`. */
+	disposeHandlers: SessionDisposeHandler[];
+	/** Agent definitions registered through `ctx.registerAgentDefinitions`. */
+	registeredAgentDefinitions: AgentDefinition[];
+	/** Agent chains registered through `ctx.registerAgentChains`. */
+	registeredAgentChains: AgentChainDefinition[];
+	/** Context modes registered through `ctx.registerContextMode`. */
+	registeredContextModes: Map<string, ExtensionContextModePolicy>;
+	/** Main panes registered through `pi.registerMainPane`. Keyed by id. */
+	registeredMainPanes: Map<string, ExtensionMainPaneFactory>;
+	/** Overlays registered through `pi.registerOverlay`. Keyed by id. */
+	registeredOverlays: Map<string, ExtensionOverlayFactory>;
+	/** Footer pills registered through `pi.registerFooter`. Keyed by id. */
+	registeredFooters: Map<string, ExtensionFooterSpec>;
+}
+
+/**
+ * Synchronous handler registered through `ctx.onSessionDispose`. Fires during
+ * `AgentSession.dispose()` immediately before the extension runner is
+ * invalidated. Handler errors are caught per-handler and surfaced via the
+ * extension error stream.
+ */
+export type SessionDisposeHandler = () => void;
+
+/**
+ * Vendor-neutral context mode policy passed to `ctx.registerContextMode`.
+ * Mirrors the built-in `ResolvedContextPolicy` minus the `mode` discriminant
+ * — the registry keys the policy by name, so the mode does not need to be
+ * repeated in the value.
+ */
+export interface ExtensionContextModePolicy {
+	includeTranscript: boolean;
+	includeProjectContext: boolean;
+	includeSkills: boolean;
+	includeAppendSystemPrompt: boolean;
+}
+
+/**
+ * Opaque agent run registry handle exchanged through core. Producers (e.g.
+ * the future `pi-agents` engine) implement the interface; consumers (e.g.
+ * `pi-agent-ui` overlays) read through it. The shape is intentionally
+ * minimal so core stays vendor-neutral — packages may widen the registry
+ * with their own typed accessors and cast when reading.
+ */
+export interface RunRegistry {
+	/** Snapshot of currently-tracked runs. Shape is opaque to core. */
+	listRuns(): unknown[];
+	/** Lookup a run by id. Shape is opaque to core. */
+	getRun(id: string): unknown | undefined;
+	/** Optional change-notification subscription used by UI consumers. */
+	subscribe?(listener: () => void): () => void;
+}
+
+/**
+ * Generic telemetry event exchanged through `AgentTelemetry.record`. The
+ * `type` field categorises the event (e.g. `provider.before`, `tool.after`,
+ * `compaction.before`); the rest of the payload is opaque to core and owned
+ * by the telemetry package. Concrete event taxonomies live in the package
+ * that ships `AgentTelemetry` (e.g. `pi-observability`).
+ */
+export interface TelemetryEvent {
+	/** Event category. Producers and consumers agree on the taxonomy. */
+	type: string;
+	/** Wall-clock timestamp in ms. Optional; recorders may set their own. */
+	timestamp?: number;
+	/** Free-form payload. Opaque to core. */
+	[key: string]: unknown;
+}
+
+/**
+ * Opaque telemetry sink registered through `ctx.registerTelemetry`. Producers
+ * (e.g. `pi-observability`) implement the interface; consumers (memory, goal
+ * enforcement, audit/eval extensions) fan events into the same sink via
+ * `ctx.getTelemetry()`. Core treats the impl as opaque — the concrete shape
+ * (e.g. OTEL exporter wiring, SigNoz/Opik routing) lives in the producer
+ * package.
+ */
+export interface AgentTelemetry {
+	/** Record a telemetry event. Producers shape the event taxonomy. */
+	record(event: TelemetryEvent): void;
+	/**
+	 * Optional graceful flush. Core does not await this; consumers may call
+	 * it before known boundaries (e.g. session dispose) if their
+	 * implementation buffers events.
+	 */
+	flush?(): Promise<void> | void;
 }
 
 export type ExtensionLoadMode = "eager" | "deferred";

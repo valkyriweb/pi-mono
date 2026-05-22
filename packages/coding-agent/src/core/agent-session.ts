@@ -75,6 +75,7 @@ import {
 	type ExtensionCommandContextActions,
 	type ExtensionErrorListener,
 	ExtensionRunner,
+	type ExtensionSlotUIActions,
 	type ExtensionUIContext,
 	type InputSource,
 	type MessageEndEvent,
@@ -249,6 +250,12 @@ export interface ExtensionBindings {
 	abortHandler?: () => void;
 	shutdownHandler?: ShutdownHandler;
 	onError?: ExtensionErrorListener;
+	/**
+	 * Wiring for the B5 imperative show/hide API (`pi.showMainPane` /
+	 * `pi.showOverlay`). Provided only by UI-capable modes (interactive); when
+	 * omitted, the default no-op stubs silently swallow show/hide requests.
+	 */
+	slotUIActions?: ExtensionSlotUIActions;
 }
 
 /** Options for AgentSession.prompt() */
@@ -372,6 +379,13 @@ function syncClaudeBridgeNativeTools(toolNames: string[], model: Model<any> | un
 	return [...withoutNativeTools, ...CLAUDE_BRIDGE_NATIVE_TOOL_NAMES];
 }
 
+function isToolAvailableForModel(
+	definition: Pick<ToolDefinition, "providers">,
+	model: Model<any> | undefined,
+): boolean {
+	return !definition.providers || (!!model?.provider && definition.providers.includes(model.provider));
+}
+
 export class AgentSession {
 	readonly agent: Agent;
 	readonly sessionManager: SessionManager;
@@ -432,6 +446,7 @@ export class AgentSession {
 	private _extensionShutdownHandler?: ShutdownHandler;
 	private _extensionErrorListener?: ExtensionErrorListener;
 	private _extensionErrorUnsubscriber?: () => void;
+	private _extensionSlotUIActions?: ExtensionSlotUIActions;
 
 	// Model registry for API key resolution
 	private _modelRegistry: ModelRegistry;
@@ -1085,6 +1100,9 @@ export class AgentSession {
 	 */
 	dispose(): void {
 		this._disposed = true;
+		// Fire extension dispose hooks before invalidating the runner so handlers
+		// can still observe their own state. Errors are isolated per handler.
+		this._extensionRunner.fireSessionDispose();
 		this._extensionRunner.invalidate(
 			"This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
 		);
@@ -1243,7 +1261,7 @@ export class AgentSession {
 		for (const name of activeToolNames) {
 			if (seenToolNames.has(name)) continue;
 			const tool = this._toolRegistry.get(name);
-			if (tool) {
+			if (tool && isToolAvailableForModel(tool, this.model)) {
 				seenToolNames.add(name);
 				tools.push(tool);
 				validToolNames.push(name);
@@ -1951,7 +1969,10 @@ export class AgentSession {
 			previousModel,
 			source,
 		});
-		this.setActiveToolsByName(syncClaudeBridgeNativeTools(this.getActiveToolNames(), nextModel));
+		this._refreshToolRegistry({
+			activeToolNames: syncClaudeBridgeNativeTools(this.getActiveToolNames(), nextModel),
+			activateNewTools: false,
+		});
 	}
 
 	/**
@@ -2615,6 +2636,9 @@ export class AgentSession {
 		if (bindings.onError !== undefined) {
 			this._extensionErrorListener = bindings.onError;
 		}
+		if (bindings.slotUIActions !== undefined) {
+			this._extensionSlotUIActions = bindings.slotUIActions;
+		}
 
 		this._applyExtensionBindings(this._extensionRunner);
 		await this._extensionRunner.emit(this._sessionStartEvent);
@@ -2687,6 +2711,9 @@ export class AgentSession {
 	private _applyExtensionBindings(runner: ExtensionRunner): void {
 		runner.setUIContext(this._extensionUIContext);
 		runner.bindCommandContext(this._extensionCommandContextActions);
+		if (this._extensionSlotUIActions) {
+			runner.bindSlotUI(this._extensionSlotUIActions);
+		}
 
 		this._extensionErrorUnsubscriber?.();
 		this._extensionErrorUnsubscriber = this._extensionErrorListener
@@ -3075,11 +3102,12 @@ export class AgentSession {
 		].filter(
 			(tool) =>
 				isAllowedTool(tool.definition.name) &&
+				isToolAvailableForModel(tool.definition, this.model) &&
 				!(tool.definition.name === "agent" && this._baseToolDefinitions.has("agent")),
 		);
 		const definitionRegistry = new Map<string, ToolDefinitionEntry>(
 			Array.from(this._baseToolDefinitions.entries())
-				.filter(([name]) => isAllowedTool(name))
+				.filter(([name, definition]) => isAllowedTool(name) && isToolAvailableForModel(definition, this.model))
 				.map(([name, definition]) => [
 					name,
 					{
