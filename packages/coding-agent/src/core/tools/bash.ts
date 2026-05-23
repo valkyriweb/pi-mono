@@ -44,6 +44,12 @@ const bashSchema = Type.Object({
 				"Set to true to spawn the command in the background. Returns immediately with a bgId. Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). Use this for any command likely to exceed ~30s when you do not need its stdout immediately. For continuous log streams that should wake the agent on each batch, prefer the Monitor tool (monitor_start) instead.",
 		}),
 	),
+	tui_only: Type.Optional(
+		Type.Boolean({
+			description:
+				"Set to true to stream output live to the TUI but return only an exit/size summary to the model context. Use for long monitoring loops (reboot waits, log tails, progress meters) where the streaming output is for human eyes and would be wasted tokens in context. Incompatible with run_in_background.",
+		}),
+	),
 });
 
 // ---------- Background bash registry ----------
@@ -688,17 +694,16 @@ function redundantCdError(): string {
 }
 
 function formatBashCall(
-	args: { command?: string; timeout?: number | false; run_in_background?: boolean } | undefined,
+	args: { command?: string; timeout?: number | false; run_in_background?: boolean; tui_only?: boolean } | undefined,
 	label: string,
 ): string {
 	const command = str(args?.command);
 	const timeout = resolveBashTimeout(args?.timeout as number | false | undefined);
 	const isBackground = args?.run_in_background === true;
-	const timeoutSuffix = isBackground
-		? theme.fg("accent", " [bg]")
-		: timeout
-			? theme.fg("muted", ` (timeout ${timeout}s)`)
-			: theme.fg("muted", " (no timeout)");
+	const isTuiOnly = args?.tui_only === true;
+	const modeSuffix = isBackground ? theme.fg("accent", " [bg]") : isTuiOnly ? theme.fg("accent", " [tui]") : "";
+	const timeoutSuffix =
+		modeSuffix || (timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : theme.fg("muted", " (no timeout)"));
 
 	const prompt = `${theme.fg("toolTitle", theme.bold(label))} `;
 
@@ -818,7 +823,7 @@ export function createBashToolDefinition(
 	return {
 		name: toolName,
 		label,
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Avoid running \`grep\`, \`rg\`, \`find\`, or \`ls\` standalone in Bash — use the native tools instead. Pipeline filters on command output (e.g. \`kubectl ... | grep Ready\`, \`ps ... | grep -v\`) are fine; the native tools only apply to files on disk. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.`,
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Avoid running \`grep\`, \`rg\`, \`find\`, or \`ls\` standalone in Bash — use the native tools instead. Pipeline filters on command output (e.g. \`kubectl ... | grep Ready\`, \`ps ... | grep -v\`) are fine; the native tools only apply to files on disk. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.\n\nTUI-only mode: pass tui_only:true to stream output live to the TUI but return only an exit/size summary to context. Use for monitoring loops (reboot waits, log tails, progress meters) where the streaming output is for human eyes and would burn tokens in context. The full output is still saved to a temp file when it would have been truncated. Incompatible with run_in_background.`,
 		promptSnippet:
 			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
 		promptGuidelines: [
@@ -837,7 +842,8 @@ export function createBashToolDefinition(
 				command,
 				timeout,
 				run_in_background,
-			}: { command: string; timeout?: number | false; run_in_background?: boolean },
+				tui_only,
+			}: { command: string; timeout?: number | false; run_in_background?: boolean; tui_only?: boolean },
 			signal?: AbortSignal,
 			onUpdate?,
 			_ctx?,
@@ -846,6 +852,19 @@ export function createBashToolDefinition(
 				return {
 					isError: true,
 					content: [{ type: "text", text: redundantCdError() }],
+					details: undefined,
+				};
+			}
+
+			if (tui_only && run_in_background) {
+				return {
+					isError: true,
+					content: [
+						{
+							type: "text",
+							text: "tui_only is incompatible with run_in_background. Background jobs already keep output out of context until you call bash_output(bgId).",
+						},
+					],
 					details: undefined,
 				};
 			}
@@ -870,6 +889,7 @@ export function createBashToolDefinition(
 				};
 			}
 			const timeoutSeconds = resolveBashTimeout(timeout);
+			const startedAt = Date.now();
 			const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
 			const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
 			const output = new OutputAccumulator({ tempFilePrefix: "pi-bash" });
@@ -978,6 +998,19 @@ export function createBashToolDefinition(
 
 				const snapshot = await finishOutput();
 				const { text: outputText, details } = formatOutput(snapshot);
+				if (tui_only) {
+					const durationStr = formatDuration(Date.now() - startedAt);
+					const sizeStr = `${snapshot.truncation.totalLines} lines, ${formatSize(snapshot.truncation.totalBytes)}`;
+					const pathHint = snapshot.fullOutputPath ? ` Saved: ${snapshot.fullOutputPath}` : "";
+					const summary =
+						exitCode === 0 || exitCode === null
+							? `[tui_only] Command exited ${exitCode ?? "null"} after ${durationStr} (${sizeStr}). Output streamed to TUI only.${pathHint}`
+							: `[tui_only] Command exited ${exitCode} after ${durationStr} (${sizeStr}). Output streamed to TUI only.${pathHint}`;
+					if (exitCode !== 0 && exitCode !== null && !semanticExitForBashCommand(command, exitCode)) {
+						throw new Error(summary);
+					}
+					return { content: [{ type: "text", text: summary }], details };
+				}
 				if (exitCode !== 0 && exitCode !== null) {
 					const semanticExit = semanticExitForBashCommand(command, exitCode);
 					if (!semanticExit) {
