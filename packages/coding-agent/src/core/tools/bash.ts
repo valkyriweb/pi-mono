@@ -21,14 +21,7 @@ import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/type
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { getTextOutput, invalidArgText, str } from "./render-utils.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
-import {
-	DEFAULT_MAX_BYTES,
-	DEFAULT_MAX_LINES,
-	formatSize,
-	type TruncationResult,
-	truncateHead,
-	truncateTail,
-} from "./truncate.ts";
+import { DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateHead, truncateTail } from "./truncate.ts";
 
 const bashSchema = Type.Object({
 	command: Type.String({ description: "Bash command to execute" }),
@@ -185,7 +178,10 @@ function spawnBashBackground(command: string, cwd: string, shellPath?: string, c
 }
 
 const VERTICAL_TUI_RUN_MIN_LINES = 12;
-const BASH_OUTPUT_MAX_BYTES = 20 * 1024;
+// Shared byte cap for every bash-tool surface (foreground bash, background bash_output).
+// Smaller than DEFAULT_MAX_BYTES (50KB) because shell output is the loudest single
+// source of context bloat — and tokenjuice can rescue the full log on demand.
+const BASH_MAX_OUTPUT_BYTES = 20 * 1024;
 
 function stripTrailingCarriageReturn(line: string): string {
 	return line.endsWith("\r") ? line.slice(0, -1) : line;
@@ -250,11 +246,11 @@ function readBashBgLog(
 	const sanitized = sanitizeBashBgDisplayLines(slice).join("\n");
 	const truncation =
 		opts.mode === "tail"
-			? truncateTail(sanitized, { maxLines: max, maxBytes: BASH_OUTPUT_MAX_BYTES })
-			: truncateHead(sanitized, { maxLines: max, maxBytes: BASH_OUTPUT_MAX_BYTES });
+			? truncateTail(sanitized, { maxLines: max, maxBytes: BASH_MAX_OUTPUT_BYTES })
+			: truncateHead(sanitized, { maxLines: max, maxBytes: BASH_MAX_OUTPUT_BYTES });
 	const text =
 		truncation.content ||
-		(total > 0 ? `[output omitted: first line exceeds ${formatSize(BASH_OUTPUT_MAX_BYTES)}]` : "");
+		(total > 0 ? `[output omitted: first line exceeds ${formatSize(BASH_MAX_OUTPUT_BYTES)}]` : "");
 	const shownLines = text ? text.split("\n").length : 0;
 	return {
 		text,
@@ -797,7 +793,7 @@ function rebuildBashResultRenderComponent(
 				warnings.push(`Truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`);
 			} else {
 				warnings.push(
-					`Truncated: ${truncation.outputLines} lines shown (${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit)`,
+					`Truncated: ${truncation.outputLines} lines shown (${formatSize(truncation.maxBytes ?? BASH_MAX_OUTPUT_BYTES)} limit)`,
 				);
 			}
 		}
@@ -823,7 +819,7 @@ export function createBashToolDefinition(
 	return {
 		name: toolName,
 		label,
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Avoid running \`grep\`, \`rg\`, \`find\`, or \`ls\` standalone in Bash — use the native tools instead. Pipeline filters on command output (e.g. \`kubectl ... | grep Ready\`, \`ps ... | grep -v\`) are fine; the native tools only apply to files on disk. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.\n\nTUI-only mode: pass tui_only:true to stream output live to the TUI but return only an exit/size summary to context. Use for monitoring loops (reboot waits, log tails, progress meters) where the streaming output is for human eyes and would burn tokens in context. The full output is still saved to a temp file when it would have been truncated. Incompatible with run_in_background.`,
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${BASH_MAX_OUTPUT_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Avoid running \`grep\`, \`rg\`, \`find\`, or \`ls\` standalone in Bash — use the native tools instead. Pipeline filters on command output (e.g. \`kubectl ... | grep Ready\`, \`ps ... | grep -v\`) are fine; the native tools only apply to files on disk. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.\n\nTUI-only mode: pass tui_only:true to stream output live to the TUI but return only an exit/size summary to context. Use for monitoring loops (reboot waits, log tails, progress meters) where the streaming output is for human eyes and would burn tokens in context. The full output is still saved to a temp file when it would have been truncated. Incompatible with run_in_background.`,
 		promptSnippet:
 			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
 		promptGuidelines: [
@@ -892,7 +888,7 @@ export function createBashToolDefinition(
 			const startedAt = Date.now();
 			const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
 			const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
-			const output = new OutputAccumulator({ tempFilePrefix: "pi-bash" });
+			const output = new OutputAccumulator({ tempFilePrefix: "pi-bash", maxBytes: BASH_MAX_OUTPUT_BYTES });
 			let updateTimer: NodeJS.Timeout | undefined;
 			let updateDirty = false;
 			let lastUpdateAt = 0;
@@ -965,7 +961,7 @@ export function createBashToolDefinition(
 					} else if (truncation.truncatedBy === "lines") {
 						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}. Full output: ${snapshot.fullOutputPath}]`;
 					} else {
-						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${snapshot.fullOutputPath}]`;
+						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(BASH_MAX_OUTPUT_BYTES)} limit). Full output: ${snapshot.fullOutputPath}]`;
 					}
 				}
 				return { text, details };
@@ -1133,7 +1129,7 @@ export function createBashOutputToolDefinition(options?: {
 				`\nelapsed: ${elapsed.toFixed(1)}s\n` +
 				`log: ${job.logPath} (${(logSize / 1024).toFixed(1)} KB, ${totalLines} lines)` +
 				(truncated
-					? ` \u2014 showing ${shownLines} of ${totalLines}, capped at ${formatSize(BASH_OUTPUT_MAX_BYTES)}`
+					? ` \u2014 showing ${shownLines} of ${totalLines}, capped at ${formatSize(BASH_MAX_OUTPUT_BYTES)}`
 					: "");
 			const body = text || "(no output yet)";
 			return {
