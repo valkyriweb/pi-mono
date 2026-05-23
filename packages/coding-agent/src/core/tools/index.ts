@@ -101,18 +101,6 @@ export {
 	truncateTail,
 } from "./truncate.ts";
 export {
-	createWebFetchTool,
-	createWebFetchToolDefinition,
-	type WebFetchToolInput,
-	type WebFetchToolOptions,
-} from "./web-fetch.ts";
-export {
-	createWebSearchTool,
-	createWebSearchToolDefinition,
-	type WebSearchToolInput,
-	type WebSearchToolOptions,
-} from "./web-search.ts";
-export {
 	createUppercaseWriteTool,
 	createUppercaseWriteToolDefinition,
 	createWriteTool,
@@ -183,8 +171,6 @@ import {
 	createUppercaseReadToolDefinition,
 	type ReadToolOptions,
 } from "./read.ts";
-import { createWebFetchTool, createWebFetchToolDefinition, type WebFetchToolOptions } from "./web-fetch.ts";
-import { createWebSearchTool, createWebSearchToolDefinition, type WebSearchToolOptions } from "./web-search.ts";
 import {
 	createUppercaseWriteTool,
 	createUppercaseWriteToolDefinition,
@@ -216,10 +202,6 @@ export type ToolName =
 	| "Find"
 	| "ls"
 	| "Ls"
-	| "WebFetch"
-	| "web_fetch"
-	| "WebSearch"
-	| "web_search"
 	| "agent"
 	| "Agent"
 	| "Task";
@@ -256,8 +238,6 @@ export interface ToolsOptions {
 	find?: FindToolOptions;
 	ls?: LsToolOptions;
 	agent?: AgentToolOptions;
-	webFetch?: WebFetchToolOptions;
-	webSearch?: WebSearchToolOptions;
 }
 
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
@@ -298,18 +278,6 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createLsToolDefinition(cwd, options?.ls);
 		case "Ls":
 			return createUppercaseLsToolDefinition(cwd, options?.ls);
-		case "WebFetch":
-			return createWebFetchToolDefinition(cwd, options?.webFetch);
-		case "web_fetch":
-			return createWebFetchToolDefinition(cwd, { ...options?.webFetch, toolName: "web_fetch", label: "web_fetch" });
-		case "WebSearch":
-			return createWebSearchToolDefinition(cwd, options?.webSearch);
-		case "web_search":
-			return createWebSearchToolDefinition(cwd, {
-				...options?.webSearch,
-				toolName: "web_search",
-				label: "web_search",
-			});
 		case "agent":
 			return createAgentToolDefinition(cwd, options?.agent);
 		case "Agent":
@@ -359,14 +327,6 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createLsTool(cwd, options?.ls);
 		case "Ls":
 			return createUppercaseLsTool(cwd, options?.ls);
-		case "WebFetch":
-			return createWebFetchTool(cwd, options?.webFetch);
-		case "web_fetch":
-			return createWebFetchTool(cwd, { ...options?.webFetch, toolName: "web_fetch", label: "web_fetch" });
-		case "WebSearch":
-			return createWebSearchTool(cwd, options?.webSearch);
-		case "web_search":
-			return createWebSearchTool(cwd, { ...options?.webSearch, toolName: "web_search", label: "web_search" });
 		case "agent":
 			return createAgentTool(cwd, options?.agent);
 		case "Agent":
@@ -418,14 +378,6 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		Find: createUppercaseFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
 		Ls: createUppercaseLsToolDefinition(cwd, options?.ls),
-		WebFetch: createWebFetchToolDefinition(cwd, options?.webFetch),
-		web_fetch: createWebFetchToolDefinition(cwd, { ...options?.webFetch, toolName: "web_fetch", label: "web_fetch" }),
-		WebSearch: createWebSearchToolDefinition(cwd, options?.webSearch),
-		web_search: createWebSearchToolDefinition(cwd, {
-			...options?.webSearch,
-			toolName: "web_search",
-			label: "web_search",
-		}),
 		agent: createAgentToolDefinition(cwd, options?.agent),
 		Agent: createUppercaseAgentToolDefinition(cwd, options?.agent),
 		Task: createTaskToolDefinition(cwd, options?.agent),
@@ -472,10 +424,6 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		Find: createUppercaseFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
 		Ls: createUppercaseLsTool(cwd, options?.ls),
-		WebFetch: createWebFetchTool(cwd, options?.webFetch),
-		web_fetch: createWebFetchTool(cwd, { ...options?.webFetch, toolName: "web_fetch", label: "web_fetch" }),
-		WebSearch: createWebSearchTool(cwd, options?.webSearch),
-		web_search: createWebSearchTool(cwd, { ...options?.webSearch, toolName: "web_search", label: "web_search" }),
 		agent: createAgentTool(cwd, options?.agent),
 		Agent: createUppercaseAgentTool(cwd, options?.agent),
 		Task: createTaskTool(cwd, options?.agent),

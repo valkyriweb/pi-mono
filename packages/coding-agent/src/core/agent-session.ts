@@ -3197,7 +3197,15 @@ export class AgentSession {
 				}
 			}
 		} else if (options?.includeAllExtensionTools) {
+			const isBridgeOnly = (name: string): boolean =>
+				CLAUDE_BRIDGE_NATIVE_TOOL_ALIASES.has(name) && this.model?.provider !== "claude-bridge";
 			for (const tool of wrappedExtensionTools) {
+				// Match the syncClaudeBridgeNativeTools filter applied to base active
+				// names earlier in _buildRuntime: bridge-only marker tools (WebFetch /
+				// WebSearch / web_fetch / web_search) only auto-activate for
+				// claude-bridge sessions. Explicit setActiveToolsByName still keeps
+				// them activatable for any session.
+				if (isBridgeOnly(tool.name)) continue;
 				nextActiveToolNames.push(tool.name);
 			}
 		} else if (!options?.activeToolNames && options?.activateNewTools !== false) {
