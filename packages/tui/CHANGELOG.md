@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `Shift+Enter` in Apple Terminal by detecting local macOS modifier state when Terminal.app sends plain Return.
+
+## [0.75.5] - 2026-05-23
+
 ### Changed
 
 ## [0.75.4] - 2026-05-20

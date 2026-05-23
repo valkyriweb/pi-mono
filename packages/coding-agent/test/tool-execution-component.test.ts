@@ -222,6 +222,7 @@ describe("ToolExecutionComponent parity", () => {
 			process.cwd(),
 		);
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
+		component.setExpanded(true);
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("override call");
 		expect(rendered).toContain("hello");
@@ -393,10 +394,36 @@ describe("ToolExecutionComponent parity", () => {
 			{ content: [{ type: "text", text: "one\ntwo\n" }], details: undefined, isError: false },
 			false,
 		);
+		component.setExpanded(true);
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("one");
 		expect(rendered).toContain("two");
 		expect(rendered).not.toContain("two\n\n");
+	});
+
+	test("collapses ordinary read results until expanded", () => {
+		const component = new ToolExecutionComponent(
+			"read",
+			"tool-ordinary-read-collapsed",
+			{ path: "notes.txt" },
+			{},
+			createReadToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult(
+			{ content: [{ type: "text", text: "hidden content" }], details: undefined, isError: false },
+			false,
+		);
+
+		const collapsed = stripAnsi(component.render(120).join("\n"));
+		expect(collapsed).toContain("read");
+		expect(collapsed).toContain("notes.txt");
+		expect(collapsed).not.toContain("hidden content");
+
+		component.setExpanded(true);
+		const expanded = stripAnsi(component.render(120).join("\n"));
+		expect(expanded).toContain("hidden content");
 	});
 
 	for (const scenario of [
