@@ -12,6 +12,7 @@
 	},
 	"files": [
 		"dist/**/*",
+		"native/win32/prebuilds/**/*.node",
 		"README.md"
 	],
 	"keywords": [

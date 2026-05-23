@@ -16,6 +16,7 @@ import {
 	type EditDiffError,
 	type EditDiffResult,
 	generateDiffString,
+	generateUnifiedPatch,
 	normalizeToLF,
 	restoreLineEndings,
 	stripBom,
@@ -60,8 +61,10 @@ type LegacyEditToolInput = EditToolInput & {
 };
 
 export interface EditToolDetails {
-	/** Unified diff of the changes made */
+	/** Display-oriented diff of the changes made */
 	diff: string;
+	/** Standard unified patch of the changes made */
+	patch: string;
 	/** Line number of the first change in the new file (for editor navigation) */
 	firstChangedLine?: number;
 	/** Structured hunks for rich syntax-highlighted diff rendering */
@@ -463,6 +466,7 @@ export function createEditToolDefinition(
 								}
 
 								const diffResult = generateDiffString(baseContent, newContent);
+								const patch = generateUnifiedPatch(path, baseContent, newContent);
 								resolve({
 									content: [
 										{
@@ -472,6 +476,7 @@ export function createEditToolDefinition(
 									],
 									details: {
 										diff: diffResult.diff,
+										patch,
 										firstChangedLine: diffResult.firstChangedLine,
 										hunks: diffResult.hunks,
 										originalContent: diffResult.originalContent,

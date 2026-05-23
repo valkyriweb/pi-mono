@@ -2,10 +2,27 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Changed `OAuthLoginCallbacks` to require `onDeviceCode` and `onSelect`, so OAuth providers can rely on pi supplying device-code and selection UI callbacks.
+
+### Fixed
+
+- Fixed custom Anthropic-compatible model aliases for adaptive-thinking Claude models by adding `compat.forceAdaptiveThinking` model metadata and moving built-in adaptive-thinking selection out of provider id substring checks ([#4797](https://github.com/earendil-works/pi-mono/pull/4797) by [@mbazso](https://github.com/mbazso)).
+- Fixed GitHub Copilot OAuth login to rely on the required device-code callback without a runtime callback availability guard.
+- Fixed Amazon Bedrock provider loading under strict package managers by declaring its direct `@smithy/node-http-handler` dependency ([#4842](https://github.com/earendil-works/pi/issues/4842)).
+- Fixed Amazon Bedrock Claude requests to send the model output token cap by default, matching Anthropic requests and avoiding Bedrock's 4096-token default truncation ([#4848](https://github.com/earendil-works/pi/issues/4848)).
+
+## [0.75.4] - 2026-05-20
+
 ### Changed
 
 - Changed source syntax to avoid TypeScript constructs that require JavaScript emit, keeping the package compatible with Node.js strip-only TypeScript checks.
 - Removed the package-level development watch scripts now that the root TypeScript check validates strip-only-compatible sources.
+
+### Added
+
+- Added first-class OAuth device-code callback metadata, shared polling support, and GitHub Copilot OAuth integration.
 
 ### Fixed
 

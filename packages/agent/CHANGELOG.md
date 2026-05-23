@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.75.4] - 2026-05-20
+
 ### Changed
 
 - Changed source syntax to avoid TypeScript constructs that require JavaScript emit, keeping the package compatible with Node.js strip-only TypeScript checks.

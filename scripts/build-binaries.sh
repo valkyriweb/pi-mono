@@ -57,7 +57,7 @@ if [[ -n "$PLATFORM" ]]; then
 fi
 
 echo "==> Installing dependencies..."
-npm ci
+npm ci --ignore-scripts
 
 if [[ "$SKIP_DEPS" == "false" ]]; then
     echo "==> Installing cross-platform native bindings..."
@@ -105,14 +105,10 @@ fi
 
 for platform in "${PLATFORMS[@]}"; do
     echo "Building for $platform..."
-    # Externalize koffi to avoid embedding all 18 platform .node files (~74MB)
-    # into every binary. Koffi is only used on Windows for VT input and the
-    # call site has a try/catch fallback. For Windows builds, we copy the
-    # appropriate .node file alongside the binary below.
     if [[ "$platform" == windows-* ]]; then
-        bun build --compile --external koffi --target=bun-$platform ./dist/bun/cli.js --outfile binaries/$platform/pi.exe
+        bun build --compile --target=bun-$platform ./dist/bun/cli.js --outfile binaries/$platform/pi.exe
     else
-        bun build --compile --external koffi --target=bun-$platform ./dist/bun/cli.js --outfile binaries/$platform/pi
+        bun build --compile --target=bun-$platform ./dist/bun/cli.js --outfile binaries/$platform/pi
     fi
 done
 
@@ -132,17 +128,15 @@ for platform in "${PLATFORMS[@]}"; do
     cp -r docs binaries/$platform/
     cp -r examples binaries/$platform/
 
-    # Copy koffi native module for Windows (needed for VT input support)
+    # Copy Windows VT input native helper next to compiled Windows binaries.
     if [[ "$platform" == windows-* ]]; then
         if [[ "$platform" == "windows-arm64" ]]; then
-            koffi_arch_dir="win32_arm64"
+            win32_arch_dir="win32-arm64"
         else
-            koffi_arch_dir="win32_x64"
+            win32_arch_dir="win32-x64"
         fi
-        mkdir -p binaries/$platform/node_modules/koffi/build/koffi/$koffi_arch_dir
-        cp ../../node_modules/koffi/index.js binaries/$platform/node_modules/koffi/
-        cp ../../node_modules/koffi/package.json binaries/$platform/node_modules/koffi/
-        cp ../../node_modules/koffi/build/koffi/$koffi_arch_dir/koffi.node binaries/$platform/node_modules/koffi/build/koffi/$koffi_arch_dir/
+        mkdir -p binaries/$platform/native/win32/prebuilds/$win32_arch_dir
+        cp ../tui/native/win32/prebuilds/$win32_arch_dir/win32-console-mode.node binaries/$platform/native/win32/prebuilds/$win32_arch_dir/
     fi
 done
 

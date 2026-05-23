@@ -4,7 +4,16 @@
 
 ### Changed
 
+## [0.75.4] - 2026-05-20
+
+### Changed
+
 - Removed the package-level development watch script now that the root TypeScript check validates strip-only-compatible sources.
+
+### Fixed
+
+- Fixed loader initialization so indicator startup cannot run before frames are initialized.
+- Fixed truecolor capability detection to align terminal image rendering with the interactive theme detector.
 
 ## [0.75.3] - 2026-05-18
 
