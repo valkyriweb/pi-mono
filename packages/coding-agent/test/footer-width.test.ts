@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
-import { FooterComponent } from "../src/modes/interactive/components/footer.ts";
+import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 type AssistantUsage = {
@@ -73,6 +73,17 @@ function createFooterData(providerCount: number): ReadonlyFooterDataProvider {
 
 	return provider;
 }
+
+describe("formatCwdForFooter", () => {
+	it("does not abbreviate sibling paths that share the home prefix", () => {
+		expect(formatCwdForFooter("/home/user2", "/home/user")).toBe("/home/user2");
+	});
+
+	it("abbreviates the home directory and descendants", () => {
+		expect(formatCwdForFooter("/home/user", "/home/user")).toBe("~");
+		expect(formatCwdForFooter("/home/user/project", "/home/user")).toBe("~/project");
+	});
+});
 
 describe("FooterComponent width handling", () => {
 	beforeAll(() => {
