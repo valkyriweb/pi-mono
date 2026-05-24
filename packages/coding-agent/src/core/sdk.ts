@@ -403,11 +403,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		},
 		onPayload: async (payload, _model) => {
-			const runner = extensionRunnerRef.current;
-			if (!runner?.hasHandlers("before_provider_request")) {
-				return payload;
-			}
-			return runner.emitBeforeProviderRequest(payload);
+			return extensionRunnerRef.current?.emitBeforeProviderRequest(payload) ?? payload;
 		},
 		onResponse: async (response, _model) => {
 			const runner = extensionRunnerRef.current;

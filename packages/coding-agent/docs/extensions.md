@@ -998,7 +998,7 @@ pi.on("before_agent_start", (event, ctx) => {
 
 ### ctx.forkAgent(opts)
 
-Fork a cache-preserving background child agent. The child runs in `context: "fork"` mode and inherits the parent's frozen turn-start system prompt 1:1 (byte-identical system + tools prefix — same cache key as the parent's last request). The call returns immediately with an `AgentHandle`; the hook does not block on child completion.
+Fork a cache-preserving background child agent. By default, the child runs in `context: "fork"` mode and inherits the parent's current frozen turn-start system prompt 1:1 (byte-identical system + tools prefix — same cache key as the parent's request). When called from `before_agent_start`, earlier prompt rewrites in the same hook chain are preserved. The call returns immediately with an `AgentHandle`; the hook does not block on child completion.
 
 ```typescript
 interface AgentHandle {
@@ -1011,6 +1011,7 @@ interface AgentHandle {
 - `opts.prompt` — first user message delivered to the child.
 - `opts.allowedTools` — restrict the child to a subset of the parent's active tools (intersection is enforced). Omit to inherit the full parent tool set.
 - `opts.model` — defaults to the parent's model. Passing a different model voids the cached prefix and incurs a full reprocess.
+- `opts.context` — defaults to `"fork"`. Use `"slim"` or `"none"` only when you intentionally do not want the parent prompt/transcript prefix.
 - `opts.signal` — chained with `ctx.signal`. Aborting routes through `cancelAgentRecentRun`.
 
 ```typescript
@@ -1411,6 +1412,31 @@ pi.on("session_start", async (_event, ctx) => {
 });
 ```
 
+### pi.state(name, options)
+
+Create a typed state handle backed by custom session entries. Use this for extension-owned state that should survive reloads, resume, and forks without adding feature-specific fields to core.
+
+```typescript
+const counter = pi.state("my-extension.counter", {
+  defaultValue: { count: 0 },
+  parse: (value) =>
+    value && typeof value === "object" && typeof value.count === "number"
+      ? { count: value.count }
+      : undefined,
+});
+
+pi.on("session_start", () => {
+  const next = counter.update((current) => ({ count: current.count + 1 }));
+  console.log(next.count);
+});
+```
+
+Options:
+- `defaultValue` - returned when no valid prior entry exists
+- `customType` - custom session entry type; defaults to `name`
+- `parse` - optional boundary parser for stored entry data
+- `merge` - optional reducer when multiple prior entries exist; defaults to latest valid entry wins
+
 ### pi.setSessionName(name)
 
 Set the session display name (shown in session selector instead of first message).
@@ -1568,10 +1594,10 @@ const all = pi.getAllTools();
 // [{
 //   name: "read",
 //   description: "Read file contents...",
-//   parameters: ..., 
+//   parameters: ...,
 //   sourceInfo: { path: "<builtin:read>", source: "builtin", scope: "temporary", origin: "top-level" }
 // }, ...]
-const names = all.map(t => t.name);
+const names = all.map((t) => t.name);
 const builtinTools = all.filter((t) => t.sourceInfo.source === "builtin");
 const extensionTools = all.filter((t) => t.sourceInfo.source !== "builtin" && t.sourceInfo.source !== "sdk");
 pi.setActiveTools(["read", "bash"]); // Switch to read-only
@@ -1583,6 +1609,126 @@ Typical `sourceInfo.source` values:
 - `builtin` for built-in tools
 - `sdk` for tools passed via `createAgentSession({ customTools })`
 - extension source metadata for tools registered by extensions
+
+### pi.tools
+
+Read-only tool registry view. Extensions can inspect the tool set, but should not mutate active tools from runtime hooks; tool-shaping belongs in deterministic setup phases so the model prompt cache stays stable.
+
+```typescript
+const active = pi.tools.active();
+const visibleInfo = pi.tools.info();
+const definitions = pi.tools.definitions();
+```
+
+Methods:
+- `info()` - same UI-safe shape as `pi.getAllTools()`
+- `definitions()` - full `ToolDefinition[]`, including extension metadata such as `deferLoading`, `alwaysLoad`, `searchHint`, and provider gates
+- `active()` - currently active tool names
+
+### pi.hooks
+
+Register named hook points and attach actions or filters to them.
+
+Vocabulary:
+- **hook** - named lifecycle point owned by core or an extension
+- **action** - side-effect callback at a hook; returns nothing
+- **filter** - value-transforming callback at a hook; returns the transformed value
+- **priority** - lower runs earlier; default is `10`; same priority preserves registration order
+- **id** - stable callback id used to remove or replace behavior
+
+Use hooks for portable environment composition, especially startup behavior that must happen before the model-facing tool prompt is frozen. They do not replace the existing event API; simple events like `before_agent_start`, `before_provider_request`, and `message_end` still work.
+
+Fluent API:
+
+```typescript
+const setup = pi.hooks.register("my-extension:setup", {
+  description: "Attach setup behavior before the session starts",
+});
+
+const remove = setup.action("jobs", (pi) => {
+  pi.registerTool(createJobsTool());
+});
+
+setup.filter<string>("prompt-policy", (prompt) => `${prompt}\n\nExtra policy.`);
+pi.onSessionDispose(remove);
+```
+
+Direct helpers:
+
+```typescript
+pi.hooks.addAction("load", "jobs", (pi) => {
+  pi.registerTool(createJobsTool());
+});
+pi.hooks.removeAction("load", "jobs");
+
+pi.hooks.addFilter("provider:beforeRequest", "temperature-zero", (payload) => {
+  if (!payload || typeof payload !== "object") return payload;
+  return { ...payload, temperature: 0 };
+});
+
+const finalPayload = await pi.hooks.applyFilters("provider:beforeRequest", payload);
+```
+
+Built-in startup actions are attached through the `load` hook with stable ids:
+
+| Action id | Behavior |
+|-----------|----------|
+| `agents` | native `agent` / `Agent` / `Task` tools |
+| `bashBgJobs` | `BashOutput` / `KillShell` background-job companion tools |
+| `deferredTools` | `tool_search` for deferred/provider-native tools |
+
+MacBook/full setups normally keep these default actions enabled: native agents, bash background-job companions, deferred tool search, and any local custom tools. Lean lue-kube/OpenClaw profiles can run the same core and remove or replace only the actions they do not want.
+
+Eager environment extensions can remove or replace these before `load` fires:
+
+```typescript
+export default function openclawProfile(pi: ExtensionAPI) {
+  pi.hooks.removeAction("load", "deferredTools");
+  pi.hooks.removeAction("load", "bashBgJobs");
+
+  pi.hooks.removeAction("load", "agents");
+  pi.hooks.addAction("load", "openclawAgents", hookOpenClawAgents);
+
+  pi.hooks.addFilter("systemPrompt:build", "openclawPromptPolicy", (prompt) => {
+    return `${prompt}\n\nOpenClaw runtime policy...`;
+  });
+}
+```
+
+Deferred extensions load after startup and are too late for `load` action overrides. Use eager extensions for provider policy, tool shaping, prompt policy, permission gates, and anything that affects the first prompt or cache affinity.
+
+Current core filter hooks are intentionally small and backed by existing mutation seams:
+
+| Filter hook | Runs when | Compatibility note |
+|-------------|-----------|--------------------|
+| `provider:beforeRequest` | after `before_provider_request` event handlers transform the serialized provider payload | `before_provider_request` can still inspect or replace payloads |
+| `systemPrompt:build` | before `before_agent_start` event handlers see the prompt | `before_agent_start` can still inject messages or rewrite the prompt |
+| `message:end` | after `message_end` event handlers replace a finalized message | replacement must keep the same message role |
+
+Existing simple patterns remain supported: registering the same tool name overrides tool lookup by load order, `before_provider_request` can still replace payloads, and `before_agent_start` can still rewrite the prompt.
+
+See [`environment-composition.ts`](../examples/extensions/environment-composition.ts) for a MacBook-vs-OpenClaw style profile.
+
+### pi.harness
+
+Register shared harness services for other extensions to discover. Use this when one package owns behavior and another package owns UI or integration glue.
+
+```typescript
+interface JobStore {
+  list(): Array<{ id: string; status: string }>;
+  subscribe(listener: () => void): () => void;
+}
+
+const handle = pi.harness.provide<JobStore>("my-extension.jobs", createJobStore(), { scope: "process" });
+
+pi.onSessionDispose(() => handle.dispose());
+
+const jobs = pi.harness.use<JobStore>("my-extension.jobs");
+```
+
+By default, first registration wins. Pass `{ replace: true }` only from the package that owns the service and can safely replace it during reload. `scope: "runtime"` is the default; `scope: "process"` keeps the service in a process-level registry so it can survive extension reloads.
+
+Built-in seams use named harness services where core behavior needs to become replaceable. For example, `agents.engine` powers `ctx.forkAgent()`; a process-scoped replacement can override the default engine for advanced agent orchestration.
 
 ### pi.setModel(model)
 
@@ -1703,32 +1849,28 @@ pi.registerCommand("my-setup-teardown", {
 
 ## State Management
 
-Extensions with state should store it in tool result `details` for proper branching support:
+Use `pi.state()` for extension-owned session state that does not belong in LLM-visible tool results. It stores typed snapshots as custom session entries and follows the active branch on reload, resume, and fork.
+
+Use tool result `details` when the state is part of a tool's output history and should travel with that specific tool result:
 
 ```typescript
 export default function (pi: ExtensionAPI) {
-  let items: string[] = [];
-
-  // Reconstruct state from session
-  pi.on("session_start", async (_event, ctx) => {
-    items = [];
-    for (const entry of ctx.sessionManager.getBranch()) {
-      if (entry.type === "message" && entry.message.role === "toolResult") {
-        if (entry.message.toolName === "my_tool") {
-          items = entry.message.details?.items ?? [];
-        }
-      }
-    }
+  const itemsState = pi.state("my_tool.items", {
+    defaultValue: { items: [] as string[] },
+    parse: (value) =>
+      value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)
+        ? { items: (value as { items: string[] }).items }
+        : undefined,
   });
 
   pi.registerTool({
     name: "my_tool",
     // ...
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      items.push("new item");
+    async execute() {
+      const next = itemsState.update((current) => ({ items: [...current.items, "new item"] }));
       return {
         content: [{ type: "text", text: "Added" }],
-        details: { items: [...items] },  // Store for reconstruction
+        details: { items: next.items },
       };
     },
   });
@@ -2623,6 +2765,7 @@ All examples in [examples/extensions/](../examples/extensions/).
 | `input-transform.ts` | Transform user input | `on("input")` |
 | `model-status.ts` | React to model changes | `on("model_select")`, `setStatus` |
 | `provider-payload.ts` | Inspect payloads and provider response headers | `on("before_provider_request")`, `on("after_provider_response")` |
+| `environment-composition.ts` | Eager runtime profile that removes/replaces load actions and filters prompt/provider payloads | `pi.hooks`, `addAction`, `removeAction`, `addFilter` |
 | `system-prompt-header.ts` | Display system prompt info | `on("agent_start")`, `getSystemPrompt` |
 | `claude-rules.ts` | Load rules from files | `on("session_start")`, `on("before_agent_start")` |
 | `prompt-customizer.ts` | Add context-aware tool guidance using `systemPromptOptions` | `on("before_agent_start")`, `BuildSystemPromptOptions` |

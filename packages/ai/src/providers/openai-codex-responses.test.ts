@@ -22,6 +22,22 @@ function buildBodyWith(tools: Tool[]) {
 	return buildRequestBody(model, context);
 }
 
+describe("buildRequestBody — Codex prompt cache", () => {
+	it("keeps cache affinity but omits unsupported cache retention", () => {
+		const context: Context = {
+			systemPrompt: "",
+			messages: [],
+		};
+		const body = buildRequestBody(model, context, {
+			cacheRetention: "long",
+			sessionId: "codex-session",
+		});
+
+		expect(body.prompt_cache_key).toBe("codex-session");
+		expect((body as Record<string, unknown>).prompt_cache_retention).toBeUndefined();
+	});
+});
+
 describe("buildRequestBody — tool_search injection for deferred tools", () => {
 	it("does not inject tool_search when no tool has deferLoading", () => {
 		const body = buildBodyWith([

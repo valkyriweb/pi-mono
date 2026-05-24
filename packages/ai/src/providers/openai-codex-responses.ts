@@ -94,7 +94,6 @@ interface RequestBody {
 	text?: { verbosity?: string };
 	include?: string[];
 	prompt_cache_key?: string;
-	prompt_cache_retention?: "24h";
 	max_output_tokens?: number;
 	[key: string]: unknown;
 }
@@ -393,7 +392,6 @@ function buildRequestBody(
 			cacheRetention === "none"
 				? undefined
 				: clampOpenAIPromptCacheKey(options?.cacheAffinityKey ?? options?.sessionId),
-		prompt_cache_retention: cacheRetention === "long" ? "24h" : undefined,
 		tool_choice: "auto",
 		parallel_tool_calls: true,
 	};

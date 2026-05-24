@@ -66,6 +66,15 @@ export interface BashBgJob {
 	error: string | undefined;
 }
 
+export interface BashBgJobStore {
+	get(id: string): BashBgJob | undefined;
+	list(): BashBgJob[];
+	running(): BashBgJob[];
+	subscribe(callback: () => void): () => void;
+	kill(id: string): { job: BashBgJob | undefined; error?: string };
+	killAll(): void;
+}
+
 const bashBgJobs = new Map<string, BashBgJob>();
 const bashBgSubscribers = new Set<() => void>();
 
@@ -102,10 +111,37 @@ export function getRunningBashBgJobsSorted(): BashBgJob[] {
 		.sort((a, b) => a.startedAt - b.startedAt);
 }
 
+export function killBashBgJob(id: string): { job: BashBgJob | undefined; error?: string } {
+	const job = getBashBgJob(id);
+	if (!job || job.status !== "running") return { job };
+	if (job.pid) {
+		try {
+			killProcessTree(job.pid);
+		} catch (err) {
+			return { job, error: err instanceof Error ? err.message : String(err) };
+		}
+	}
+	job.status = "killed";
+	job.endedAt = Date.now();
+	notifyBashBgJobsChanged();
+	return { job };
+}
+
+export function createBashBgJobStore(): BashBgJobStore {
+	return {
+		get: getBashBgJob,
+		list: listBashBgJobs,
+		running: getRunningBashBgJobsSorted,
+		subscribe: subscribeBashBgJobs,
+		kill: killBashBgJob,
+		killAll: killAllBashBgJobs,
+	};
+}
+
 /**
  * Terminate every running background bash job and clear the registry.
- * Called from AgentSession.dispose() so bg processes don't leak across
- * /clear, fork, switchSession, reload, or process exit.
+ * The built-in bash-bg-jobs extension calls this on session dispose; jobs
+ * intentionally survive extension reload because the store is process-scoped.
  */
 export function killAllBashBgJobs(): void {
 	for (const job of bashBgJobs.values()) {
@@ -1090,20 +1126,29 @@ export type BashOutputToolInput = Static<typeof bashOutputSchema>;
 export function createBashOutputToolDefinition(options?: {
 	toolName?: string;
 	label?: string;
+	jobs?: BashBgJobStore;
+	alwaysLoad?: boolean;
 }): ToolDefinition<typeof bashOutputSchema, BashOutputToolDetails | undefined> {
 	const toolName = options?.toolName ?? "bash_output";
 	const label = options?.label ?? "BashOutput";
+	const jobs = options?.jobs ?? createBashBgJobStore();
 	return {
 		name: toolName,
 		label,
 		description:
 			"Read accumulated stdout/stderr from a backgrounded bash job (started via bash with run_in_background:true). Returns a bounded slice of the log plus job status. Does not block or wait \u2014 just shows current state. Use this when you need to peek at progress or grab results after the job has completed. For live streaming with wake-on-output behavior, use monitor_start instead.",
 		promptSnippet: "Read the log of a backgrounded bash job by bgId",
+		alwaysLoad: options?.alwaysLoad,
 		parameters: bashOutputSchema,
 		async execute(_id, { bgId, mode, maxLines }) {
-			const job = getBashBgJob(bgId);
+			const job = jobs.get(bgId);
 			if (!job) {
-				const known = [...bashBgJobs.keys()].slice(-5).join(", ") || "(none)";
+				const known =
+					jobs
+						.list()
+						.map((knownJob) => knownJob.id)
+						.slice(-5)
+						.join(", ") || "(none)";
 				return {
 					content: [{ type: "text", text: `No background bash job with bgId=${bgId}. Recent ids: ${known}` }],
 					details: undefined,
@@ -1142,11 +1187,16 @@ export function createBashOutputTool(): AgentTool<typeof bashOutputSchema> {
 	return wrapToolDefinition(createBashOutputToolDefinition());
 }
 
-export function createBashOutputNativeToolDefinition(): ToolDefinition<
-	typeof bashOutputSchema,
-	BashOutputToolDetails | undefined
-> {
-	return createBashOutputToolDefinition({ toolName: "BashOutput", label: "BashOutput" });
+export function createBashOutputNativeToolDefinition(options?: {
+	jobs?: BashBgJobStore;
+	alwaysLoad?: boolean;
+}): ToolDefinition<typeof bashOutputSchema, BashOutputToolDetails | undefined> {
+	return createBashOutputToolDefinition({
+		toolName: "BashOutput",
+		label: "BashOutput",
+		jobs: options?.jobs,
+		alwaysLoad: options?.alwaysLoad,
+	});
 }
 
 export function createBashOutputNativeTool(): AgentTool<typeof bashOutputSchema> {
@@ -1166,18 +1216,22 @@ export type BashKillToolInput = Static<typeof bashKillSchema>;
 export function createBashKillToolDefinition(options?: {
 	toolName?: string;
 	label?: string;
+	jobs?: BashBgJobStore;
+	alwaysLoad?: boolean;
 }): ToolDefinition<typeof bashKillSchema, BashBgJob | undefined> {
 	const toolName = options?.toolName ?? "bash_kill";
 	const label = options?.label ?? "KillShell";
+	const jobs = options?.jobs ?? createBashBgJobStore();
 	return {
 		name: toolName,
 		label,
 		description:
 			"Stop a backgrounded bash job (started via bash with run_in_background:true). Sends SIGTERM to the whole process tree; the job moves to status=killed. Idempotent \u2014 calling on an already-finished job is safe and just reports state.",
 		promptSnippet: "Stop a backgrounded bash job by bgId",
+		alwaysLoad: options?.alwaysLoad,
 		parameters: bashKillSchema,
 		async execute(_id, { bgId }) {
-			const job = getBashBgJob(bgId);
+			const job = jobs.get(bgId);
 			if (!job) {
 				return {
 					content: [{ type: "text", text: `No background bash job with bgId=${bgId}` }],
@@ -1195,24 +1249,18 @@ export function createBashKillToolDefinition(options?: {
 					details: job,
 				};
 			}
-			if (job.pid) {
-				try {
-					killProcessTree(job.pid);
-				} catch (err) {
-					return {
-						content: [
-							{
-								type: "text",
-								text: `Failed to kill bgId=${bgId} (pid=${job.pid}): ${err instanceof Error ? err.message : String(err)}`,
-							},
-						],
-						details: job,
-					};
-				}
+			const killed = jobs.kill(bgId);
+			if (killed.error) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Failed to kill bgId=${bgId} (pid=${job.pid}): ${killed.error}`,
+						},
+					],
+					details: job,
+				};
 			}
-			job.status = "killed";
-			job.endedAt = Date.now();
-			notifyBashBgJobsChanged();
 			return {
 				content: [{ type: "text", text: `Killed bgId=${bgId} (pid=${job.pid ?? "unknown"}).` }],
 				details: job,
@@ -1225,8 +1273,16 @@ export function createBashKillTool(): AgentTool<typeof bashKillSchema> {
 	return wrapToolDefinition(createBashKillToolDefinition());
 }
 
-export function createKillShellToolDefinition(): ToolDefinition<typeof bashKillSchema, BashBgJob | undefined> {
-	return createBashKillToolDefinition({ toolName: "KillShell", label: "KillShell" });
+export function createKillShellToolDefinition(options?: {
+	jobs?: BashBgJobStore;
+	alwaysLoad?: boolean;
+}): ToolDefinition<typeof bashKillSchema, BashBgJob | undefined> {
+	return createBashKillToolDefinition({
+		toolName: "KillShell",
+		label: "KillShell",
+		jobs: options?.jobs,
+		alwaysLoad: options?.alwaysLoad,
+	});
 }
 
 export function createKillShellTool(): AgentTool<typeof bashKillSchema> {

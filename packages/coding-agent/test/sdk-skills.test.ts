@@ -52,14 +52,16 @@ This is a test skill.
 	});
 
 	it("should have empty skills when resource loader returns none (--no-skills)", async () => {
+		const emptyExtensionsResult = {
+			extensions: [],
+			deferredExtensions: [],
+			errors: [],
+			eventBus: createEventBus(),
+			runtime: createExtensionRuntime(),
+		};
 		const resourceLoader: ResourceLoader = {
-			getExtensions: () => ({
-				extensions: [],
-				deferredExtensions: [],
-				errors: [],
-				eventBus: createEventBus(),
-				runtime: createExtensionRuntime(),
-			}),
+			getExtensions: () => emptyExtensionsResult,
+			getExtensionsForRunner: () => emptyExtensionsResult,
 			getSkills: () => ({ skills: [], diagnostics: [] }),
 			getPrompts: () => ({ prompts: [], diagnostics: [] }),
 			getThemes: () => ({ themes: [], diagnostics: [] }),
@@ -91,14 +93,16 @@ This is a test skill.
 			disableModelInvocation: false,
 		};
 
+		const emptyExtensionsResult = {
+			extensions: [],
+			deferredExtensions: [],
+			errors: [],
+			eventBus: createEventBus(),
+			runtime: createExtensionRuntime(),
+		};
 		const resourceLoader: ResourceLoader = {
-			getExtensions: () => ({
-				extensions: [],
-				deferredExtensions: [],
-				errors: [],
-				eventBus: createEventBus(),
-				runtime: createExtensionRuntime(),
-			}),
+			getExtensions: () => emptyExtensionsResult,
+			getExtensionsForRunner: () => emptyExtensionsResult,
 			getSkills: () => ({ skills: [customSkill], diagnostics: [] }),
 			getPrompts: () => ({ prompts: [], diagnostics: [] }),
 			getThemes: () => ({ themes: [], diagnostics: [] }),

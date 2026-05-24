@@ -13,6 +13,7 @@ export {
 export {
 	type BashBgDetails,
 	type BashBgJob,
+	type BashBgJobStore,
 	type BashKillToolInput,
 	type BashOperations,
 	type BashOutputToolInput,
@@ -21,6 +22,7 @@ export {
 	type BashToolDetails,
 	type BashToolInput,
 	type BashToolOptions,
+	createBashBgJobStore,
 	createBashKillTool,
 	createBashKillToolDefinition,
 	createBashOutputNativeTool,

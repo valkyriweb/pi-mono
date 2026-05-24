@@ -16,6 +16,8 @@ import {
 	expandSystemPromptImports,
 } from "./context-file-imports.ts";
 import { createEventBus, type EventBus } from "./event-bus.ts";
+import "./extensions/core-extension-actions.ts";
+import { actionSource, getActions, isHookPath, load } from "./extensions/extension-hooks.ts";
 import { createExtensionRuntime, loadExtensionFromFactory, loadExtensions } from "./extensions/loader.ts";
 import type {
 	Extension,
@@ -40,6 +42,8 @@ export interface ResourceExtensionPaths {
 
 export interface ResourceLoader {
 	getExtensions(): LoadExtensionsResult;
+	/** Includes built-in extension hooks. Internal use by AgentSession only. */
+	getExtensionsForRunner(): LoadExtensionsResult;
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
 	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] };
 	getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] };
@@ -312,6 +316,23 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 
 	getExtensions(): LoadExtensionsResult {
+		// Built-in hook actions (agents, bashBgJobs, deferredTools) are internal
+		// wiring. The user-facing surface (TUI command surface, conflict
+		// detection, reload diagnostics, flag validation) treats `extensions` as
+		// the list of *user* extensions, so filter them out here. The runner
+		// reads the unfiltered internal state via `getExtensionsForRunner()`.
+		return {
+			...this.extensionsResult,
+			extensions: this.extensionsResult.extensions.filter((ext) => !isHookPath(ext.path)),
+		};
+	}
+
+	/**
+	 * Internal accessor for the extension runner: includes built-in hook
+	 * extensions so their handlers, tools, commands, etc. are dispatched.
+	 * Public consumers should use `getExtensions()`.
+	 */
+	getExtensionsForRunner(): LoadExtensionsResult {
 		return this.extensionsResult;
 	}
 
@@ -461,6 +482,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 		const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
 		extensionsResult.extensions.push(...inlineExtensions.extensions);
 		extensionsResult.errors.push(...inlineExtensions.errors);
+		const hookedExtensions = await this.loadExtensionHooks(extensionsResult.runtime);
+		extensionsResult.extensions.push(...hookedExtensions.extensions);
+		extensionsResult.errors.push(...hookedExtensions.errors);
 
 		// Detect extension conflicts (tools, commands, flags with same names from different extensions)
 		// Keep all extensions loaded. Conflicts are reported as diagnostics, and precedence is handled by load order.
@@ -884,6 +908,25 @@ export class DefaultResourceLoader implements ResourceLoader {
 			const message = error instanceof Error ? error.message : "failed to load theme";
 			diagnostics.push({ type: "warning", message, path: filePath });
 		}
+	}
+
+	private async loadExtensionHooks(runtime: ExtensionRuntime): Promise<{
+		extensions: Extension[];
+		errors: Array<{ path: string; error: string }>;
+	}> {
+		const extensions: Extension[] = [];
+		const errors: Array<{ path: string; error: string }> = [];
+		for (const action of getActions(load)) {
+			const path = actionSource(action);
+			try {
+				const extension = await loadExtensionFromFactory(action.callback, this.cwd, this.eventBus, runtime, path);
+				extensions.push(extension);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "failed to hook extension";
+				errors.push({ path, error: message });
+			}
+		}
+		return { extensions, errors };
 	}
 
 	private async loadExtensionFactories(runtime: ExtensionRuntime): Promise<{

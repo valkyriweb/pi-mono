@@ -220,6 +220,7 @@ export function createTestResourceLoader(options: CreateTestResourceLoaderOption
 
 	return {
 		getExtensions: () => extensionsResult,
+		getExtensionsForRunner: () => extensionsResult,
 		getSkills: () => ({ skills: [], diagnostics: [] }),
 		getPrompts: () => ({ prompts: [], diagnostics: [] }),
 		getThemes: () => ({ themes: [], diagnostics: [] }),

@@ -48,9 +48,14 @@ import { stripFrontmatter } from "../utils/frontmatter.ts";
 
 import { resolvePath } from "../utils/paths.ts";
 import { sleep } from "../utils/sleep.ts";
-import { type AgentToolParentServices, executeAgentTool } from "./agents/executor.ts";
-import { cancelAgentRecentRun, findAgentRecentRun, waitForAgentRecentRun } from "./agents/status.ts";
-import type { AgentBackgroundCompletion, AgentToolDetails, AgentToolStatus } from "./agents/types.ts";
+import {
+	AGENTS_ENGINE_SERVICE_ID,
+	type AgentEngine,
+	type AgentParentSnapshot,
+	createAgentEngine,
+} from "./agents/engine.ts";
+import type { AgentToolParentServices } from "./agents/executor.ts";
+import type { AgentBackgroundCompletion } from "./agents/types.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
 import { createPromptCacheAffinityKey } from "./cache-affinity.ts";
@@ -66,13 +71,6 @@ import {
 	shouldCompact,
 } from "./compaction/index.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
-
-import { ensureDeferredToolSearchDefinition } from "./deferred-tool-registry.ts";
-import {
-	createDeferredToolStateEntryData,
-	DEFERRED_TOOL_STATE_CUSTOM_TYPE,
-	scanDeferredToolStateEntries,
-} from "./deferred-tools.ts";
 
 import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.ts";
 import { createToolHtmlRenderer } from "./export-html/tool-renderer.ts";
@@ -102,22 +100,23 @@ import {
 	type TurnStartEvent,
 	wrapRegisteredTools,
 } from "./extensions/index.ts";
+import { getExtensionProcessService } from "./extensions/loader.ts";
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
 
-import type { AgentHandle, ForkAgentOptions, ForkAgentResult, TranscriptEntry } from "./extensions/types.ts";
+import type { ForkAgentOptions, ForkAgentResult, TranscriptEntry } from "./extensions/types.ts";
 import { type BashExecutionMessage, type CustomMessage, convertToLlm } from "./messages.ts";
 
 import type { ModelRegistry } from "./model-registry.ts";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.ts";
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.ts";
-import type { BranchSummaryEntry, CompactionEntry, SessionManager } from "./session-manager.ts";
+import type { BranchSummaryEntry, CompactionEntry, CustomEntry, SessionManager } from "./session-manager.ts";
 import { CURRENT_SESSION_VERSION, getLatestCompactionEntry, type SessionHeader } from "./session-manager.ts";
 import type { SettingsManager } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.ts";
 
-import { type BashOperations, createLocalBashOperations, killAllBashBgJobs } from "./tools/bash.ts";
+import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
 import { allToolNames, createAllToolDefinitions, type ToolName } from "./tools/index.ts";
 
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.ts";
@@ -466,7 +465,6 @@ export class AgentSession {
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
 	private _toolDefinitions: Map<string, ToolDefinitionEntry> = new Map();
-	private _discoveredDeferredToolNames: string[] = [];
 	private _toolPromptSnippets: Map<string, string> = new Map();
 	private _toolPromptGuidelines: Map<string, string[]> = new Map();
 
@@ -491,7 +489,6 @@ export class AgentSession {
 		this._allowedToolNames = config.allowedToolNames ? new Set(config.allowedToolNames) : undefined;
 		this._baseToolsOverride = config.baseToolsOverride;
 		this._agentToolServices = config.agentToolServices;
-		this._discoveredDeferredToolNames = scanDeferredToolStateEntries(this.sessionManager.getBranch());
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
 
 		// Always subscribe to agent events for internal handling
@@ -1126,9 +1123,6 @@ export class AgentSession {
 		}
 		this._cacheHeartbeatAbortController?.abort();
 		cleanupSessionResources(this.sessionId);
-		// Reap any background bash jobs so they don't leak across /clear,
-		// fork, switchSession, reload, or final session shutdown.
-		killAllBashBgJobs();
 	}
 
 	// =========================================================================
@@ -1219,16 +1213,8 @@ export class AgentSession {
 		return this._toolDefinitions.get(name)?.definition;
 	}
 
-	private _setDiscoveredDeferredToolNames(toolNames: string[]): void {
-		const next = [...new Set(toolNames)];
-		if (
-			next.length === this._discoveredDeferredToolNames.length &&
-			next.every((name, index) => name === this._discoveredDeferredToolNames[index])
-		) {
-			return;
-		}
-		this._discoveredDeferredToolNames = next;
-		this.sessionManager.appendCustomEntry(DEFERRED_TOOL_STATE_CUSTOM_TYPE, createDeferredToolStateEntryData(next));
+	getToolDefinitions(): ToolDefinition[] {
+		return Array.from(this._toolDefinitions.values()).map(({ definition }) => definition);
 	}
 
 	/**
@@ -2747,117 +2733,43 @@ export class AgentSession {
 		this.agent.state.model = refreshedModel;
 	}
 
-	private async _forkAgentFromExtension(opts: ForkAgentOptions): Promise<ForkAgentResult> {
+	private _getAgentParentSnapshot(): AgentParentSnapshot {
+		return {
+			activeTools: this.getActiveToolNames(),
+			sessionManager: this.sessionManager,
+			model: this.model,
+			thinkingLevel: this.thinkingLevel,
+			// Capture the parent's frozen turn-start system prompt so fork children
+			// inherit byte-identical system + tools bytes and hit the parent's cached
+			// prefix.
+			systemPrompt: this.agent.state.systemPrompt,
+			signal: this.agent.signal,
+		};
+	}
+
+	private _createAgentEngine(): AgentEngine {
 		if (!this._agentToolServices) {
 			throw new Error("forkAgent is not available: agent tool services are not bound to this session");
 		}
-		if (typeof opts?.prompt !== "string" || opts.prompt.length === 0) {
-			throw new Error("forkAgent requires a non-empty prompt");
-		}
-		const ctxSignal = this.agent.signal;
-		const signals: AbortSignal[] = [];
-		if (opts.signal) signals.push(opts.signal);
-		if (ctxSignal) signals.push(ctxSignal);
-		const forkSignal =
-			signals.length === 0 ? undefined : signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+		return createAgentEngine({
+			parentServices: this._agentToolServices,
+			getParentSnapshot: () => this._getAgentParentSnapshot(),
+			onBackgroundTerminal: (notification) => this._emitAgentCompletion(notification),
+		});
+	}
 
-		const details = await executeAgentTool(
-			{
-				mode: "single",
-				background: true,
-				tasks: [
-					{
-						agent: "general",
-						task: opts.prompt,
-						description: opts.description,
-						// Default "fork" preserves prior behaviour (inherit parent prefix).
-						// Extensions wanting cache-stable prefixes pass "slim" or "none".
-						context: opts.context ?? "fork",
-						tools: opts.allowedTools,
-						model: opts.model,
-						maxOutputTokens: opts.maxOutputTokens,
-						// When provided, fully replaces the auto-built child prompt — caller
-						// owns every byte for byte-stable cross-session/cross-cwd cache reuse.
-						systemPrompt: opts.systemPrompt,
-					},
-				],
-			},
-			{
-				parentServices: this._agentToolServices,
-				parentActiveTools: this.getActiveToolNames(),
-				parentSessionManager: this.sessionManager,
-				parentModel: this.model,
-				parentThinkingLevel: this.thinkingLevel,
-				// Capture the parent's frozen turn-start system prompt so the child's
-				// first API call inherits byte-identical system + tools bytes and hits
-				// the parent's cached prefix (see core/tools/agent.ts for the same
-				// wiring used by the LLM-callable agent tool).
-				parentSystemPrompt: this.agent.state.systemPrompt,
-				// silent defaults to true — extension forks own their own transcript
-				// feedback via ctx.transcript.append. Set silent:false to restore the
-				// standard agent_completion notification.
-				onBackgroundTerminal:
-					opts.silent !== false ? undefined : (notification) => this._emitAgentCompletion(notification),
-				// Note: executor's background path replaces `signal` with its own
-				// AbortController. We chain the caller's signal below via
-				// cancelAgentRecentRun(runId) so abort still propagates.
-			},
-		);
+	private _getAgentEngine(): AgentEngine {
+		const processEngine = getExtensionProcessService<AgentEngine>(AGENTS_ENGINE_SERVICE_ID);
+		if (processEngine) return processEngine;
+		const engine = this._extensionRunner.getService<AgentEngine>(AGENTS_ENGINE_SERVICE_ID);
+		if (engine) return engine;
+		const fallbackEngine = this._createAgentEngine();
+		this._extensionRunner.setService(AGENTS_ENGINE_SERVICE_ID, fallbackEngine);
+		return fallbackEngine;
+	}
 
-		const runId = details.runId;
-		if (!runId) {
-			throw new Error("forkAgent: background run did not return a runId");
-		}
-
-		// Chain the caller's signal onto the background run. cancelAgentRecentRun
-		// calls the registered controller's cancel(), which aborts every active
-		// child session and drives the run to a terminal status within ~1s.
-		if (forkSignal) {
-			const onAbort = () => {
-				void cancelAgentRecentRun(runId).catch(() => {});
-			};
-			if (forkSignal.aborted) {
-				onAbort();
-			} else {
-				forkSignal.addEventListener("abort", onAbort, { once: true });
-			}
-		}
-
-		const readStatus = (): AgentToolStatus => {
-			const run = findAgentRecentRun(runId);
-			return run?.status ?? details.status;
-		};
-
-		const toDetails = (run: ReturnType<typeof findAgentRecentRun>): AgentToolDetails => {
-			if (run) {
-				return {
-					mode: run.mode,
-					status: run.status,
-					runs: run.runs,
-					runId: run.id,
-					background: run.execution === "background",
-					resumable: run.resumable,
-				};
-			}
-			return details;
-		};
-
-		const handle: AgentHandle = {
-			get status() {
-				return readStatus();
-			},
-			async wait() {
-				const snapshot = findAgentRecentRun(runId);
-				if (snapshot && snapshot.status !== "running") return toDetails(snapshot);
-				const run = await waitForAgentRecentRun(runId);
-				return toDetails(run);
-			},
-			async abort() {
-				await cancelAgentRecentRun(runId);
-			},
-		};
-
-		return { handle, sessionId: runId };
+	private async _forkAgentFromExtension(opts: ForkAgentOptions): Promise<ForkAgentResult> {
+		return this._getAgentEngine().fork(opts);
 	}
 
 	/**
@@ -3038,6 +2950,11 @@ export class AgentSession {
 				},
 				getActiveTools: () => this.getActiveToolNames(),
 				getAllTools: () => this.getAllTools(),
+				getToolDefinitions: () => this.getToolDefinitions(),
+				getCustomEntries: (customType) =>
+					this.sessionManager
+						.getBranch()
+						.filter((entry): entry is CustomEntry => entry.type === "custom" && entry.customType === customType),
 				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
 				refreshTools: (options) => this._refreshToolRegistry(options),
 				getCommands,
@@ -3134,18 +3051,6 @@ export class AgentSession {
 				sourceInfo: tool.sourceInfo,
 			});
 		}
-		ensureDeferredToolSearchDefinition(definitionRegistry, {
-			getToolDefinitions: () => Array.from(this._toolDefinitions.values()).map(({ definition }) => definition),
-			getModel: () => this.model,
-			getDiscoveredToolNames: () => this._discoveredDeferredToolNames,
-			setDiscoveredToolNames: (toolNames) => {
-				this._setDiscoveredDeferredToolNames(toolNames);
-			},
-			actions: {
-				getActiveToolNames: () => this.getActiveToolNames(),
-				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
-			},
-		});
 		this._toolDefinitions = definitionRegistry;
 		this._toolPromptSnippets = new Map(
 			Array.from(definitionRegistry.values())
@@ -3179,11 +3084,6 @@ export class AgentSession {
 		for (const tool of wrappedExtensionTools as AgentTool[]) {
 			toolRegistry.set(tool.name, tool);
 		}
-		const deferredToolSearchEntry = definitionRegistry.get("tool_search");
-		if (deferredToolSearchEntry && !toolRegistry.has("tool_search")) {
-			const [toolSearch] = wrapRegisteredTools([deferredToolSearchEntry], runner);
-			toolRegistry.set(toolSearch.name, toolSearch);
-		}
 		this._toolRegistry = toolRegistry;
 
 		const nextActiveToolNames = (
@@ -3206,6 +3106,8 @@ export class AgentSession {
 				// claude-bridge sessions. Explicit setActiveToolsByName still keeps
 				// them activatable for any session.
 				if (isBridgeOnly(tool.name)) continue;
+				const sourceInfo = definitionRegistry.get(tool.name)?.sourceInfo;
+				if (sourceInfo?.source === "builtin") continue;
 				nextActiveToolNames.push(tool.name);
 			}
 		} else if (!options?.activeToolNames && options?.activateNewTools !== false) {
@@ -3242,6 +3144,7 @@ export class AgentSession {
 		}
 
 		this.setActiveToolsByName([...new Set(nextActiveToolNames)]);
+		void this._extensionRunner.emit({ type: "tools_changed" });
 	}
 
 	private _buildRuntime(options: {
@@ -3264,7 +3167,7 @@ export class AgentSession {
 		const autoResizeImages = this.settingsManager.getImageAutoResize();
 		const shellCommandPrefix = this.settingsManager.getShellCommandPrefix();
 		const shellPath = this.settingsManager.getShellPath();
-		const baseToolDefinitions = this._baseToolsOverride
+		const baseToolDefinitions: Record<string, ToolDefinition> = this._baseToolsOverride
 			? Object.fromEntries(
 					Object.entries(this._baseToolsOverride).map(([name, tool]) => [
 						name,
@@ -3274,26 +3177,28 @@ export class AgentSession {
 			: createAllToolDefinitions(this._cwd, {
 					read: { autoResizeImages },
 					bash: { commandPrefix: shellCommandPrefix, shellPath },
-					agent: this._agentToolServices
-						? {
-								parentServices: this._agentToolServices,
-								getParentActiveTools: () => this.getActiveToolNames(),
-								getParentSessionManager: () => this.sessionManager,
-								getParentModel: () => this.model,
-								getParentThinkingLevel: () => this.thinkingLevel,
-								// Thread the frozen turn-start system prompt so fork children inherit
-								// exact parent bytes — same cache key (system + tools + messages prefix).
-								getParentSystemPrompt: () => this.agent.state.systemPrompt,
-								onBackgroundTerminal: (notification) => this._emitAgentCompletion(notification),
-							}
-						: undefined,
 				});
 
-		this._baseToolDefinitions = new Map(
-			Object.entries(baseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition]),
-		);
+		if (!this._baseToolsOverride) {
+			delete baseToolDefinitions.BashOutput;
+			delete baseToolDefinitions.KillShell;
+			delete baseToolDefinitions.agent;
+			delete baseToolDefinitions.Agent;
+			delete baseToolDefinitions.Task;
+		}
 
-		const extensionsResult = this._resourceLoader.getExtensions();
+		this._baseToolDefinitions = new Map(Object.entries(baseToolDefinitions));
+
+		// Use the runner accessor so built-in hook actions (agents, bashBgJobs,
+		// deferredTools) are dispatched alongside user extensions.
+		const extensionsResult = this._resourceLoader.getExtensionsForRunner();
+		if (
+			this._agentToolServices &&
+			!extensionsResult.runtime.services.has(AGENTS_ENGINE_SERVICE_ID) &&
+			!getExtensionProcessService<AgentEngine>(AGENTS_ENGINE_SERVICE_ID)
+		) {
+			extensionsResult.runtime.services.set(AGENTS_ENGINE_SERVICE_ID, this._createAgentEngine());
+		}
 		if (options.flagValues) {
 			for (const [name, value] of options.flagValues) {
 				extensionsResult.runtime.flagValues.set(name, value);
@@ -3315,9 +3220,9 @@ export class AgentSession {
 		this._bindExtensionCore(this._extensionRunner);
 		this._applyExtensionBindings(this._extensionRunner);
 
-		// Keep `BashOutput`/`KillShell` in defaults so sessions without
-		// pi-tool-search still get the full bash job-control trio. Without them,
-		// run_in_background:true returns a bgId the model can never read or stop.
+		// Keep extension-owned `BashOutput`/`KillShell` active by default so sessions
+		// without pi-tool-search still get the full bash job-control trio. Without
+		// them, run_in_background:true returns a bgId the model can never read or stop.
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
 			: ["Read", "Bash", "BashOutput", "KillShell", "Edit", "Write", "Agent", "Task", "Grep", "Find", "Ls"];
@@ -3332,8 +3237,10 @@ export class AgentSession {
 	}
 
 	async reload(): Promise<void> {
-		const previousFlagValues = this._extensionRunner.getFlagValues();
-		await emitSessionShutdownEvent(this._extensionRunner, { type: "session_shutdown", reason: "reload" });
+		const previousRunner = this._extensionRunner;
+		const previousFlagValues = previousRunner.getFlagValues();
+		await emitSessionShutdownEvent(previousRunner, { type: "session_shutdown", reason: "reload" });
+		previousRunner.invalidate();
 		await this.settingsManager.reload();
 		resetApiProviders();
 		await this._resourceLoader.reload();

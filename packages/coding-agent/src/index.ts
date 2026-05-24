@@ -62,7 +62,9 @@ export { createEventBus, type EventBus, type EventBusController } from "./core/e
 // Extension system
 export type {
 	AgentEndEvent,
+	AgentEngine,
 	AgentHandle,
+	AgentParentSnapshot,
 	AgentStartEvent,
 	AgentTelemetry,
 	AgentToolResult,
@@ -153,6 +155,8 @@ export type {
 	WriteToolCallEvent,
 } from "./core/extensions/index.ts";
 export {
+	AGENTS_ENGINE_SERVICE_ID,
+	BASH_BG_JOBS_SERVICE_ID,
 	createExtensionRuntime,
 	defineTool,
 	discoverAndLoadExtensions,
@@ -266,12 +270,14 @@ export {
 // Tools
 export {
 	type BashBgJob,
+	type BashBgJobStore,
 	type BashOperations,
 	type BashSpawnContext,
 	type BashSpawnHook,
 	type BashToolDetails,
 	type BashToolInput,
 	type BashToolOptions,
+	createBashBgJobStore,
 	createBashToolDefinition,
 	createEditToolDefinition,
 	createFindToolDefinition,

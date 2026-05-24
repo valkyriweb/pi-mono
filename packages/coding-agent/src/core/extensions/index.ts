@@ -2,8 +2,10 @@
  * Extension system for lifecycle events and custom tools.
  */
 
+export { AGENTS_ENGINE_SERVICE_ID, type AgentEngine, type AgentParentSnapshot } from "../agents/engine.ts";
 export type { SlashCommandInfo, SlashCommandSource } from "../slash-commands.ts";
 export type { SourceInfo } from "../source-info.ts";
+export { BASH_BG_JOBS_SERVICE_ID } from "./bash-bg-jobs.ts";
 export {
 	createExtensionRuntime,
 	discoverAndLoadExtensions,

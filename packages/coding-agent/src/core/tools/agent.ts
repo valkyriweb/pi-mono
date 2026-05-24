@@ -2,6 +2,7 @@ import type { AgentTool, AgentToolResult, ThinkingLevel } from "@earendil-works/
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
+import type { AgentEngine } from "../agents/engine.ts";
 import { type AgentToolParentServices, executeAgentTool } from "../agents/executor.ts";
 import {
 	cancelAgentRecentRun,
@@ -20,7 +21,6 @@ import type {
 } from "../agents/types.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
 import type { ReadonlySessionManager } from "../session-manager.ts";
-import { LocalAgentTask } from "../tasks/index.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 
 const contextModeSchema = Type.Union([
@@ -125,6 +125,8 @@ export interface AgentToolOptions {
 	toolName?: "agent" | "Agent" | "Task";
 	label?: string;
 	description?: string;
+	engine?: AgentEngine;
+	getEngine?: () => AgentEngine | undefined;
 	parentServices?: AgentToolParentServices;
 	getParentActiveTools?: () => string[];
 	getParentSessionManager?: () => ReadonlySessionManager;
@@ -398,7 +400,35 @@ function detailsFromControlResult(
 	};
 }
 
-async function executeAgentControlAction(params: AgentToolInput): Promise<AgentToolResult<AgentToolDetails>> {
+async function executeLegacyAgentControlAction(params: AgentToolInput): Promise<AgentToolResult<AgentToolDetails>> {
+	if (!params.runId) throw new Error(`agent control action ${params.action} requires runId`);
+	if (params.action === "inject") {
+		if (!params.message) throw new Error("agent control action inject requires message");
+		await interruptAgentRecentRun(params.runId);
+		const resumed = await resumeAgentRecentRun(params.runId, params.message);
+		const detailText = formatAgentStatus(undefined, params.runId);
+		return {
+			content: [{ type: "text", text: `${resumed.message}\n\n${detailText}` }],
+			details: detailsFromControlResult(resumed),
+		};
+	}
+	const result =
+		params.action === "interrupt"
+			? await interruptAgentRecentRun(params.runId)
+			: params.action === "cancel"
+				? await cancelAgentRecentRun(params.runId)
+				: await resumeAgentRecentRun(params.runId, params.message);
+	const detailText = formatAgentStatus(undefined, params.runId);
+	return {
+		content: [{ type: "text", text: `${result.message}\n\n${detailText}` }],
+		details: detailsFromControlResult(result),
+	};
+}
+
+async function executeAgentControlAction(
+	params: AgentToolInput,
+	engine?: AgentEngine,
+): Promise<AgentToolResult<AgentToolDetails>> {
 	if (countExecutionModes(params) > 0) {
 		throw new Error("agent tool control actions cannot be combined with {agent, task}, {tasks}, or {chain}");
 	}
@@ -407,45 +437,12 @@ async function executeAgentControlAction(params: AgentToolInput): Promise<AgentT
 	if (action === "status" || action === "detail") {
 		return { content: [{ type: "text", text: formatAgentStatus(undefined, params.runId) }] };
 	}
-	if (!params.runId) throw new Error(`agent control action ${action} requires runId`);
-	if (action === "inject") {
-		if (!params.message) throw new Error("agent control action inject requires message");
-		if (!LocalAgentTask.injectMessage) throw new Error("agent inject is not supported in this runtime");
-		const injected = await LocalAgentTask.injectMessage(params.runId, params.message);
-		const snapshot = injected.snapshot;
-		const detailText = formatAgentStatus(undefined, params.runId);
-		const toolStatus: AgentToolDetails["status"] | undefined = snapshot
-			? snapshot.status === "killed"
-				? "cancelled"
-				: snapshot.status === "idle"
-					? "running"
-					: snapshot.status
-			: undefined;
-		return {
-			content: [{ type: "text", text: `${injected.message}\n\n${detailText}` }],
-			details:
-				snapshot && toolStatus
-					? {
-							mode: "single",
-							status: toolStatus,
-							runs: [],
-							runId: snapshot.id,
-							background: true,
-							message: injected.message,
-						}
-					: undefined,
-		};
-	}
-	const result =
-		action === "interrupt"
-			? await interruptAgentRecentRun(params.runId)
-			: action === "cancel"
-				? await cancelAgentRecentRun(params.runId)
-				: await resumeAgentRecentRun(params.runId, params.message);
+	if (!engine) return executeLegacyAgentControlAction(params);
+	const details = await engine.control(params);
 	const detailText = formatAgentStatus(undefined, params.runId);
 	return {
-		content: [{ type: "text", text: `${result.message}\n\n${detailText}` }],
-		details: detailsFromControlResult(result),
+		content: [{ type: "text", text: `${details?.message ?? "Agent control action completed"}\n\n${detailText}` }],
+		details,
 	};
 }
 
@@ -500,45 +497,47 @@ export function createAgentToolDefinition(
 		executionMode: "parallel",
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const normalizedParams = normalizeAgentToolAliases(params);
-			if (normalizedParams.action) return executeAgentControlAction(normalizedParams);
-			if (!options?.parentServices || !options.getParentActiveTools || !options.getParentSessionManager) {
-				throw new Error("agent tool is unavailable in this runtime");
-			}
+			const engine = options?.engine ?? options?.getEngine?.();
+			if (normalizedParams.action) return executeAgentControlAction(normalizedParams, engine);
 			await confirmProjectAgentsIfNeeded(normalizedParams, ctx);
 			const mode = normalizeAgentToolMode(normalizedParams);
-			const details = await executeAgentTool(
-				{
-					mode: mode.mode,
-					tasks: mode.tasks,
-					concurrency: normalizedParams.concurrency,
-					context: normalizedParams.context,
-					extraContext: normalizedParams.extraContext,
-					model: normalizedParams.model,
-					tools: normalizedParams.tools,
-					thinking: normalizedParams.thinking,
-					output: normalizedParams.output,
-					outputMode: normalizedParams.outputMode,
-					chainDir: normalizedParams.chainDir,
-					background: normalizedParams.background,
-					agentScope: normalizedParams.agentScope,
-				},
-				{
+			const input = {
+				mode: mode.mode,
+				tasks: mode.tasks,
+				concurrency: normalizedParams.concurrency,
+				context: normalizedParams.context,
+				extraContext: normalizedParams.extraContext,
+				model: normalizedParams.model,
+				tools: normalizedParams.tools,
+				thinking: normalizedParams.thinking,
+				output: normalizedParams.output,
+				outputMode: normalizedParams.outputMode,
+				chainDir: normalizedParams.chainDir,
+				background: normalizedParams.background,
+				agentScope: normalizedParams.agentScope,
+			};
+			const progressHandler = (progress: AgentExecutionProgress) => {
+				onUpdate?.({ content: [{ type: "text", text: formatProgress(progress) }], details: progress });
+			};
+			let details: AgentToolDetails;
+			if (engine) {
+				details = await engine.run(input, { signal, onProgress: progressHandler });
+			} else {
+				if (!options?.parentServices || !options.getParentActiveTools || !options.getParentSessionManager) {
+					throw new Error("agent tool is unavailable in this runtime");
+				}
+				details = await executeAgentTool(input, {
 					parentServices: options.parentServices,
 					parentActiveTools: options.getParentActiveTools(),
 					parentSessionManager: options.getParentSessionManager(),
 					parentModel: options.getParentModel?.(),
 					parentThinkingLevel: options.getParentThinkingLevel?.() ?? "off",
-					// Capture frozen turn-start system prompt once at execute() time.
-					// All parallel fork children receive the same bytes — prevents
-					// extension-state divergence between concurrent spawns.
 					parentSystemPrompt: options.getParentSystemPrompt?.(),
 					onBackgroundTerminal: options.onBackgroundTerminal,
 					signal,
-					onProgress: (progress) => {
-						onUpdate?.({ content: [{ type: "text", text: formatProgress(progress) }], details: progress });
-					},
-				},
-			);
+					onProgress: progressHandler,
+				});
+			}
 			return { content: [{ type: "text", text: formatFinalResult(details) }], details };
 		},
 		renderCall(args, theme, context) {
