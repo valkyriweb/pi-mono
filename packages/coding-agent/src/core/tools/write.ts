@@ -270,14 +270,3 @@ export function createWriteToolDefinition(
 export function createWriteTool(cwd: string, options?: WriteToolOptions): AgentTool<typeof writeSchema> {
 	return wrapToolDefinition(createWriteToolDefinition(cwd, options));
 }
-
-export function createUppercaseWriteToolDefinition(
-	cwd: string,
-	options?: WriteToolOptions,
-): ToolDefinition<typeof writeSchema, undefined> {
-	return createWriteToolDefinition(cwd, { ...options, toolName: "Write", label: "Write" });
-}
-
-export function createUppercaseWriteTool(cwd: string, options?: WriteToolOptions): AgentTool<typeof writeSchema> {
-	return wrapToolDefinition(createUppercaseWriteToolDefinition(cwd, options));
-}

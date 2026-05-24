@@ -30,14 +30,7 @@ import {
 	createTaskTool,
 	createUppercaseAgentTool,
 	createUppercaseBashTool,
-	createUppercaseEditTool,
-	createUppercaseFindTool,
-	createUppercaseGrepTool,
-	createUppercaseLsTool,
-	createUppercaseReadTool,
-	createUppercaseWriteTool,
 	createWriteTool,
-	type ToolName,
 	withFileMutationQueue,
 } from "./tools/index.ts";
 
@@ -131,12 +124,6 @@ export {
 	createTaskTool,
 	createUppercaseAgentTool,
 	createUppercaseBashTool,
-	createUppercaseEditTool,
-	createUppercaseFindTool,
-	createUppercaseGrepTool,
-	createUppercaseLsTool,
-	createUppercaseReadTool,
-	createUppercaseWriteTool,
 };
 
 // Helper Functions
@@ -299,7 +286,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// `BashOutput`/`KillShell` are the read/stop half of the bash job-control trio.
 	// Sessions without pi-tool-search (which would re-add them via alwaysActive)
 	// previously got `Bash` without them, making run_in_background:true unusable.
-	const defaultActiveToolNames: ToolName[] = [
+	//
+	// `Read`/`Edit`/`Write`/`Grep`/`Find`/`Ls` are now provided by the
+	// my-pi/extensions/native-tool-aliases extension (not core), so they are
+	// referenced as plain strings rather than ToolName values.
+	const defaultActiveToolNames: string[] = [
 		"Read",
 		"Bash",
 		"BashOutput",

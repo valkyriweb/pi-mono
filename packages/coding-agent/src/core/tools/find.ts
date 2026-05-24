@@ -548,14 +548,3 @@ export function createFindToolDefinition(
 export function createFindTool(cwd: string, options?: FindToolOptions): AgentTool<typeof findSchema> {
 	return wrapToolDefinition(createFindToolDefinition(cwd, options));
 }
-
-export function createUppercaseFindToolDefinition(
-	cwd: string,
-	options?: FindToolOptions,
-): ToolDefinition<typeof findSchema, FindToolDetails | undefined> {
-	return createFindToolDefinition(cwd, { ...options, toolName: "Find", label: "Find" });
-}
-
-export function createUppercaseFindTool(cwd: string, options?: FindToolOptions): AgentTool<typeof findSchema> {
-	return wrapToolDefinition(createUppercaseFindToolDefinition(cwd, options));
-}

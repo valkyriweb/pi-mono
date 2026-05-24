@@ -9,6 +9,7 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { nativeToolAliasesFactory } from "./native-tool-aliases-factory.ts";
 
 // Mirrors my-pi/extensions/native-tool-aliases for the four WebFetch/WebSearch
 // marker tools. WebFetch/WebSearch are claude-bridge native server tools whose
@@ -88,7 +89,10 @@ describe("claude-bridge native tools", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			extensionFactories: [webMarkerToolsFactory],
+			// Read is now an extension-provided alias (PR #1C). Inject the test mirror
+			// of my-pi/extensions/native-tool-aliases so assertions that rely on Read
+			// being active see it.
+			extensionFactories: [nativeToolAliasesFactory, webMarkerToolsFactory],
 		});
 		await resourceLoader.reload();
 		return createAgentSession({
