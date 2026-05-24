@@ -530,14 +530,3 @@ export function createEditToolDefinition(
 export function createEditTool(cwd: string, options?: EditToolOptions): AgentTool<typeof editSchema> {
 	return wrapToolDefinition(createEditToolDefinition(cwd, options));
 }
-
-export function createUppercaseEditToolDefinition(
-	cwd: string,
-	options?: EditToolOptions,
-): ToolDefinition<typeof editSchema, EditToolDetails | undefined, EditRenderState> {
-	return createEditToolDefinition(cwd, { ...options, toolName: "Edit", label: "Edit" });
-}
-
-export function createUppercaseEditTool(cwd: string, options?: EditToolOptions): AgentTool<typeof editSchema> {
-	return wrapToolDefinition(createUppercaseEditToolDefinition(cwd, options));
-}

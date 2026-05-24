@@ -368,14 +368,3 @@ export function createReadToolDefinition(
 export function createReadTool(cwd: string, options?: ReadToolOptions): AgentTool<typeof readSchema> {
 	return wrapToolDefinition(createReadToolDefinition(cwd, options));
 }
-
-export function createUppercaseReadToolDefinition(
-	cwd: string,
-	options?: ReadToolOptions,
-): ToolDefinition<typeof readSchema, ReadToolDetails | undefined> {
-	return createReadToolDefinition(cwd, { ...options, toolName: "Read", label: "Read" });
-}
-
-export function createUppercaseReadTool(cwd: string, options?: ReadToolOptions): AgentTool<typeof readSchema> {
-	return wrapToolDefinition(createUppercaseReadToolDefinition(cwd, options));
-}

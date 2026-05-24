@@ -808,14 +808,3 @@ export function createGrepToolDefinition(
 export function createGrepTool(cwd: string, options?: GrepToolOptions): AgentTool<typeof grepSchema> {
 	return wrapToolDefinition(createGrepToolDefinition(cwd, options));
 }
-
-export function createUppercaseGrepToolDefinition(
-	cwd: string,
-	options?: GrepToolOptions,
-): ToolDefinition<typeof grepSchema, GrepToolDetails | undefined> {
-	return createGrepToolDefinition(cwd, { ...options, toolName: "Grep", label: "Grep" });
-}
-
-export function createUppercaseGrepTool(cwd: string, options?: GrepToolOptions): AgentTool<typeof grepSchema> {
-	return wrapToolDefinition(createUppercaseGrepToolDefinition(cwd, options));
-}

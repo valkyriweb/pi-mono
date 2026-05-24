@@ -17,7 +17,6 @@ import {
 	createGrepToolDefinition,
 	createLsTool,
 	createReadTool,
-	createUppercaseGrepToolDefinition,
 	createWriteTool,
 } from "../src/index.ts";
 import * as shellModule from "../src/utils/shell.ts";
@@ -31,9 +30,12 @@ const findTool = createFindTool(process.cwd());
 const lsTool = createLsTool(process.cwd());
 
 describe("capitalized built-in tool aliases", () => {
-	it("registers uppercase native tool names alongside lowercase compatibility names", () => {
+	// Read/Edit/Write/Grep/Find/Ls Uppercase aliases now live in
+	// my-pi/extensions/native-tool-aliases (PR #1C). Only Bash/Agent/Task Uppercase
+	// variants remain in core.
+	it("registers Bash/Agent/Task Uppercase variants alongside lowercase", () => {
 		const tools = createAllToolDefinitions(process.cwd());
-		for (const name of ["Read", "Bash", "Edit", "Write", "Grep", "Find", "Ls", "Agent", "Task"]) {
+		for (const name of ["Bash", "Agent", "Task"]) {
 			expect(tools).toHaveProperty(name);
 			expect(tools[name as keyof typeof tools].name).toBe(name);
 		}
@@ -867,12 +869,11 @@ describe("Coding Agent Tools", () => {
 
 		it("should expose Claude-style output fields in the schema", () => {
 			const definition = createGrepToolDefinition(process.cwd());
-			const uppercaseDefinition = createUppercaseGrepToolDefinition(process.cwd());
+			// Uppercase Grep is now extension-provided via native-tool-aliases.
+			// Verify the lowercase factory still exposes the Claude-style fields.
 			const properties = (definition.parameters as any).properties;
 
 			expect(definition.name).toBe("grep");
-			expect(uppercaseDefinition.name).toBe("Grep");
-			expect(uppercaseDefinition.parameters).toBe(definition.parameters);
 			expect(properties.outputMode).toBeDefined();
 			expect(properties.output_mode).toBeDefined();
 			expect(properties.headLimit).toBeDefined();

@@ -245,14 +245,3 @@ export function createLsToolDefinition(
 export function createLsTool(cwd: string, options?: LsToolOptions): AgentTool<typeof lsSchema> {
 	return wrapToolDefinition(createLsToolDefinition(cwd, options));
 }
-
-export function createUppercaseLsToolDefinition(
-	cwd: string,
-	options?: LsToolOptions,
-): ToolDefinition<typeof lsSchema, LsToolDetails | undefined> {
-	return createLsToolDefinition(cwd, { ...options, toolName: "Ls", label: "Ls" });
-}
-
-export function createUppercaseLsTool(cwd: string, options?: LsToolOptions): AgentTool<typeof lsSchema> {
-	return wrapToolDefinition(createUppercaseLsToolDefinition(cwd, options));
-}

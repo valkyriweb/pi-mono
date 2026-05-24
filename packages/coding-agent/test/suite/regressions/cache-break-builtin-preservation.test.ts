@@ -16,6 +16,7 @@
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../../src/core/extensions/types.ts";
+import { nativeToolAliasesFactory } from "../../native-tool-aliases-factory.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 function registerFakeTool(pi: ExtensionAPI, name: string, opts?: { alwaysLoad?: boolean }): void {
@@ -41,6 +42,7 @@ describe("cache-break Fix #3 — builtin preservation across setActiveToolsByNam
 	it("preserves previously-active builtins when caller passes a narrow extension-only list", async () => {
 		const harness = await createHarness({
 			extensionFactories: [
+				nativeToolAliasesFactory,
 				(pi) => {
 					registerFakeTool(pi, "ext_one");
 				},

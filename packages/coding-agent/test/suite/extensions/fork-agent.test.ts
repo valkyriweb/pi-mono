@@ -180,10 +180,16 @@ describe("ctx.forkAgent", () => {
 		expect(childPrompts[0]).toBe(childPrompts[1]);
 	});
 
+	// Uses "Bash" (still core after PR #1C) rather than "Read" (now provided by
+	// my-pi/extensions/native-tool-aliases). Test-harness child sessions create a
+	// fresh DefaultResourceLoader that doesn't inherit the parent's in-memory
+	// extensionFactories, so extension-provided tools don't propagate to child API
+	// calls. Production isn't affected: child loaders discover on-disk extensions
+	// the same way the parent does. See docs/tool-inventory-2026-05-23.md PR #1C.
 	it("intersects allowedTools with the parent's active tool list", async () => {
 		const captured = newCaptured();
 		const record: ContextRecord = { contexts: [] };
-		const { factory } = forkExtensionFactory(captured, { allowedTools: ["Read"] });
+		const { factory } = forkExtensionFactory(captured, { allowedTools: ["Bash"] });
 		const harness = await createHarness({ extensionFactories: [factory] });
 		harnesses.push(harness);
 		makeAgentServices(harness);
@@ -191,11 +197,11 @@ describe("ctx.forkAgent", () => {
 
 		await harness.session.prompt("go");
 		const details = await captured.handle!.wait();
-		expect(details.runs[0]?.effectiveTools).toEqual(["Read"]);
+		expect(details.runs[0]?.effectiveTools).toEqual(["Bash"]);
 
 		const childContext = record.contexts.find(isChildContext);
 		const childToolNames = (childContext?.tools ?? []).map((tool) => tool.name);
-		expect(childToolNames).toEqual(["Read"]);
+		expect(childToolNames).toEqual(["Bash"]);
 	});
 
 	it("aborts the run within ~1s when the caller signals", async () => {
