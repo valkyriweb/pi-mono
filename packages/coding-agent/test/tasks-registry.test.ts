@@ -125,7 +125,11 @@ describe("tasks registry — LocalAgentTask adapter", () => {
 		expect(result?.snapshot?.resumable).toBe(true);
 	});
 
-	test("injectMessage interrupts a running task then resumes with the message", async () => {
+	test("injectMessage on a running task calls controller.inject with the message", async () => {
+		// Behavior set by commit 849b3e11 ("steer input into running background
+		// agents"): running tasks now use a single controller.inject(message) call
+		// instead of the previous interrupt→resume pattern, so the message is
+		// delivered at the next turn boundary without tearing down the loop.
 		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map" }], { background: true });
 		updateAgentRecentRunProgress(run, {
 			mode: "single",
@@ -134,11 +138,13 @@ describe("tasks registry — LocalAgentTask adapter", () => {
 		});
 		const interrupt = vi.fn();
 		const resume = vi.fn();
-		attachAgentRecentRunController(run.id, { interrupt, resume });
+		const inject = vi.fn();
+		attachAgentRecentRunController(run.id, { interrupt, resume, inject });
 
 		const result = await LocalAgentTask.injectMessage?.(run.id, "look at config.ts");
-		expect(interrupt).toHaveBeenCalledOnce();
-		expect(resume).toHaveBeenCalledWith("look at config.ts");
+		expect(inject).toHaveBeenCalledWith("look at config.ts");
+		expect(interrupt).not.toHaveBeenCalled();
+		expect(resume).not.toHaveBeenCalled();
 		expect(result?.ok).toBe(true);
 	});
 

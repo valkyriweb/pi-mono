@@ -6,7 +6,9 @@
  *
  *   Task.kill            → cancelAgentRecentRun     (hard abort)
  *   Task.requestShutdown → interruptAgentRecentRun  (cooperative, resumable)
- *   Task.injectMessage   → interrupt → resume(msg)  (turn-boundary steer)
+ *   Task.injectMessage   → injectAgentRecentRun     (running: deliver mid-loop
+ *                                                    via controller.inject)
+ *                       → resumeAgentRecentRun     (otherwise: prompt-resume)
  *
  * No behavior change to the underlying registry — this is a pure facade so the
  * TUI (Layer B) can talk to one interface regardless of task flavor.
