@@ -5,6 +5,7 @@
 ### Fixed
 
 - Fixed `Shift+Enter` in Apple Terminal by detecting local macOS modifier state when Terminal.app sends plain Return.
+- Fixed Windows Terminal capability detection to enable OSC 8 hyperlinks, preserving clickable long URLs across wrapped lines ([#4923](https://github.com/earendil-works/pi/issues/4923)).
 
 ## [0.75.5] - 2026-05-23
 
