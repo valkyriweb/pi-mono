@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { Agent, type AgentMessage, type ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { clampThinkingLevel, type Message, type Model, streamSimple } from "@earendil-works/pi-ai";
 import { getAgentDir } from "../config.ts";
+import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
 import { AuthStorage } from "./auth-storage.ts";
@@ -29,14 +30,7 @@ import {
 	createTaskTool,
 	createUppercaseAgentTool,
 	createUppercaseBashTool,
-	createUppercaseEditTool,
-	createUppercaseFindTool,
-	createUppercaseGrepTool,
-	createUppercaseLsTool,
-	createUppercaseReadTool,
-	createUppercaseWriteTool,
 	createWriteTool,
-	type ToolName,
 	withFileMutationQueue,
 } from "./tools/index.ts";
 
@@ -130,12 +124,6 @@ export {
 	createTaskTool,
 	createUppercaseAgentTool,
 	createUppercaseBashTool,
-	createUppercaseEditTool,
-	createUppercaseFindTool,
-	createUppercaseGrepTool,
-	createUppercaseLsTool,
-	createUppercaseReadTool,
-	createUppercaseWriteTool,
 };
 
 // Helper Functions
@@ -147,7 +135,15 @@ function getDefaultAgentDir(): string {
 function getAttributionHeaders(
 	model: Model<any>,
 	settingsManager: SettingsManager,
+	sessionId?: string,
 ): Record<string, string> | undefined {
+	if (
+		sessionId &&
+		(model.provider === "opencode" || model.provider === "opencode-go" || model.baseUrl.includes("opencode.ai"))
+	) {
+		return { "x-opencode-session": sessionId, "x-opencode-client": "pi" };
+	}
+
 	if (!isInstallTelemetryEnabled(settingsManager)) {
 		return undefined;
 	}
@@ -210,8 +206,8 @@ function getAttributionHeaders(
  * ```
  */
 export async function createAgentSession(options: CreateAgentSessionOptions = {}): Promise<CreateAgentSessionResult> {
-	const cwd = options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd();
-	const agentDir = options.agentDir ?? getDefaultAgentDir();
+	const cwd = resolvePath(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
+	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getDefaultAgentDir();
 	let resourceLoader = options.resourceLoader;
 
 	// Use provided or create AuthStorage and ModelRegistry
@@ -290,7 +286,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// `BashOutput`/`KillShell` are the read/stop half of the bash job-control trio.
 	// Sessions without pi-tool-search (which would re-add them via alwaysActive)
 	// previously got `Bash` without them, making run_in_background:true unusable.
-	const defaultActiveToolNames: ToolName[] = [
+	//
+	// `Read`/`Edit`/`Write`/`Grep`/`Find`/`Ls` are now provided by the
+	// my-pi/extensions/native-tool-aliases extension (not core), so they are
+	// referenced as plain strings rather than ToolName values.
+	const defaultActiveToolNames: string[] = [
 		"Read",
 		"Bash",
 		"BashOutput",
@@ -389,7 +389,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				throw new Error(auth.error);
 			}
 			const providerRetrySettings = settingsManager.getProviderRetrySettings();
-			const attributionHeaders = getAttributionHeaders(model, settingsManager);
+			const attributionHeaders = getAttributionHeaders(model, settingsManager, options?.sessionId);
 			return streamSimple(model, context, {
 				...options,
 				apiKey: auth.apiKey,
@@ -403,11 +403,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		},
 		onPayload: async (payload, _model) => {
-			const runner = extensionRunnerRef.current;
-			if (!runner?.hasHandlers("before_provider_request")) {
-				return payload;
-			}
-			return runner.emitBeforeProviderRequest(payload);
+			return extensionRunnerRef.current?.emitBeforeProviderRequest(payload) ?? payload;
 		},
 		onResponse: async (response, _model) => {
 			const runner = extensionRunnerRef.current;

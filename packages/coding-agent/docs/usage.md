@@ -146,8 +146,8 @@ pi agents --bg <task>      # Start a detached background task, then show Agent V
 pi install <source> [-l]     # Install package, -l for project-local
 pi remove <source> [-l]      # Remove package
 pi uninstall <source> [-l]   # Alias for remove
-pi update [source|self|pi]   # Update pi and packages; skips pinned packages
-pi update --extensions       # Update packages only
+pi update [source|self|pi]   # Update pi and packages; reconcile pinned git refs
+pi update --extensions       # Update packages only; reconcile pinned git refs
 pi update --self             # Update pi only
 pi update --extension <src>  # Update one package
 pi list                      # List installed packages

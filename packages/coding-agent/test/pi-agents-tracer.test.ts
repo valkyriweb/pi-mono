@@ -22,7 +22,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { executeAgentTool } from "../src/core/agents/executor.ts";
 import { clearAgentExtensionDefinitionsProviderForTests } from "../src/core/agents/extension-source.ts";
 import { findAgentDefinition, loadAgentRegistry } from "../src/core/agents/registry.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -30,12 +32,14 @@ import { discoverAndLoadExtensions } from "../src/core/extensions/loader.ts";
 import { ExtensionRunner } from "../src/core/extensions/runner.ts";
 import type {
 	ExtensionActions,
+	ExtensionAPI,
 	ExtensionContextActions,
 	LoadExtensionsResult,
 	RunRegistry,
 } from "../src/core/extensions/types.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { createHarness } from "./suite/harness.ts";
 
 describe("pi-agents tracer (issue 07)", () => {
 	let tempDir: string;
@@ -67,6 +71,8 @@ describe("pi-agents tracer (issue 07)", () => {
 		setLabel: () => {},
 		getActiveTools: () => [],
 		getAllTools: () => [],
+		getToolDefinitions: () => [],
+		getCustomEntries: () => [],
 		setActiveTools: () => {},
 		refreshTools: () => {},
 		getCommands: () => [],
@@ -192,6 +198,51 @@ describe("pi-agents tracer (issue 07)", () => {
 
 		// Extension defs merge after user/project sources; same-id entries win.
 		expect(general?.description).toBe("general from pi-agents (post-extraction)");
+	});
+
+	it("executes the extension-registered tracer agent without pi-agent-ui", async () => {
+		const piAgentsFactory = (pi: ExtensionAPI): void => {
+			pi.registerAgentDefinitions([
+				{
+					id: "tracer",
+					description: "Headless tracer agent owned by pi-agents (issue 07 extraction bullet).",
+					prompt: "You are the pi-agents headless tracer agent.",
+					source: "builtin",
+					defaultContext: "default",
+					inheritProjectContext: false,
+					inheritSkills: false,
+				},
+			]);
+		};
+		const harness = await createHarness({ extensionFactories: [piAgentsFactory] });
+		harness.setResponses([fauxAssistantMessage("tracer child completed")]);
+
+		try {
+			await harness.session.bindExtensions({});
+			const details = await executeAgentTool(
+				{ mode: "single", tasks: [{ agent: "tracer", task: "prove headless execution" }] },
+				{
+					parentServices: {
+						cwd: harness.tempDir,
+						agentDir: harness.tempDir,
+						authStorage: harness.authStorage,
+						settingsManager: harness.settingsManager,
+						modelRegistry: harness.session.modelRegistry,
+					},
+					parentActiveTools: [],
+					parentSessionManager: harness.sessionManager,
+					parentModel: harness.getModel(),
+					parentThinkingLevel: "off",
+				},
+			);
+
+			expect(details.status).toBe("completed");
+			expect(details.runs[0]?.agent).toBe("tracer");
+			expect(details.runs[0]?.finalOutput).toContain("tracer child completed");
+			expect(harness.getPendingResponseCount()).toBe(0);
+		} finally {
+			harness.cleanup();
+		}
 	});
 
 	it("exposes pi-agents run state through ctx.getRunRegistry for headless consumers", async () => {

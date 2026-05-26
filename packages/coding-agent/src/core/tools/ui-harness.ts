@@ -36,7 +36,11 @@ import { CATALOG_PROMPT } from "./ui-harness-prompt.ts";
  * input in, LayoutGraph out. No side effects required, no Pi-specific
  * surface — easy to substitute, easy to test.
  */
-export type UIHarness = (input: BuildInterfaceInput) => Promise<LayoutGraph>;
+export interface UIHarnessOptions {
+	signal?: AbortSignal;
+}
+
+export type UIHarness = (input: BuildInterfaceInput, options?: UIHarnessOptions) => Promise<LayoutGraph>;
 
 // ============================================================================
 // Test helpers
@@ -165,12 +169,12 @@ export interface LLMHarnessOptions {
  */
 export function createLLMHarness(options: LLMHarnessOptions): UIHarness {
 	const systemPrompt = options.systemPrompt ?? CATALOG_PROMPT;
-	return async (input) => {
+	return async (input, runOptions) => {
 		const userPrompt = formatHarnessUserPrompt(input);
 		const raw = await options.call({
 			system: systemPrompt,
 			user: userPrompt,
-			signal: options.signal,
+			signal: runOptions?.signal ?? options.signal,
 		});
 		const parsed = parseHarnessJSON(raw);
 		return validateLayoutGraph(parsed);

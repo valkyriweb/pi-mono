@@ -15,7 +15,8 @@ import type { KeybindingsConfig } from "../keybindings.ts";
 import type { ModelRegistry } from "../model-registry.ts";
 import type { SessionManager } from "../session-manager.ts";
 import type { BuildSystemPromptOptions } from "../system-prompt.ts";
-import { loadDeferredExtension } from "./loader.ts";
+import { applyFilters } from "./extension-hooks.ts";
+import { getExtensionProcessService, loadDeferredExtension } from "./loader.ts";
 import type {
 	AgentTelemetry,
 	BeforeAgentStartEvent,
@@ -321,6 +322,8 @@ export class ExtensionRunner {
 		this.runtime.setLabel = actions.setLabel;
 		this.runtime.getActiveTools = actions.getActiveTools;
 		this.runtime.getAllTools = actions.getAllTools;
+		this.runtime.getToolDefinitions = actions.getToolDefinitions;
+		this.runtime.getCustomEntries = actions.getCustomEntries;
 		this.runtime.setActiveTools = actions.setActiveTools;
 		this.runtime.refreshTools = actions.refreshTools;
 		this.runtime.getCommands = actions.getCommands;
@@ -421,6 +424,14 @@ export class ExtensionRunner {
 
 	getDeferredExtensionPaths(): string[] {
 		return this.deferredExtensions.map((e) => e.path);
+	}
+
+	getService<T>(id: string): T | undefined {
+		return this.runtime.services.has(id) ? (this.runtime.services.get(id) as T) : getExtensionProcessService<T>(id);
+	}
+
+	setService<T>(id: string, service: T): void {
+		this.runtime.services.set(id, service);
 	}
 
 	loadDeferredExtensions(): Promise<void> {
@@ -1011,6 +1022,29 @@ export class ExtensionRunner {
 			}
 		}
 
+		try {
+			const filteredMessage = await applyFilters("message:end", currentMessage, event);
+			if (filteredMessage !== currentMessage) {
+				if (filteredMessage.role !== currentMessage.role) {
+					this.emitError({
+						extensionPath: "<hook-filter:message:end>",
+						event: "message:end",
+						error: "message:end filters must return a message with the same role",
+					});
+				} else {
+					currentMessage = filteredMessage;
+					modified = true;
+				}
+			}
+		} catch (err) {
+			this.emitError({
+				extensionPath: "<hook-filter:message:end>",
+				event: "message:end",
+				error: err instanceof Error ? err.message : String(err),
+				stack: err instanceof Error ? err.stack : undefined,
+			});
+		}
+
 		return modified ? currentMessage : undefined;
 	}
 
@@ -1184,6 +1218,17 @@ export class ExtensionRunner {
 			}
 		}
 
+		try {
+			currentPayload = await applyFilters("provider:beforeRequest", currentPayload);
+		} catch (err) {
+			this.emitError({
+				extensionPath: "<hook-filter:provider:beforeRequest>",
+				event: "provider:beforeRequest",
+				error: err instanceof Error ? err.message : String(err),
+				stack: err instanceof Error ? err.stack : undefined,
+			});
+		}
+
 		return currentPayload;
 	}
 
@@ -1218,6 +1263,20 @@ export class ExtensionRunner {
 	): Promise<BeforeAgentStartCombinedResult | undefined> {
 		if (this.staleMessage) return undefined;
 		let currentSystemPrompt = systemPrompt;
+		try {
+			currentSystemPrompt = await applyFilters("systemPrompt:build", currentSystemPrompt, systemPromptOptions, {
+				prompt,
+				images,
+				preview,
+			});
+		} catch (err) {
+			this.emitError({
+				extensionPath: "<hook-filter:systemPrompt:build>",
+				event: "systemPrompt:build",
+				error: err instanceof Error ? err.message : String(err),
+				stack: err instanceof Error ? err.stack : undefined,
+			});
+		}
 		const ctx = Object.defineProperties(
 			{},
 			Object.getOwnPropertyDescriptors(this.createContext()),
@@ -1226,8 +1285,14 @@ export class ExtensionRunner {
 			this.assertActive();
 			return currentSystemPrompt;
 		};
+		ctx.forkAgent = (opts) => {
+			this.assertActive();
+			const context = opts.context ?? "fork";
+			const shouldPreserveForkPrompt = context === "fork" && opts.systemPrompt === undefined;
+			return this.forkAgentFn(shouldPreserveForkPrompt ? { ...opts, systemPrompt: currentSystemPrompt } : opts);
+		};
 		const messages: NonNullable<BeforeAgentStartEventResult["message"]>[] = [];
-		let systemPromptModified = false;
+		let systemPromptModified = currentSystemPrompt !== systemPrompt;
 
 		for (const ext of this.extensions) {
 			const handlers = ext.handlers.get("before_agent_start");

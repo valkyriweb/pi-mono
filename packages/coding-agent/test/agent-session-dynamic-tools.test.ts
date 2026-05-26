@@ -134,6 +134,53 @@ describe("AgentSession dynamic tool registration", () => {
 		session.dispose();
 	});
 
+	it("adds tool_search when a deferred extension is the first deferred-tool provider", async () => {
+		writeFileSync(
+			join(tempDir, "package.json"),
+			JSON.stringify({ pi: { extensions: [{ path: "./deferred-extension.mjs", load: "deferred" }] } }),
+		);
+		writeFileSync(
+			join(tempDir, "deferred-extension.mjs"),
+			`
+				export default function(pi) {
+					pi.registerTool({
+						name: "late_deferred_tool",
+						label: "Late Deferred Tool",
+						description: "Deferred tool registered after startup",
+						promptSnippet: "Run late deferred behavior",
+						deferLoading: true,
+						searchHint: "late deferred probe",
+						parameters: { type: "object", properties: {}, additionalProperties: false },
+						execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
+					});
+				}
+			`,
+		);
+
+		const settingsManager = SettingsManager.create(tempDir, agentDir);
+		settingsManager.setProjectPackages([tempDir]);
+		const sessionManager = SessionManager.inMemory();
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir,
+			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			settingsManager,
+			sessionManager,
+		});
+
+		expect(session.getAllTools().map((tool) => tool.name)).not.toContain("tool_search");
+		await session.bindExtensions({});
+		await new Promise((resolve) => setTimeout(resolve, 350));
+
+		expect(session.getAllTools().map((tool) => tool.name)).toEqual(
+			expect.arrayContaining(["late_deferred_tool", "tool_search"]),
+		);
+		expect(session.getActiveToolNames()).toContain("tool_search");
+		expect(session.getActiveToolNames()).not.toContain("late_deferred_tool");
+
+		session.dispose();
+	});
+
 	it("returns source metadata for SDK custom tools", async () => {
 		const settingsManager = SettingsManager.create(tempDir, agentDir);
 		const sessionManager = SessionManager.inMemory();
@@ -219,6 +266,188 @@ describe("AgentSession dynamic tool registration", () => {
 		expect(session.getActiveToolNames()).toContain("hidden_tool");
 		expect(session.systemPrompt).not.toContain("hidden_tool");
 		expect(session.systemPrompt).not.toContain("Description should not appear in available tools");
+
+		session.dispose();
+	});
+
+	it("lets extensions persist typed state in custom session entries", async () => {
+		const settingsManager = SettingsManager.create(tempDir, agentDir);
+		const sessionManager = SessionManager.inMemory();
+		sessionManager.appendCustomEntry("test.counter", { count: 2 });
+		let observedCount = 0;
+
+		const resourceLoader = new DefaultResourceLoader({
+			cwd: tempDir,
+			agentDir,
+			settingsManager,
+			extensionFactories: [
+				(pi) => {
+					const counter = pi.state("test.counter", {
+						defaultValue: { count: 0 },
+						merge: (_previous, next) => next,
+						parse: (value) =>
+							value && typeof value === "object" && typeof (value as { count?: unknown }).count === "number"
+								? { count: (value as { count: number }).count }
+								: undefined,
+					});
+					pi.on("session_start", () => {
+						observedCount = counter.update((current) => ({ count: current.count + 1 })).count;
+					});
+				},
+			],
+		});
+		await resourceLoader.reload();
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir,
+			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			settingsManager,
+			sessionManager,
+			resourceLoader,
+		});
+
+		await session.bindExtensions({});
+
+		expect(observedCount).toBe(3);
+		expect(
+			sessionManager
+				.getBranch()
+				.flatMap((entry) => (entry.type === "custom" && entry.customType === "test.counter" ? [entry.data] : [])),
+		).toEqual([{ count: 2 }, { count: 3 }]);
+
+		session.dispose();
+	});
+
+	it("exposes full tool definitions through the fluent tools view", async () => {
+		const settingsManager = SettingsManager.create(tempDir, agentDir);
+		const sessionManager = SessionManager.inMemory();
+		let deferredMetadata: { deferLoading?: boolean; searchHint?: string } | undefined;
+
+		const resourceLoader = new DefaultResourceLoader({
+			cwd: tempDir,
+			agentDir,
+			settingsManager,
+			extensionFactories: [
+				(pi) => {
+					pi.registerTool({
+						name: "deferred_extension_tool",
+						label: "Deferred Extension Tool",
+						description: "A deferred tool exposed through full definitions",
+						parameters: Type.Object({}),
+						deferLoading: true,
+						searchHint: "deferred metadata probe",
+						execute: async () => ({ content: [{ type: "text", text: "ok" }] }),
+					});
+					pi.on("session_start", () => {
+						const definition = pi.tools.definitions().find((tool) => tool.name === "deferred_extension_tool");
+						deferredMetadata = definition
+							? { deferLoading: definition.deferLoading, searchHint: definition.searchHint }
+							: undefined;
+					});
+				},
+			],
+		});
+		await resourceLoader.reload();
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir,
+			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			settingsManager,
+			sessionManager,
+			resourceLoader,
+		});
+
+		await session.bindExtensions({});
+
+		expect(deferredMetadata).toEqual({ deferLoading: true, searchHint: "deferred metadata probe" });
+
+		session.dispose();
+	});
+
+	it("shares opaque services between extensions without replacing the first registration", async () => {
+		const settingsManager = SettingsManager.create(tempDir, agentDir);
+		const sessionManager = SessionManager.inMemory();
+		let observedService: { owner: string } | undefined;
+
+		const resourceLoader = new DefaultResourceLoader({
+			cwd: tempDir,
+			agentDir,
+			settingsManager,
+			extensionFactories: [
+				(pi) => {
+					pi.harness.provide("test.service", { owner: "first" });
+				},
+				(pi) => {
+					pi.harness.provide("test.service", { owner: "second" });
+					pi.on("session_start", () => {
+						observedService = pi.harness.use<{ owner: string }>("test.service");
+					});
+				},
+			],
+		});
+		await resourceLoader.reload();
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir,
+			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			settingsManager,
+			sessionManager,
+			resourceLoader,
+		});
+
+		await session.bindExtensions({});
+
+		expect(observedService).toEqual({ owner: "first" });
+
+		session.dispose();
+	});
+
+	it("keeps process-scoped services across reload and invalidates stale extension APIs", async () => {
+		const settingsManager = SettingsManager.create(tempDir, agentDir);
+		const sessionManager = SessionManager.inMemory();
+		const serviceId = `test.reload.${Date.now()}.${Math.random()}`;
+		let generation = 0;
+		let capturedPi: { getActiveTools(): string[] } | undefined;
+		const observedGenerations: number[] = [];
+
+		const resourceLoader = new DefaultResourceLoader({
+			cwd: tempDir,
+			agentDir,
+			settingsManager,
+			extensionFactories: [
+				(pi) => {
+					generation += 1;
+					capturedPi = pi;
+					pi.harness.provide(serviceId, { generation }, { scope: "process" });
+					pi.on("session_start", () => {
+						const service = pi.harness.use<{ generation: number }>(serviceId);
+						if (service) observedGenerations.push(service.generation);
+					});
+				},
+			],
+		});
+		await resourceLoader.reload();
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir,
+			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			settingsManager,
+			sessionManager,
+			resourceLoader,
+		});
+
+		await session.bindExtensions({ shutdownHandler: () => {} });
+		const stalePi = capturedPi;
+		await session.reload();
+
+		expect(observedGenerations).toEqual([1, 1]);
+		expect(() => stalePi?.getActiveTools()).toThrow(
+			"This extension ctx is stale after session replacement or reload",
+		);
 
 		session.dispose();
 	});

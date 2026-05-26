@@ -9,8 +9,9 @@ import {
 	dispatchBuildInterface,
 	executeBuildInterface,
 } from "../../src/core/tools/build-interface.ts";
-import { LAYOUT_GRAPH_VERSION, nodeSchema } from "../../src/core/tools/layout-graph.ts";
+import { LAYOUT_GRAPH_VERSION, layoutGraphSchema, nodeSchema } from "../../src/core/tools/layout-graph.ts";
 import {
+	createLLMHarness,
 	type ExampleQuestionsData,
 	exampleQuestionsHarness,
 	exampleQuestionsInputId,
@@ -70,6 +71,39 @@ describe("dispatchBuildInterface", () => {
 			throw new Error("harness boom");
 		};
 		await expect(dispatchBuildInterface({ intent: "i", data: {} }, failing)).rejects.toThrow("harness boom");
+	});
+
+	it("passes abort signals to LLM harness calls", async () => {
+		const signal = AbortSignal.abort();
+		let receivedSignal: AbortSignal | undefined;
+		const harness = createLLMHarness({
+			call: async ({ signal }) => {
+				receivedSignal = signal;
+				return JSON.stringify(minimalGraph);
+			},
+		});
+		await dispatchBuildInterface({ intent: "i", data: {} }, harness, { signal });
+		expect(receivedSignal).toBe(signal);
+	});
+});
+
+describe("layoutGraphSchema", () => {
+	it("rejects empty option groups", () => {
+		expect(
+			Check(layoutGraphSchema, {
+				version: LAYOUT_GRAPH_VERSION,
+				root: { type: "radio_group", id: "choice", options: [] },
+			}),
+		).toBe(false);
+	});
+
+	it("rejects empty tab sets", () => {
+		expect(
+			Check(layoutGraphSchema, {
+				version: LAYOUT_GRAPH_VERSION,
+				root: { type: "tabs", tabs: [] },
+			}),
+		).toBe(false);
 	});
 });
 

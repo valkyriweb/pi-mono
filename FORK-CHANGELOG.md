@@ -34,6 +34,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Fixed
 
+- Fixed zoomed background-agent pane input semantics. Extension main panes can now handle `Escape` before core falls back to hiding the pane; `pi-agent-ui` uses this so `Esc` interrupts the zoomed agent while `alt+z` or `/exit-zoom` exits zoom. Text entered while zoomed now queues into the live child `AgentSession` via `steer()` for running background agents, falling back to resume-with-prompt only for already-interrupted resumable runs. The zoom UI also shows explicit queued/error status for submitted input. Known limitation: zoom input queues agent messages; it does not write stdin into an active bash tool process.
 - Improved interactive responsiveness under frequent render/status updates by scheduling TUI renders with `setImmediate` instead of `process.nextTick`, and caching footer cumulative usage totals between session-entry changes.
 - Included the built-in `grep`, `find`, `ls`, and `agent` tools in the default active tool set so the system prompt exposes them when no explicit tool allowlist is configured.
 - Added bounded default timeouts to the built-in `grep` and `find` tools with structured timeout results, partial output when available, AbortSignal preservation, and explicit `timeout` overrides up to 300 seconds.

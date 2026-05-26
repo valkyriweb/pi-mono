@@ -35,7 +35,7 @@ import { LayoutRenderer, type LayoutResponse } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import type { LayoutGraph } from "./layout-graph.ts";
-import type { UIHarness } from "./ui-harness.ts";
+import type { UIHarness, UIHarnessOptions } from "./ui-harness.ts";
 
 // ============================================================================
 // Public input schema — what the model fills in
@@ -84,8 +84,12 @@ export type { UIHarness } from "./ui-harness.ts";
  * The caller (the tool's `execute`) is responsible for mounting the
  * returned graph and producing the final tool result.
  */
-export async function dispatchBuildInterface(input: BuildInterfaceInput, harness: UIHarness): Promise<LayoutGraph> {
-	return harness(input);
+export async function dispatchBuildInterface(
+	input: BuildInterfaceInput,
+	harness: UIHarness,
+	options?: UIHarnessOptions,
+): Promise<LayoutGraph> {
+	return harness(input, options);
 }
 
 // ============================================================================
@@ -167,7 +171,7 @@ export async function executeBuildInterface(
 	}
 	if (signal?.aborted) throw new Error("Operation aborted");
 
-	const graph = await harness(params);
+	const graph = await harness(params, { signal });
 	if (signal?.aborted) throw new Error("Operation aborted");
 
 	const outcome = await ctx.ui.custom<RenderOutcome>(

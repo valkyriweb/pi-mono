@@ -19,7 +19,7 @@ CONTRACT
 - Return ONE JSON object matching the LayoutGraph schema. No prose, no code fences, no explanations.
 - Set "version" to "${LAYOUT_GRAPH_VERSION}".
 - Set "ephemeral": true for input-collection UIs; false only when the user will likely want to revisit the rendered display.
-- Use component ids that align with the caller's responseShape (when supplied): top-level keys of responseShape map 1:1 to component "id"s in radio_group / checkbox_group / text_input.
+- Use component ids that align with the caller's responseShape (when supplied): top-level keys of responseShape map 1:1 to component "id"s in radio_group / checkbox_group.
 
 CATALOG (the only node types you may emit)
 - { "type": "text", "value": string, "style"?: { color?, bold?, italic?, dim? } }
@@ -30,14 +30,12 @@ CATALOG (the only node types you may emit)
 - { "type": "tabs", "tabs": [{ "header": string, "content": Node }] }
 - { "type": "radio_group", "id": string, "options": [{ "value": string, "label": string, "description"?: string }] }
 - { "type": "checkbox_group", "id": string, "options": [{ "value": string, "label": string, "description"?: string }] }
-- { "type": "text_input", "id": string, "placeholder"?: string, "value"?: string, "multiline"?: boolean }
-- { "type": "button", "id": string, "label": string, "action": { "type": "submit", "collect": [string] } | { "type": "cancel" } }
 - { "type": "divider" }
 
 PATTERNS
 - "Ask N questions": one question → a single card with text + radio_group (single-select) or checkbox_group (multi-select). N > 1 → wrap each question's card in a "tabs" root with short headers.
-- "Ask free-form input": card containing a text_input.
-- "Confirm a destructive action": card with the message + two buttons (one submit, one cancel).
+- "Ask free-form input": card containing text that asks the user to answer in chat after closing the UI.
+- "Confirm a destructive action": card with the message + a radio_group whose id is "confirm" and whose options are "yes" and "no".
 - "Pick from a list": card with a radio_group.
 
 RULES

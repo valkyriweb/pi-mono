@@ -6,7 +6,9 @@
  *
  *   Task.kill            → cancelAgentRecentRun     (hard abort)
  *   Task.requestShutdown → interruptAgentRecentRun  (cooperative, resumable)
- *   Task.injectMessage   → interrupt → resume(msg)  (turn-boundary steer)
+ *   Task.injectMessage   → injectAgentRecentRun     (running: deliver mid-loop
+ *                                                    via controller.inject)
+ *                       → resumeAgentRecentRun     (otherwise: prompt-resume)
  *
  * No behavior change to the underlying registry — this is a pure facade so the
  * TUI (Layer B) can talk to one interface regardless of task flavor.
@@ -16,6 +18,7 @@ import type { AgentRecentRun } from "../agents/status.ts";
 import {
 	cancelAgentRecentRun,
 	findAgentRecentRun,
+	injectAgentRecentRun,
 	interruptAgentRecentRun,
 	resumeAgentRecentRun,
 } from "../agents/status.ts";
@@ -91,14 +94,9 @@ export const LocalAgentTask: Task = {
 		const current = findAgentRecentRun(taskId);
 		if (!current) return toControlResult(taskId, false, `Run not found: ${taskId}`);
 
-		// If still running, soft-stop first so the resume path can pick up the
-		// new prompt at the next turn boundary. Mirrors Claude's
-		// pendingUserMessages drain, except via interrupt+resume rather than an
-		// in-loop hook (see executor.ts audit — single `session.prompt()` call
-		// is opaque, no re-entry point today).
 		if (current.status === "running") {
-			const interrupt = await interruptAgentRecentRun(taskId);
-			if (!interrupt.ok) return toControlResult(taskId, false, interrupt.message);
+			const injected = await injectAgentRecentRun(taskId, trimmed);
+			return toControlResult(taskId, injected.ok, injected.message);
 		}
 
 		const resumed = await resumeAgentRecentRun(taskId, trimmed);

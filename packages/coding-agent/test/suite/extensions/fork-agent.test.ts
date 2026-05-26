@@ -2,7 +2,8 @@ import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { clearAgentRecentRunsForTests } from "../../../src/core/agents/status.ts";
-import type { AgentHandle, ExtensionAPI } from "../../../src/index.ts";
+import { deleteExtensionProcessServiceForTests } from "../../../src/core/extensions/loader.ts";
+import { AGENTS_ENGINE_SERVICE_ID, type AgentEngine, type AgentHandle, type ExtensionAPI } from "../../../src/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 interface CapturedFork {
@@ -82,6 +83,7 @@ function forkExtensionFactory(
 	options: {
 		allowedTools?: string[];
 		abortImmediately?: boolean;
+		context?: "fork" | "slim" | "none";
 		forkEveryTurn?: boolean;
 	} = {},
 ) {
@@ -96,6 +98,7 @@ function forkExtensionFactory(
 					prompt: `child task ${captured.beforeAgentStartCount}`,
 					description: "fork-agent test",
 					...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
+					...(options.context ? { context: options.context } : {}),
 					...(controller ? { signal: controller.signal } : {}),
 				});
 				captured.handle = result.handle;
@@ -115,6 +118,7 @@ describe("ctx.forkAgent", () => {
 	afterEach(() => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
 		clearAgentRecentRunsForTests();
+		deleteExtensionProcessServiceForTests(AGENTS_ENGINE_SERVICE_ID);
 	});
 
 	it("returns a handle that completes in the background and exposes a session id", async () => {
@@ -180,10 +184,110 @@ describe("ctx.forkAgent", () => {
 		expect(childPrompts[0]).toBe(childPrompts[1]);
 	});
 
+	it("forkAgent inherits system prompt rewrites from earlier before_agent_start handlers", async () => {
+		const captured = newCaptured();
+		const record: ContextRecord = { contexts: [] };
+		const rewrite = (pi: ExtensionAPI) => {
+			pi.on("before_agent_start", (event) => ({
+				systemPrompt: `${event.systemPrompt}\n\nRewrite marker for fork.`,
+			}));
+		};
+		const { factory, handles } = forkExtensionFactory(captured);
+		const harness = await createHarness({ extensionFactories: [rewrite, factory] });
+		harnesses.push(harness);
+		makeAgentServices(harness);
+		harness.setResponses([recordingFactory(record, "msg"), recordingFactory(record, "msg")]);
+
+		await harness.session.prompt("turn one");
+		await handles[0]?.wait();
+
+		const parent = record.contexts.find((ctx) => !isChildContext(ctx));
+		const child = record.contexts.find(isChildContext);
+		expect(parent?.systemPrompt).toContain("Rewrite marker for fork.");
+		expect(child?.systemPrompt).toBe(parent?.systemPrompt);
+	});
+
+	it("forkAgent preserves slim context semantics after system prompt rewrites", async () => {
+		const captured = newCaptured();
+		const record: ContextRecord = { contexts: [] };
+		const rewrite = (pi: ExtensionAPI) => {
+			pi.on("before_agent_start", (event) => ({
+				systemPrompt: `${event.systemPrompt}\n\nRewrite marker for fork.`,
+			}));
+		};
+		const { factory, handles } = forkExtensionFactory(captured, { context: "slim" });
+		const harness = await createHarness({ extensionFactories: [rewrite, factory] });
+		harnesses.push(harness);
+		makeAgentServices(harness);
+		harness.setResponses([recordingFactory(record, "msg"), recordingFactory(record, "msg")]);
+
+		await harness.session.prompt("turn one");
+		await handles[0]?.wait();
+
+		const parent = record.contexts.find((ctx) => !isChildContext(ctx));
+		const child = record.contexts.find(isChildContext);
+		expect(parent?.systemPrompt).toContain("Rewrite marker for fork.");
+		expect(child?.systemPrompt).not.toBe(parent?.systemPrompt);
+		expect(child?.systemPrompt).not.toContain("Rewrite marker for fork.");
+	});
+
+	it("forkAgent prefers a process-scoped engine override installed from a handler", async () => {
+		const captured = newCaptured();
+		const factory = (pi: ExtensionAPI) => {
+			pi.on("before_agent_start", async (_event, ctx) => {
+				const engine: AgentEngine = {
+					async run() {
+						return { mode: "single", status: "completed", runs: [], background: false };
+					},
+					async control() {
+						return undefined;
+					},
+					async fork() {
+						return {
+							sessionId: "process-engine",
+							handle: {
+								status: "completed",
+								async wait() {
+									return {
+										mode: "single",
+										status: "completed",
+										runs: [],
+										background: true,
+										runId: "process-engine",
+									};
+								},
+								async abort() {},
+							},
+						};
+					},
+				};
+				pi.harness.provide(AGENTS_ENGINE_SERVICE_ID, engine, { scope: "process", replace: true });
+				const result = await ctx.forkAgent({ prompt: "child task" });
+				captured.sessionId = result.sessionId;
+				captured.handle = result.handle;
+			});
+		};
+		const harness = await createHarness({ extensionFactories: [factory] });
+		harnesses.push(harness);
+		makeAgentServices(harness);
+		harness.setResponses([fauxAssistantMessage("parent")]);
+
+		await harness.session.prompt("turn one");
+
+		expect(captured.sessionId).toBe("process-engine");
+		expect(captured.handle?.status).toBe("completed");
+	});
+
+	// Uses "Bash" (still core after PR #1C) rather than "Read" (now provided by
+	// my-pi/extensions/native-tool-aliases). Test-harness child sessions create a
+	// fresh DefaultResourceLoader that doesn't inherit the parent's in-memory
+	// extensionFactories, so extension-provided tools don't propagate to child API
+	// calls. Production isn't affected: child loaders discover on-disk extensions
+	// the same way the parent does. See docs/tool-inventory-2026-05-23.md PR #1C.
 	it("intersects allowedTools with the parent's active tool list", async () => {
 		const captured = newCaptured();
 		const record: ContextRecord = { contexts: [] };
-		const { factory } = forkExtensionFactory(captured, { allowedTools: ["Read"] });
+		const { factory } = forkExtensionFactory(captured, { allowedTools: ["Bash"] });
 		const harness = await createHarness({ extensionFactories: [factory] });
 		harnesses.push(harness);
 		makeAgentServices(harness);
@@ -191,11 +295,11 @@ describe("ctx.forkAgent", () => {
 
 		await harness.session.prompt("go");
 		const details = await captured.handle!.wait();
-		expect(details.runs[0]?.effectiveTools).toEqual(["Read"]);
+		expect(details.runs[0]?.effectiveTools).toEqual(["Bash"]);
 
 		const childContext = record.contexts.find(isChildContext);
 		const childToolNames = (childContext?.tools ?? []).map((tool) => tool.name);
-		expect(childToolNames).toEqual(["Read"]);
+		expect(childToolNames).toEqual(["Bash"]);
 	});
 
 	it("aborts the run within ~1s when the caller signals", async () => {

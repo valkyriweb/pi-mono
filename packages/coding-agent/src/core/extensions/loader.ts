@@ -5,7 +5,6 @@
 
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
-import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as _bundledPiAgentCore from "@earendil-works/pi-agent-core";
@@ -24,6 +23,7 @@ import { CONFIG_DIR_NAME, getAgentDir, isBunBinary } from "../../config.ts";
 // NOTE: This import works because loader.ts exports are NOT re-exported from index.ts,
 // avoiding a circular dependency. Extensions can import from @earendil-works/pi-coding-agent.
 import * as _bundledPiCodingAgent from "../../index.ts";
+import { resolvePath } from "../../utils/paths.ts";
 import type { AgentSession } from "../agent-session.ts";
 import type { AgentChainDefinition } from "../agents/chains.ts";
 import {
@@ -36,6 +36,15 @@ import { createEventBus, type EventBus } from "../event-bus.ts";
 import type { ExecOptions } from "../exec.ts";
 import { execCommand } from "../exec.ts";
 import { createSyntheticSourceInfo } from "../source-info.ts";
+import {
+	addAction,
+	addFilter,
+	applyFilters,
+	registerHook,
+	removeAction,
+	removeFilter,
+	removeHook,
+} from "./extension-hooks.ts";
 import type {
 	AgentTelemetry,
 	DeferredExtension,
@@ -54,6 +63,8 @@ import type {
 	RegisteredCommand,
 	RunRegistry,
 	SessionDisposeHandler,
+	SessionState,
+	SessionStateOptions,
 	ToolDefinition,
 } from "./types.ts";
 
@@ -73,6 +84,15 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 };
 
 const require = createRequire(import.meta.url);
+const processServices = new Map<string, unknown>();
+
+export function getExtensionProcessService<T>(id: string): T | undefined {
+	return processServices.get(id) as T | undefined;
+}
+
+export function deleteExtensionProcessServiceForTests(id: string): void {
+	processServices.delete(id);
+}
 
 /**
  * Get aliases for jiti (used in Node.js/development mode).
@@ -122,31 +142,6 @@ function getAliases(): Record<string, string> {
 	return _aliases;
 }
 
-const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
-
-function normalizeUnicodeSpaces(str: string): string {
-	return str.replace(UNICODE_SPACES, " ");
-}
-
-function expandPath(p: string): string {
-	const normalized = normalizeUnicodeSpaces(p);
-	if (normalized.startsWith("~/")) {
-		return path.join(os.homedir(), normalized.slice(2));
-	}
-	if (normalized.startsWith("~")) {
-		return path.join(os.homedir(), normalized.slice(1));
-	}
-	return normalized;
-}
-
-function resolvePath(extPath: string, cwd: string): string {
-	const expanded = expandPath(extPath);
-	if (path.isAbsolute(expanded)) {
-		return expanded;
-	}
-	return path.resolve(cwd, expanded);
-}
-
 type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 
 /**
@@ -177,6 +172,8 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		setLabel: notInitialized,
 		getActiveTools: notInitialized,
 		getAllTools: notInitialized,
+		getToolDefinitions: notInitialized,
+		getCustomEntries: notInitialized,
 		setActiveTools: notInitialized,
 		// registerTool() is valid during extension load; refresh is only needed post-bind.
 		refreshTools: () => {},
@@ -213,6 +210,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		hideMainPaneFn: slotNoOp,
 		showOverlayFn: slotNoOp,
 		hideOverlayFn: slotNoOp,
+		services: new Map(),
 	};
 
 	return runtime;
@@ -223,12 +221,70 @@ export function createExtensionRuntime(): ExtensionRuntime {
  * Registration methods write to the extension object.
  * Action methods delegate to the shared runtime.
  */
+function createHookHandle(name: string, assertActive: () => void) {
+	return {
+		name,
+		action(id: string, action: ExtensionFactory, options?: { priority?: number }) {
+			assertActive();
+			return addAction(name, id, action, options);
+		},
+		filter<T = unknown>(
+			id: string,
+			filter: (value: T, ...args: unknown[]) => T | Promise<T>,
+			options?: { priority?: number },
+		) {
+			assertActive();
+			return addFilter(name, id, filter, options);
+		},
+		removeAction(id: string) {
+			assertActive();
+			removeAction(name, id);
+		},
+		removeFilter(id: string) {
+			assertActive();
+			removeFilter(name, id);
+		},
+		unregister() {
+			assertActive();
+			removeHook(name);
+		},
+	};
+}
+
 function createExtensionAPI(
 	extension: Extension,
 	runtime: ExtensionRuntime,
 	cwd: string,
 	eventBus: EventBus,
 ): ExtensionAPI {
+	const readService = <T>(id: string): T | undefined => {
+		return runtime.services.has(id) ? (runtime.services.get(id) as T) : getExtensionProcessService<T>(id);
+	};
+	const provideService = <T>(
+		id: string,
+		service: T,
+		options?: { scope?: "runtime" | "process"; replace?: boolean },
+	) => {
+		const services = options?.scope === "process" ? processServices : runtime.services;
+		if (!services.has(id) || options?.replace) {
+			services.set(id, service);
+		}
+		return {
+			id,
+			current() {
+				runtime.assertActive();
+				return services.get(id) as T;
+			},
+			replace(next: T) {
+				runtime.assertActive();
+				services.set(id, next);
+			},
+			dispose() {
+				services.delete(id);
+			},
+		};
+	};
+
 	const api = {
 		// Registration methods - write to extension
 		on(event: string, handler: HandlerFn): void {
@@ -431,6 +487,107 @@ function createExtensionAPI(
 			return runtime.getAllTools();
 		},
 
+		tools: {
+			info() {
+				runtime.assertActive();
+				return runtime.getAllTools();
+			},
+			definitions() {
+				runtime.assertActive();
+				return runtime.getToolDefinitions();
+			},
+			active() {
+				runtime.assertActive();
+				return runtime.getActiveTools();
+			},
+		},
+
+		hooks: {
+			register(name, options) {
+				runtime.assertActive();
+				registerHook(name, options);
+				return createHookHandle(name, runtime.assertActive);
+			},
+			get(name) {
+				runtime.assertActive();
+				registerHook(name);
+				return createHookHandle(name, runtime.assertActive);
+			},
+			unregister(name) {
+				runtime.assertActive();
+				removeHook(name);
+			},
+			addAction(name, id, action, options) {
+				runtime.assertActive();
+				return addAction(name, id, action, options);
+			},
+			removeAction(name, id) {
+				runtime.assertActive();
+				removeAction(name, id);
+			},
+			addFilter(name, id, filter, options) {
+				runtime.assertActive();
+				return addFilter(name, id, filter, options);
+			},
+			removeFilter(name, id) {
+				runtime.assertActive();
+				removeFilter(name, id);
+			},
+			applyFilters(name, value, ...args) {
+				runtime.assertActive();
+				return applyFilters(name, value, ...args);
+			},
+		},
+
+		harness: {
+			provide<T>(id: string, service: T, options?: { scope?: "runtime" | "process"; replace?: boolean }) {
+				runtime.assertActive();
+				return provideService(id, service, options);
+			},
+			use<T>(id: string): T | undefined {
+				runtime.assertActive();
+				return readService<T>(id);
+			},
+		},
+
+		state<T>(name: string, options: SessionStateOptions<T>): SessionState<T> {
+			runtime.assertActive();
+			const customType = options.customType ?? name;
+			const parse = (value: unknown): T | undefined => (options.parse ? options.parse(value) : (value as T));
+			return {
+				get() {
+					runtime.assertActive();
+					let current = options.defaultValue;
+					for (const entry of runtime.getCustomEntries(customType)) {
+						const next = parse(entry.data);
+						if (next === undefined) continue;
+						current = options.merge ? options.merge(current, next) : next;
+					}
+					return current;
+				},
+				set(next: T) {
+					runtime.assertActive();
+					runtime.appendEntry(customType, next);
+				},
+				update(update: (current: T) => T) {
+					runtime.assertActive();
+					const next = update(this.get());
+					this.set(next);
+					return next;
+				},
+			};
+		},
+
+		service<T>(id: string, service: T, options?: { scope?: "runtime" | "process"; replace?: boolean }) {
+			runtime.assertActive();
+			return provideService(id, service, options);
+		},
+
+		getService<T>(id: string): T | undefined {
+			runtime.assertActive();
+			return readService<T>(id);
+		},
+
 		setActiveTools(toolNames: string[]): void {
 			runtime.assertActive();
 			runtime.setActiveTools(toolNames);
@@ -540,7 +697,7 @@ async function loadExtension(
 	eventBus: EventBus,
 	runtime: ExtensionRuntime,
 ): Promise<{ extension: Extension | null; error: string | null }> {
-	const resolvedPath = resolvePath(extensionPath, cwd);
+	const resolvedPath = resolvePath(extensionPath, cwd, { normalizeUnicodeSpaces: true });
 
 	try {
 		const factory = await loadExtensionModule(resolvedPath);
@@ -570,7 +727,8 @@ export async function loadExtensionFromFactory(
 	extensionPath = "<inline>",
 ): Promise<Extension> {
 	const extension = createExtension(extensionPath, extensionPath);
-	const api = createExtensionAPI(extension, runtime, cwd, eventBus);
+	const resolvedCwd = resolvePath(cwd);
+	const api = createExtensionAPI(extension, runtime, resolvedCwd, eventBus);
 	await factory(api);
 	return extension;
 }
@@ -599,6 +757,7 @@ export async function loadExtensions(
 	const extensions: Extension[] = [];
 	const deferredExtensions: DeferredExtension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
+	const resolvedCwd = resolvePath(cwd);
 	const resolvedEventBus = eventBus ?? createEventBus();
 	const runtime = createExtensionRuntime();
 
@@ -609,7 +768,7 @@ export async function loadExtensions(
 			continue;
 		}
 
-		const { extension, error } = await loadExtension(extPath, cwd, resolvedEventBus, runtime);
+		const { extension, error } = await loadExtension(extPath, resolvedCwd, resolvedEventBus, runtime);
 
 		if (error) {
 			errors.push({ path: extPath, error });
@@ -764,6 +923,8 @@ export async function discoverAndLoadExtensions(
 	agentDir: string = getAgentDir(),
 	eventBus?: EventBus,
 ): Promise<LoadExtensionsResult> {
+	const resolvedCwd = resolvePath(cwd);
+	const resolvedAgentDir = resolvePath(agentDir);
 	const allPaths: string[] = [];
 	const seen = new Set<string>();
 
@@ -778,16 +939,16 @@ export async function discoverAndLoadExtensions(
 	};
 
 	// 1. Project-local extensions: cwd/${CONFIG_DIR_NAME}/extensions/
-	const localExtDir = path.join(cwd, CONFIG_DIR_NAME, "extensions");
+	const localExtDir = path.join(resolvedCwd, CONFIG_DIR_NAME, "extensions");
 	addPaths(discoverExtensionsInDir(localExtDir));
 
 	// 2. Global extensions: agentDir/extensions/
-	const globalExtDir = path.join(agentDir, "extensions");
+	const globalExtDir = path.join(resolvedAgentDir, "extensions");
 	addPaths(discoverExtensionsInDir(globalExtDir));
 
 	// 3. Explicitly configured paths
 	for (const p of configuredPaths) {
-		const resolved = resolvePath(p, cwd);
+		const resolved = resolvePath(p, resolvedCwd, { normalizeUnicodeSpaces: true });
 		if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
 			// Check for package.json with pi manifest or index.ts
 			const entries = resolveExtensionEntries(resolved);
@@ -803,5 +964,5 @@ export async function discoverAndLoadExtensions(
 		addPaths([resolved]);
 	}
 
-	return loadExtensions(allPaths, cwd, eventBus);
+	return loadExtensions(allPaths, resolvedCwd, eventBus);
 }

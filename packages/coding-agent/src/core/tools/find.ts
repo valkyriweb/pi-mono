@@ -2,13 +2,12 @@ import { createInterface } from "node:readline";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Text } from "@earendil-works/pi-tui";
 import { spawn } from "child_process";
-import { existsSync } from "fs";
 import path from "path";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { ensureTool, getOptionalSearchToolPath, toolDisplayName } from "../../utils/tools-manager.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
-import { resolveToCwd } from "./path-utils.ts";
+import { pathExists, resolveToCwd } from "./path-utils.ts";
 import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { DEFAULT_MAX_BYTES, formatSize, type TruncationResult, truncateHead } from "./truncate.ts";
@@ -35,7 +34,7 @@ const DEFAULT_TIMEOUT_SECONDS = 30;
 const MAX_TIMEOUT_SECONDS = 300;
 const VCS_DIRS = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
 
-type FindBackend = "rg" | "bfs" | "fd";
+type FindBackend = "bfs" | "fd";
 
 interface FindBackendCommand {
 	backend: FindBackend;
@@ -55,13 +54,6 @@ export function buildBfsArgs(input: { pattern: string; searchPath: string; limit
 		args.push("-name", input.pattern);
 	}
 	args.push("-print", "-limit", String(input.limit));
-	return args;
-}
-
-export function buildRgFindArgs(input: { pattern: string; searchPath: string }): string[] {
-	const args = ["--files", "--hidden", "--sort=modified", `--glob=${input.pattern}`];
-	for (const vcsDir of VCS_DIRS) args.push(`--glob=!**/${vcsDir}/**`);
-	args.push(input.searchPath);
 	return args;
 }
 
@@ -88,17 +80,12 @@ async function resolveFindBackend(input: {
 	limit: number;
 	backend?: FindBackend | "auto";
 }): Promise<FindBackendCommand | undefined> {
-	if (input.backend !== "bfs" && input.backend !== "fd") {
-		const rgPath = await ensureTool("rg", true);
-		if (rgPath) return { backend: "rg", command: rgPath, args: buildRgFindArgs(input) };
-	}
-
-	if (input.backend !== "rg" && input.backend !== "fd") {
+	if (input.backend !== "fd") {
 		const bfsPath = getOptionalSearchToolPath("bfs");
 		if (bfsPath) return { backend: "bfs", command: bfsPath, args: buildBfsArgs(input) };
 	}
 
-	if (input.backend !== "rg" && input.backend !== "bfs") {
+	if (input.backend !== "bfs") {
 		const fdPath = await ensureTool("fd", true);
 		if (fdPath) return { backend: "fd", command: fdPath, args: buildFdArgs(input) };
 	}
@@ -170,7 +157,7 @@ export interface FindOperations {
 }
 
 const defaultFindOperations: FindOperations = {
-	exists: existsSync,
+	exists: pathExists,
 	// This is a placeholder. Actual fd execution happens in execute() when no custom glob is provided.
 	glob: () => [],
 };
@@ -432,14 +419,7 @@ export function createFindToolDefinition(
 						});
 
 						rl.on("line", (line) => {
-							if (backendCommand.backend === "rg" && lines.length >= effectiveLimit) {
-								stopChild?.();
-								return;
-							}
 							lines.push(line);
-							if (backendCommand.backend === "rg" && lines.length >= effectiveLimit) {
-								stopChild?.();
-							}
 						});
 
 						child.on("error", (error) => {
@@ -487,8 +467,7 @@ export function createFindToolDefinition(
 							if (code !== 0) {
 								const backendName = toolDisplayName(backendCommand.command);
 								const errorMsg = stderr.trim() || `${backendName} exited with code ${code}`;
-								const rgNoMatches = backendCommand.backend === "rg" && code === 1 && !stderr.trim();
-								if (!output && !rgNoMatches) {
+								if (!output) {
 									settle(() => reject(new Error(errorMsg)));
 									return;
 								}
@@ -570,15 +549,4 @@ export function createFindToolDefinition(
 
 export function createFindTool(cwd: string, options?: FindToolOptions): AgentTool<typeof findSchema> {
 	return wrapToolDefinition(createFindToolDefinition(cwd, options));
-}
-
-export function createUppercaseFindToolDefinition(
-	cwd: string,
-	options?: FindToolOptions,
-): ToolDefinition<typeof findSchema, FindToolDetails | undefined> {
-	return createFindToolDefinition(cwd, { ...options, toolName: "Find", label: "Find" });
-}
-
-export function createUppercaseFindTool(cwd: string, options?: FindToolOptions): AgentTool<typeof findSchema> {
-	return wrapToolDefinition(createUppercaseFindToolDefinition(cwd, options));
 }

@@ -16,6 +16,7 @@ import {
 	type EditDiffError,
 	type EditDiffResult,
 	generateDiffString,
+	generateUnifiedPatch,
 	normalizeToLF,
 	restoreLineEndings,
 	stripBom,
@@ -60,8 +61,10 @@ type LegacyEditToolInput = EditToolInput & {
 };
 
 export interface EditToolDetails {
-	/** Unified diff of the changes made */
+	/** Display-oriented diff of the changes made */
 	diff: string;
+	/** Standard unified patch of the changes made */
+	patch: string;
 	/** Line number of the first change in the new file (for editor navigation) */
 	firstChangedLine?: number;
 	/** Structured hunks for rich syntax-highlighted diff rendering */
@@ -365,10 +368,12 @@ export function createEditToolDefinition(
 		promptSnippet:
 			"Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
 		promptGuidelines: [
-			"Use edit for precise changes (edits[].oldText must match exactly)",
+			"edits[].oldText must match the file exactly, including whitespace and newlines. Prefer text copied from recent Read output or another current tool result.",
+			"When using text from Read output, preserve the actual file content exactly; do not include display-only line numbers, prefixes, or separators.",
 			"When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
 			"Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
-			"Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+			"Keep edits[].oldText as small as possible while still being unique in the file. Prefer the shortest stable surrounding lines over large copied blocks.",
+			"If edit reports that oldText was not found, read the target region and retry with exact current text; do not repeat the same oldText.",
 		],
 		parameters: editSchema,
 		renderShell: "self",
@@ -377,117 +382,62 @@ export function createEditToolDefinition(
 			const { path, edits } = validateEditInput(input);
 			const absolutePath = resolveToCwd(path, cwd);
 
-			return withFileMutationQueue(
-				absolutePath,
-				() =>
-					new Promise<{
-						content: Array<{ type: "text"; text: string }>;
-						details: EditToolDetails | undefined;
-					}>((resolve, reject) => {
-						// Check if already aborted.
-						if (signal?.aborted) {
-							reject(new Error("Operation aborted"));
-							return;
-						}
+			return withFileMutationQueue(absolutePath, async () => {
+				// Do not reject from an abort event listener here: that would release the
+				// mutation queue while an in-flight filesystem operation may still finish.
+				// Checking signal.aborted after each await observes the same aborts while
+				// keeping the queue locked until the current operation has settled.
+				const throwIfAborted = (): void => {
+					if (signal?.aborted) throw new Error("Operation aborted");
+				};
 
-						let aborted = false;
+				throwIfAborted();
 
-						// Set up abort handler.
-						const onAbort = () => {
-							aborted = true;
-							reject(new Error("Operation aborted"));
-						};
+				// Check if file exists.
+				try {
+					await ops.access(absolutePath);
+				} catch (error: unknown) {
+					throwIfAborted();
+					const errorMessage =
+						error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
+					throw new Error(`Could not edit file: ${path}. ${errorMessage}.`);
+				}
+				throwIfAborted();
 
-						if (signal) {
-							signal.addEventListener("abort", onAbort, { once: true });
-						}
+				// Read the file.
+				const buffer = await ops.readFile(absolutePath);
+				const rawContent = buffer.toString("utf-8");
+				throwIfAborted();
 
-						// Perform the edit operation.
-						void (async () => {
-							try {
-								// Check if file exists.
-								try {
-									await ops.access(absolutePath);
-								} catch (error: unknown) {
-									const errorMessage =
-										error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
-									if (signal) {
-										signal.removeEventListener("abort", onAbort);
-									}
-									reject(new Error(`Could not edit file: ${path}. ${errorMessage}.`));
-									return;
-								}
+				// Strip BOM before matching. The model will not include an invisible BOM in oldText.
+				const { bom, text: content } = stripBom(rawContent);
+				const originalEnding = detectLineEnding(content);
+				const normalizedContent = normalizeToLF(content);
+				const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path);
+				throwIfAborted();
 
-								// Check if aborted before reading.
-								if (aborted) {
-									return;
-								}
+				const finalContent = bom + restoreLineEndings(newContent, originalEnding);
+				await ops.writeFile(absolutePath, finalContent);
+				throwIfAborted();
 
-								// Read the file.
-								const buffer = await ops.readFile(absolutePath);
-								const rawContent = buffer.toString("utf-8");
-
-								// Check if aborted after reading.
-								if (aborted) {
-									return;
-								}
-
-								// Strip BOM before matching. The model will not include an invisible BOM in oldText.
-								const { bom, text: content } = stripBom(rawContent);
-								const originalEnding = detectLineEnding(content);
-								const normalizedContent = normalizeToLF(content);
-								const { baseContent, newContent } = applyEditsToNormalizedContent(
-									normalizedContent,
-									edits,
-									path,
-								);
-
-								// Check if aborted before writing.
-								if (aborted) {
-									return;
-								}
-
-								const finalContent = bom + restoreLineEndings(newContent, originalEnding);
-								await ops.writeFile(absolutePath, finalContent);
-
-								// Check if aborted after writing.
-								if (aborted) {
-									return;
-								}
-
-								// Clean up abort handler.
-								if (signal) {
-									signal.removeEventListener("abort", onAbort);
-								}
-
-								const diffResult = generateDiffString(baseContent, newContent);
-								resolve({
-									content: [
-										{
-											type: "text",
-											text: `Successfully replaced ${edits.length} block(s) in ${path}.`,
-										},
-									],
-									details: {
-										diff: diffResult.diff,
-										firstChangedLine: diffResult.firstChangedLine,
-										hunks: diffResult.hunks,
-										originalContent: diffResult.originalContent,
-									},
-								});
-							} catch (error: unknown) {
-								// Clean up abort handler.
-								if (signal) {
-									signal.removeEventListener("abort", onAbort);
-								}
-
-								if (!aborted) {
-									reject(error instanceof Error ? error : new Error(String(error)));
-								}
-							}
-						})();
-					}),
-			);
+				const diffResult = generateDiffString(baseContent, newContent);
+				const patch = generateUnifiedPatch(path, baseContent, newContent);
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Successfully replaced ${edits.length} block(s) in ${path}.`,
+						},
+					],
+					details: {
+						diff: diffResult.diff,
+						patch,
+						firstChangedLine: diffResult.firstChangedLine,
+						hunks: diffResult.hunks,
+						originalContent: diffResult.originalContent,
+					},
+				};
+			});
 		},
 		renderCall(args, theme, context) {
 			const component = getEditCallRenderComponent(context.state, context.lastComponent);
@@ -579,15 +529,4 @@ export function createEditToolDefinition(
 
 export function createEditTool(cwd: string, options?: EditToolOptions): AgentTool<typeof editSchema> {
 	return wrapToolDefinition(createEditToolDefinition(cwd, options));
-}
-
-export function createUppercaseEditToolDefinition(
-	cwd: string,
-	options?: EditToolOptions,
-): ToolDefinition<typeof editSchema, EditToolDetails | undefined, EditRenderState> {
-	return createEditToolDefinition(cwd, { ...options, toolName: "Edit", label: "Edit" });
-}
-
-export function createUppercaseEditTool(cwd: string, options?: EditToolOptions): AgentTool<typeof editSchema> {
-	return wrapToolDefinition(createUppercaseEditToolDefinition(cwd, options));
 }

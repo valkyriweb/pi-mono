@@ -176,6 +176,15 @@ export class LayoutRenderer implements Component {
 				return;
 			}
 
+			case "tabs": {
+				lines.push(pad + node.tabs.map((t) => t.header).join(" | "));
+				for (const tab of node.tabs) {
+					lines.push(pad + this.theme.accent(tab.header));
+					this.renderNode(tab.content, width, lines, indent + 2);
+				}
+				return;
+			}
+
 			case "divider":
 				lines.push(pad + "─".repeat(Math.max(0, width - indent)));
 				return;
@@ -244,12 +253,12 @@ export class LayoutRenderer implements Component {
 		// Tab switching (only valid when root is `tabs`)
 		if (this.graph.root.type === "tabs") {
 			const tabCount = this.graph.root.tabs.length;
-			if (matchesKey(data, Key.left)) {
+			if (tabCount > 0 && matchesKey(data, Key.left)) {
 				this.activeTabIndex = (this.activeTabIndex - 1 + tabCount) % tabCount;
 				this.focusedGroupIndex = 0;
 				return;
 			}
-			if (matchesKey(data, Key.right)) {
+			if (tabCount > 0 && matchesKey(data, Key.right)) {
 				this.activeTabIndex = (this.activeTabIndex + 1) % tabCount;
 				this.focusedGroupIndex = 0;
 				return;
@@ -269,6 +278,8 @@ export class LayoutRenderer implements Component {
 		if (!focused) return;
 
 		// Within-group navigation
+		if (focused.optionCount === 0) return;
+
 		if (matchesKey(data, Key.up)) {
 			const c = this.cursorByGroup.get(focused.id) ?? 0;
 			const next = (c - 1 + focused.optionCount) % focused.optionCount;

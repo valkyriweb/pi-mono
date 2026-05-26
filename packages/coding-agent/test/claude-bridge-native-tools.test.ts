@@ -2,11 +2,55 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ExtensionFactory } from "../src/core/extensions/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { nativeToolAliasesFactory } from "./native-tool-aliases-factory.ts";
+
+// Mirrors my-pi/extensions/native-tool-aliases for the four WebFetch/WebSearch
+// marker tools. WebFetch/WebSearch are claude-bridge native server tools whose
+// local execute() always throws — registering them here is enough for the
+// `claude-bridge` filter logic in agent-session.ts to gate them by provider.
+const webFetchSchema = Type.Object({
+	allowed_domains: Type.Optional(Type.Array(Type.String())),
+	blocked_domains: Type.Optional(Type.Array(Type.String())),
+	max_content_tokens: Type.Optional(Type.Number()),
+	use_cache: Type.Optional(Type.Boolean()),
+});
+const webSearchSchema = Type.Object({
+	query: Type.String({ description: "Search query" }),
+	allowed_domains: Type.Optional(Type.Array(Type.String())),
+	blocked_domains: Type.Optional(Type.Array(Type.String())),
+});
+
+const webMarkerToolsFactory: ExtensionFactory = (pi) => {
+	for (const name of ["WebFetch", "web_fetch"] as const) {
+		pi.registerTool({
+			name,
+			label: name,
+			description: "WebFetch native marker",
+			parameters: webFetchSchema,
+			async execute() {
+				throw new Error("WebFetch should not execute locally");
+			},
+		});
+	}
+	for (const name of ["WebSearch", "web_search"] as const) {
+		pi.registerTool({
+			name,
+			label: name,
+			description: "WebSearch native marker",
+			parameters: webSearchSchema,
+			async execute() {
+				throw new Error("WebSearch should not execute locally");
+			},
+		});
+	}
+};
 
 function createModel(provider: string): Model<"anthropic-messages"> {
 	return {
@@ -41,7 +85,15 @@ describe("claude-bridge native tools", () => {
 
 	async function createSession(provider: string, activeToolNames?: string[]) {
 		const settingsManager = SettingsManager.create(tempDir, agentDir);
-		const resourceLoader = new DefaultResourceLoader({ cwd: tempDir, agentDir, settingsManager });
+		const resourceLoader = new DefaultResourceLoader({
+			cwd: tempDir,
+			agentDir,
+			settingsManager,
+			// Read is now an extension-provided alias (PR #1C). Inject the test mirror
+			// of my-pi/extensions/native-tool-aliases so assertions that rely on Read
+			// being active see it.
+			extensionFactories: [nativeToolAliasesFactory, webMarkerToolsFactory],
+		});
 		await resourceLoader.reload();
 		return createAgentSession({
 			cwd: tempDir,

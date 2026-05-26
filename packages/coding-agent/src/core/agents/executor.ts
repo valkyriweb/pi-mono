@@ -1090,6 +1090,11 @@ export async function executeAgentTool(
 				resumeSingleBackgroundRun(input, makeBackgroundOptions(generation), recentRun, generation, prompt),
 			);
 		},
+		inject: async (message) => {
+			const sessions = [...activeSessions];
+			if (sessions.length === 0) throw new Error("No active child session to receive input");
+			await Promise.all(sessions.map((session) => session.steer(message)));
+		},
 	});
 
 	launch((generation) =>

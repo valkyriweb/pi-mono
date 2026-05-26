@@ -338,7 +338,11 @@ export class InteractiveMode {
 	// Extension main pane state. The extension runner owns registration; interactive-mode
 	// only mounts/unmounts the selected component in the chat container.
 	private activeMainPane:
-		| { id: string; component: Component & { dispose?(): void }; preChildren: Component[] }
+		| {
+				id: string;
+				component: Component & { dispose?(): void; onEscape?(): boolean | undefined };
+				preChildren: Component[];
+		  }
 		| undefined = undefined;
 	private activeOverlay:
 		| { id: string; component: Component & { dispose?(): void }; handle: OverlayHandle }
@@ -2527,6 +2531,7 @@ export class InteractiveMode {
 				return;
 			}
 			if (this.activeMainPane) {
+				if (this.activeMainPane.component.onEscape?.()) return;
 				this.hideExtensionMainPane(this.activeMainPane.id);
 				return;
 			}
@@ -5168,11 +5173,13 @@ export class InteractiveMode {
 									manualCodeReject = undefined;
 								}
 							});
-					} else if (providerId === "github-copilot") {
-						// GitHub Copilot polls after onAuth
-						dialog.showWaiting("Waiting for browser authentication...");
 					}
 					// For Anthropic: onPrompt is called immediately after
+				},
+
+				onDeviceCode: (info) => {
+					dialog.showDeviceCode(info);
+					dialog.showWaiting("Waiting for authentication...");
 				},
 
 				onPrompt: async (prompt: { message: string; placeholder?: string }) => {

@@ -273,10 +273,12 @@ describe("detectCapabilities", () => {
 		});
 	});
 
-	it("detects truecolor for Windows Terminal outside multiplexers", () => {
+	it("enables truecolor and hyperlinks for Windows Terminal outside multiplexers", () => {
 		withEnv({ WT_SESSION: "session", TERM: "xterm-256color" }, () => {
 			const caps = detectCapabilities();
 			assert.strictEqual(caps.trueColor, true);
+			assert.strictEqual(caps.hyperlinks, true);
+			assert.strictEqual(caps.images, null);
 		});
 	});
 

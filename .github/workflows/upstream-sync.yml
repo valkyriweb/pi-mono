@@ -1,6 +1,6 @@
 name: Upstream Sync
 
-# Daily check for new commits on the upstream fork. Opens a PR with the merge
+# Weekly check for new commits on the upstream fork. Opens a PR with the merge
 # (never force-pushes to main). Conflicts arrive as draft PRs.
 #
 # Source-of-truth registry: ~/Projects/personal/agent-system/FORKS.md
@@ -8,8 +8,8 @@ name: Upstream Sync
 
 on:
   schedule:
-    # 06:00 SAST = 04:00 UTC. Daily.
-    - cron: "0 4 * * *"
+    # Mondays 06:00 SAST = 04:00 UTC. Weekly.
+    - cron: "0 4 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -154,12 +154,12 @@ jobs:
           git push origin ${BRANCH}
           \`\`\`
 
-          Triggered by daily upstream sync. Registry: \`agent-system/FORKS.md\`.
+          Triggered by weekly upstream sync. Registry: \`agent-system/FORKS.md\`.
           EOF
           )
           else
             BODY=$(cat <<EOF
-          Automated daily sync from \`${UPSTREAM_REPO}@${UPSTREAM_BRANCH}\`.
+          Automated weekly sync from \`${UPSTREAM_REPO}@${UPSTREAM_BRANCH}\`.
 
           - Commits pulled: ${BEHIND}
           - Strategy: \`git merge --no-ff\` (preserves fork lineage)

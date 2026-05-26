@@ -196,7 +196,9 @@ const FINE_GRAINED_TOOL_STREAMING_BETA = "fine-grained-tool-streaming-2025-05-14
 const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
 const TOOL_SEARCH_BETA = "advanced-tool-use-2025-11-20";
 
-function getAnthropicCompat(model: Model<"anthropic-messages">): Required<AnthropicMessagesCompat> {
+function getAnthropicCompat(
+	model: Model<"anthropic-messages">,
+): Required<Omit<AnthropicMessagesCompat, "forceAdaptiveThinking">> {
 	const modelSupportsDeferredTools = !model.id.toLowerCase().includes("haiku");
 	// Auto-detect session affinity and cache control support from provider
 	const isFireworks = model.provider === "fireworks";
@@ -215,29 +217,34 @@ function getAnthropicCompat(model: Model<"anthropic-messages">): Required<Anthro
 export interface AnthropicOptions extends StreamOptions {
 	/**
 	 * Enable extended thinking.
-	 * For Opus 4.6 and Sonnet 4.6: uses adaptive thinking (model decides when/how much to think).
+	 * For adaptive thinking models: the model decides when/how much to think.
 	 * For older models: uses budget-based thinking with thinkingBudgetTokens.
+	 * Default: undefined (thinking is omitted unless `streamSimpleAnthropic()` maps
+	 * a simple reasoning level to this option, or callers set it explicitly).
 	 */
 	thinkingEnabled?: boolean;
 	/**
 	 * Token budget for extended thinking (older models only).
-	 * Ignored for Opus 4.6 and Sonnet 4.6, which use adaptive thinking.
+	 * Ignored for adaptive thinking models.
+	 * Default: 1024 when `thinkingEnabled` is true and no budget is provided.
 	 */
 	thinkingBudgetTokens?: number;
 	/**
-	 * Effort level for adaptive thinking (Opus 4.6+ and Sonnet 4.6).
+	 * Effort level for adaptive thinking models.
 	 * Controls how much thinking Claude allocates:
 	 * - "max": Always thinks with no constraints (Opus 4.6 only)
 	 * - "xhigh": Highest reasoning level (Opus 4.7)
-	 * - "high": Always thinks, deep reasoning (default)
+	 * - "high": Always thinks, deep reasoning
 	 * - "medium": Moderate thinking, may skip for simple queries
 	 * - "low": Minimal thinking, skips for simple tasks
 	 * Ignored for older models.
+	 * Default: omitted unless `streamSimpleAnthropic()` maps a simple reasoning
+	 * level to this option.
 	 */
 	effort?: AnthropicEffort;
 	/**
 	 * Controls how thinking content is returned in API responses.
-	 * - "summarized": Thinking blocks contain summarized thinking text (default here).
+	 * - "summarized": Thinking blocks contain summarized thinking text.
 	 * - "omitted": Thinking blocks return an empty thinking field; the encrypted
 	 *   signature still travels back for multi-turn continuity. Use for faster
 	 *   time-to-first-text-token when your UI does not surface thinking.
@@ -245,9 +252,21 @@ export interface AnthropicOptions extends StreamOptions {
 	 * Note: Anthropic's API default for Claude Opus 4.7 and Claude Mythos Preview
 	 * is "omitted". We default to "summarized" here to keep behavior consistent
 	 * with older Claude 4 models. Set this explicitly to "omitted" to opt in.
+	 * Default: "summarized" when thinking is enabled.
 	 */
 	thinkingDisplay?: AnthropicThinkingDisplay;
+	/**
+	 * Whether to request the interleaved thinking beta header for non-adaptive
+	 * thinking models. Adaptive thinking models have interleaved thinking built in,
+	 * so the header is skipped for them regardless of this setting.
+	 * Default: true.
+	 */
 	interleavedThinking?: boolean;
+	/**
+	 * Anthropic tool choice behavior. String values map to Anthropic's built-in
+	 * choices; `{ type: "tool", name }` forces a specific tool.
+	 * Default: omitted (Anthropic default behavior, currently equivalent to auto).
+	 */
 	toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
 	/**
 	 * Pre-built Anthropic client instance. When provided, skips internal client
@@ -741,21 +760,6 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 };
 
 /**
- * Check if a model supports adaptive thinking (Opus 4.6+, Sonnet 4.6)
- */
-function supportsAdaptiveThinking(modelId: string): boolean {
-	// Adaptive-thinking model IDs (with or without date suffix)
-	return (
-		modelId.includes("opus-4-6") ||
-		modelId.includes("opus-4.6") ||
-		modelId.includes("opus-4-7") ||
-		modelId.includes("opus-4.7") ||
-		modelId.includes("sonnet-4-6") ||
-		modelId.includes("sonnet-4.6")
-	);
-}
-
-/**
  * Map ThinkingLevel to Anthropic effort levels for adaptive thinking.
  * Note: effort "max" is only valid on Opus 4.6, while Opus 4.7 supports "xhigh".
  */
@@ -794,9 +798,9 @@ export const streamSimpleAnthropic: StreamFunction<"anthropic-messages", SimpleS
 		return streamAnthropic(model, context, { ...base, thinkingEnabled: false } satisfies AnthropicOptions);
 	}
 
-	// For Opus 4.6 and Sonnet 4.6: use adaptive thinking with effort level
-	// For older models: use budget-based thinking
-	if (supportsAdaptiveThinking(model.id)) {
+	// For models with adaptive thinking: use an effort level.
+	// For older models: use budget-based thinking.
+	if (model.compat?.forceAdaptiveThinking === true) {
 		// "adaptive" level = fully unconstrained: send thinking.type=adaptive with no effort cap,
 		// letting Claude self-regulate budget per turn.
 		if (options.reasoning === "adaptive") {
@@ -844,9 +848,8 @@ function createClient(
 	dynamicHeaders?: Record<string, string>,
 	sessionId?: string,
 ): { client: Anthropic; isOAuthToken: boolean } {
-	// Adaptive thinking models (Opus 4.6, Sonnet 4.6) have interleaved thinking built-in.
-	// The beta header is deprecated on Opus 4.6 and redundant on Sonnet 4.6, so skip it.
-	const needsInterleavedBeta = interleavedThinking && !supportsAdaptiveThinking(model.id);
+	// Adaptive thinking models have interleaved thinking built in, so skip the beta header.
+	const needsInterleavedBeta = interleavedThinking && model.compat?.forceAdaptiveThinking !== true;
 	const betaFeatures: string[] = [];
 	if (useFineGrainedToolStreamingBeta) {
 		betaFeatures.push(FINE_GRAINED_TOOL_STREAMING_BETA);
@@ -1031,14 +1034,13 @@ function buildParams(
 		);
 	}
 
-	// Configure thinking mode: adaptive (Opus 4.6+ and Sonnet 4.6),
-	// budget-based (older models), or explicitly disabled.
+	// Configure thinking mode: adaptive, budget-based, or explicitly disabled.
 	if (model.reasoning) {
 		if (options?.thinkingEnabled) {
 			// Default to "summarized" so Opus 4.7 and Mythos Preview behave like
 			// older Claude 4 models (whose API default is also "summarized").
 			const display: AnthropicThinkingDisplay = options.thinkingDisplay ?? "summarized";
-			if (supportsAdaptiveThinking(model.id)) {
+			if (model.compat?.forceAdaptiveThinking === true) {
 				// Adaptive thinking: Claude decides when and how much to think.
 				params.thinking = { type: "adaptive", display };
 				if (options.effort) {
@@ -1158,22 +1160,32 @@ function convertMessages(
 						});
 						continue;
 					}
-					if (block.thinking.trim().length === 0) continue;
-					// If thinking signature is missing/empty (e.g., from aborted stream),
-					// convert to plain text block without <thinking> tags to avoid API rejection
-					// and prevent Claude from mimicking the tags in responses
-					if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
-						blocks.push({
-							type: "text",
-							text: sanitizeSurrogates(block.thinking),
-						});
-					} else {
+					const hasSignature = !!block.thinkingSignature && block.thinkingSignature.trim().length > 0;
+					// A thinking block with a valid signature MUST be round-tripped to the API
+					// unmodified, even when its thinking text is empty (e.g. thinkingDisplay:"omitted"
+					// on Opus 4.7 / Mythos Preview). Dropping it changes the latest assistant
+					// message's content array and Anthropic rejects the next request with
+					// 400 "thinking or redacted_thinking blocks in the latest assistant message
+					// cannot be modified" — which also breaks auto-compaction (#thinking-roundtrip).
+					if (hasSignature) {
+						// Do not run sanitizeSurrogates on signed thinking text — the signature
+						// is validated against the original bytes Anthropic streamed. Any rewrite
+						// (even of an unpaired surrogate) would break round-trip validation.
 						blocks.push({
 							type: "thinking",
-							thinking: sanitizeSurrogates(block.thinking),
-							signature: block.thinkingSignature,
+							thinking: block.thinking,
+							signature: block.thinkingSignature as string,
 						});
+						continue;
 					}
+					// No signature (e.g. aborted stream): we can't round-trip as a thinking block.
+					// Drop empty text entirely; convert non-empty text to a plain text block so
+					// the model doesn't start mimicking <thinking> tags in subsequent turns.
+					if (block.thinking.trim().length === 0) continue;
+					blocks.push({
+						type: "text",
+						text: sanitizeSurrogates(block.thinking),
+					});
 				} else if (block.type === "toolCall") {
 					blocks.push({
 						type: "tool_use",

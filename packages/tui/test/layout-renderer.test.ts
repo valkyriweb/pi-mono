@@ -132,6 +132,29 @@ describe("LayoutRenderer / render", () => {
 		assert.match(out[0], /\[ Lang \]/, "active tab uses bracketed header");
 		assert.match(out[0], /\s+Targets\s+/, "inactive tab is plain");
 	});
+
+	it("renders nested tabs visibly instead of dropping their content", () => {
+		const graph: LayoutGraph = {
+			version: "0.1",
+			root: {
+				type: "card",
+				children: [
+					{
+						type: "tabs",
+						tabs: [
+							{ header: "One", content: { type: "text", value: "First nested panel" } },
+							{ header: "Two", content: { type: "text", value: "Second nested panel" } },
+						],
+					},
+				],
+			},
+		};
+		const r = new LayoutRenderer(graph, { onSubmit: () => {} });
+		const out = r.render(80).join("\n");
+		assert.match(out, /One \| Two/);
+		assert.match(out, /First nested panel/);
+		assert.match(out, /Second nested panel/);
+	});
 });
 
 describe("LayoutRenderer / input — radio", () => {
@@ -160,6 +183,17 @@ describe("LayoutRenderer / input — radio", () => {
 		r.handleInput(KEY.down);
 		r.handleInput(KEY.enter);
 		assert.deepEqual(submitted, { strategy: "fixed" });
+	});
+
+	it("ignores cursor navigation for malformed empty option groups", () => {
+		const graph: LayoutGraph = {
+			version: "0.1",
+			root: { type: "radio_group", id: "empty", options: [] },
+		};
+		const r = new LayoutRenderer(graph, { onSubmit: () => {} });
+		r.handleInput(KEY.down);
+		assert.equal(r.getCursor("empty"), 0);
+		assert.deepEqual(r.snapshotResponse(), { empty: undefined });
 	});
 });
 

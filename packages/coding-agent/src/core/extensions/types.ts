@@ -56,6 +56,7 @@ import type { ModelRegistry } from "../model-registry.ts";
 import type {
 	BranchSummaryEntry,
 	CompactionEntry,
+	CustomEntry,
 	ReadonlySessionManager,
 	SessionEntry,
 	SessionManager,
@@ -149,11 +150,17 @@ export interface ExtensionMainPaneAPI {
  * Factory for an extension-registered main pane. Returns a component the
  * framework mounts into `chatContainer` while the pane is shown.
  */
+export interface ExtensionMainPaneComponent extends Component {
+	dispose?(): void;
+	/** Return true when the pane handled Escape and should remain mounted. */
+	onEscape?(): boolean | undefined;
+}
+
 export type ExtensionMainPaneFactory = (
 	tui: TUI,
 	theme: Theme,
 	api: ExtensionMainPaneAPI,
-) => Component & { dispose?(): void };
+) => ExtensionMainPaneComponent;
 
 /**
  * Per-overlay API surface passed to a registered overlay factory.
@@ -989,6 +996,11 @@ export interface ThinkingLevelSelectEvent {
 	previousLevel: ThinkingLevel;
 }
 
+/** Internal notification fired after the configured tool registry is refreshed. */
+export interface ToolsChangedEvent {
+	type: "tools_changed";
+}
+
 // ============================================================================
 // User Bash Events
 // ============================================================================
@@ -1230,6 +1242,7 @@ export type ExtensionEvent =
 	| ToolExecutionEndEvent
 	| ModelSelectEvent
 	| ThinkingLevelSelectEvent
+	| ToolsChangedEvent
 	| UserBashEvent
 	| InputEvent
 	| ToolCallEvent
@@ -1384,6 +1397,7 @@ export interface ExtensionAPI {
 	on(event: "tool_execution_end", handler: ExtensionHandler<ToolExecutionEndEvent>): void;
 	on(event: "model_select", handler: ExtensionHandler<ModelSelectEvent>): void;
 	on(event: "thinking_level_select", handler: ExtensionHandler<ThinkingLevelSelectEvent>): void;
+	on(event: "tools_changed", handler: ExtensionHandler<ToolsChangedEvent>): void;
 	on(event: "tool_call", handler: ExtensionHandler<ToolCallEvent, ToolCallEventResult>): void;
 	on(event: "tool_result", handler: ExtensionHandler<ToolResultEvent, ToolResultEventResult>): void;
 	on(event: "user_bash", handler: ExtensionHandler<UserBashEvent, UserBashEventResult>): void;
@@ -1640,6 +1654,24 @@ export interface ExtensionAPI {
 	/** Get all configured tools with parameter schema and source metadata. */
 	getAllTools(): ToolInfo[];
 
+	/** Read-only tool registry view for extension-owned tool orchestration. */
+	tools: ToolRegistryView;
+
+	/** Register/remove actions on named extension hook points. */
+	hooks: ExtensionHooksAPI;
+
+	/** Shared harness services for extension-owned runtime behavior. */
+	harness: ExtensionHarnessAPI;
+
+	/** Create a typed session-state handle backed by custom session entries. */
+	state<T>(name: string, options: SessionStateOptions<T>): SessionState<T>;
+
+	/** Register an opaque runtime service for other extensions to discover. Prefer pi.harness.provide(). */
+	service<T>(id: string, service: T, options?: ExtensionServiceOptions): ExtensionServiceHandle<T>;
+
+	/** Read an opaque runtime service registered by another extension. Prefer pi.harness.use(). */
+	getService<T>(id: string): T | undefined;
+
 	/** Set the active tools by name. */
 	setActiveTools(toolNames: string[]): void;
 
@@ -1855,6 +1887,75 @@ export type ToolInfo = Pick<ToolDefinition, "name" | "description" | "parameters
 
 export type GetAllToolsHandler = () => ToolInfo[];
 
+export type GetToolDefinitionsHandler = () => ToolDefinition[];
+
+export type GetCustomEntriesHandler = (customType: string) => CustomEntry[];
+
+export interface SessionStateOptions<T> {
+	defaultValue: T;
+	customType?: string;
+	merge?: (previous: T, next: T) => T;
+	parse?: (value: unknown) => T | undefined;
+}
+
+export interface SessionState<T> {
+	get(): T;
+	set(next: T): void;
+	update(update: (current: T) => T): T;
+}
+
+export type ExtensionServiceScope = "runtime" | "process";
+
+export interface ExtensionServiceOptions {
+	scope?: ExtensionServiceScope;
+	replace?: boolean;
+}
+
+export interface ExtensionServiceHandle<T> {
+	id: string;
+	current(): T;
+	replace(next: T): void;
+	dispose(): void;
+}
+
+export type ExtensionFilter<T = unknown> = (value: T, ...args: unknown[]) => T | Promise<T>;
+
+export interface ExtensionHookHandle {
+	name: string;
+	action(id: string, action: ExtensionFactory, options?: { priority?: number }): () => void;
+	filter<T = unknown>(id: string, filter: ExtensionFilter<T>, options?: { priority?: number }): () => void;
+	removeAction(id: string): void;
+	removeFilter(id: string): void;
+	unregister(): void;
+}
+
+export interface ExtensionHooksAPI {
+	register(name: string, options?: { description?: string }): ExtensionHookHandle;
+	get(name: string): ExtensionHookHandle;
+	unregister(name: string): void;
+	addAction(name: string, id: string, action: ExtensionFactory, options?: { priority?: number }): () => void;
+	removeAction(name: string, id: string): void;
+	addFilter<T = unknown>(
+		name: string,
+		id: string,
+		filter: ExtensionFilter<T>,
+		options?: { priority?: number },
+	): () => void;
+	removeFilter(name: string, id: string): void;
+	applyFilters<T = unknown>(name: string, value: T, ...args: unknown[]): Promise<T>;
+}
+
+export interface ExtensionHarnessAPI {
+	provide<T>(id: string, service: T, options?: ExtensionServiceOptions): ExtensionServiceHandle<T>;
+	use<T>(id: string): T | undefined;
+}
+
+export interface ToolRegistryView {
+	info(): ToolInfo[];
+	definitions(): ToolDefinition[];
+	active(): string[];
+}
+
 export type GetCommandsHandler = () => SlashCommandInfo[];
 
 export type SetActiveToolsHandler = (toolNames: string[]) => void;
@@ -1921,6 +2022,7 @@ export interface ExtensionRuntimeState {
 	hideMainPaneFn: (id: string) => void;
 	showOverlayFn: (id: string, payload: unknown) => void;
 	hideOverlayFn: (id: string) => void;
+	services: Map<string, unknown>;
 }
 
 /**
@@ -1936,6 +2038,8 @@ export interface ExtensionActions {
 	setLabel: SetLabelHandler;
 	getActiveTools: GetActiveToolsHandler;
 	getAllTools: GetAllToolsHandler;
+	getToolDefinitions: GetToolDefinitionsHandler;
+	getCustomEntries: GetCustomEntriesHandler;
 	setActiveTools: SetActiveToolsHandler;
 	refreshTools: RefreshToolsHandler;
 	getCommands: GetCommandsHandler;

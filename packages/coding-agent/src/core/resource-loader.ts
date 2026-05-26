@@ -1,5 +1,4 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import chalk from "chalk";
 import { CONFIG_DIR_NAME } from "../config.ts";
@@ -8,7 +7,7 @@ import type { ResourceDiagnostic } from "./diagnostics.ts";
 
 export type { ResourceCollision, ResourceDiagnostic } from "./diagnostics.ts";
 
-import { canonicalizePath, isLocalPath } from "../utils/paths.ts";
+import { canonicalizePath, isLocalPath, resolvePath } from "../utils/paths.ts";
 import {
 	type ContextFile,
 	type ContextFileImportCache,
@@ -17,6 +16,8 @@ import {
 	expandSystemPromptImports,
 } from "./context-file-imports.ts";
 import { createEventBus, type EventBus } from "./event-bus.ts";
+import "./extensions/core-extension-actions.ts";
+import { actionSource, getActions, isHookPath, load } from "./extensions/extension-hooks.ts";
 import { createExtensionRuntime, loadExtensionFromFactory, loadExtensions } from "./extensions/loader.ts";
 import type {
 	Extension,
@@ -41,6 +42,8 @@ export interface ResourceExtensionPaths {
 
 export interface ResourceLoader {
 	getExtensions(): LoadExtensionsResult;
+	/** Includes built-in extension hooks. Internal use by AgentSession only. */
+	getExtensionsForRunner(): LoadExtensionsResult;
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
 	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] };
 	getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] };
@@ -121,8 +124,8 @@ function realpathOrSelf(filePath: string): string {
 }
 
 export function loadProjectContextFiles(options: { cwd: string; agentDir: string }): ContextFile[] {
-	const resolvedCwd = options.cwd;
-	const resolvedAgentDir = options.agentDir;
+	const resolvedCwd = resolvePath(options.cwd);
+	const resolvedAgentDir = resolvePath(options.agentDir);
 
 	const contextFiles: ContextFile[] = [];
 	// Dedup by realpath so the same physical file reached via symlink,
@@ -258,8 +261,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private lastThemePaths: string[];
 
 	constructor(options: DefaultResourceLoaderOptions) {
-		this.cwd = options.cwd;
-		this.agentDir = options.agentDir;
+		this.cwd = resolvePath(options.cwd);
+		this.agentDir = resolvePath(options.agentDir);
 		this.settingsManager = options.settingsManager ?? SettingsManager.create(this.cwd, this.agentDir);
 		this.eventBus = options.eventBus ?? createEventBus();
 		this.packageManager = new DefaultPackageManager({
@@ -313,6 +316,23 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 
 	getExtensions(): LoadExtensionsResult {
+		// Built-in hook actions (agents, bashBgJobs, deferredTools) are internal
+		// wiring. The user-facing surface (TUI command surface, conflict
+		// detection, reload diagnostics, flag validation) treats `extensions` as
+		// the list of *user* extensions, so filter them out here. The runner
+		// reads the unfiltered internal state via `getExtensionsForRunner()`.
+		return {
+			...this.extensionsResult,
+			extensions: this.extensionsResult.extensions.filter((ext) => !isHookPath(ext.path)),
+		};
+	}
+
+	/**
+	 * Internal accessor for the extension runner: includes built-in hook
+	 * extensions so their handlers, tools, commands, etc. are dispatched.
+	 * Public consumers should use `getExtensions()`.
+	 */
+	getExtensionsForRunner(): LoadExtensionsResult {
 		return this.extensionsResult;
 	}
 
@@ -462,6 +482,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 		const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
 		extensionsResult.extensions.push(...inlineExtensions.extensions);
 		extensionsResult.errors.push(...inlineExtensions.errors);
+		const hookedExtensions = await this.loadExtensionHooks(extensionsResult.runtime);
+		extensionsResult.extensions.push(...hookedExtensions.extensions);
+		extensionsResult.errors.push(...hookedExtensions.errors);
 
 		// Detect extension conflicts (tools, commands, flags with same names from different extensions)
 		// Keep all extensions loaded. Conflicts are reported as diagnostics, and precedence is handled by load order.
@@ -471,8 +494,11 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 
 		for (const p of this.additionalExtensionPaths) {
-			if (isLocalPath(p) && !existsSync(p)) {
-				extensionsResult.errors.push({ path: p, error: `Extension path does not exist: ${p}` });
+			if (isLocalPath(p)) {
+				const resolved = this.resolveResourcePath(p);
+				if (!existsSync(resolved)) {
+					extensionsResult.errors.push({ path: resolved, error: `Extension path does not exist: ${resolved}` });
+				}
 			}
 		}
 		this.extensionsResult = this.extensionsOverride ? this.extensionsOverride(extensionsResult) : extensionsResult;
@@ -486,8 +512,11 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.lastSkillPaths = skillPaths;
 		this.updateSkillsFromPaths(skillPaths, metadataByPath);
 		for (const p of this.additionalSkillPaths) {
-			if (isLocalPath(p) && !existsSync(p) && !this.skillDiagnostics.some((d) => d.path === p)) {
-				this.skillDiagnostics.push({ type: "error", message: "Skill path does not exist", path: p });
+			if (isLocalPath(p)) {
+				const resolved = this.resolveResourcePath(p);
+				if (!existsSync(resolved) && !this.skillDiagnostics.some((d) => d.path === resolved)) {
+					this.skillDiagnostics.push({ type: "error", message: "Skill path does not exist", path: resolved });
+				}
 			}
 		}
 
@@ -498,8 +527,15 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.lastPromptPaths = promptPaths;
 		this.updatePromptsFromPaths(promptPaths, metadataByPath);
 		for (const p of this.additionalPromptTemplatePaths) {
-			if (isLocalPath(p) && !existsSync(p) && !this.promptDiagnostics.some((d) => d.path === p)) {
-				this.promptDiagnostics.push({ type: "error", message: "Prompt template path does not exist", path: p });
+			if (isLocalPath(p)) {
+				const resolved = this.resolveResourcePath(p);
+				if (!existsSync(resolved) && !this.promptDiagnostics.some((d) => d.path === resolved)) {
+					this.promptDiagnostics.push({
+						type: "error",
+						message: "Prompt template path does not exist",
+						path: resolved,
+					});
+				}
 			}
 		}
 
@@ -510,8 +546,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.lastThemePaths = themePaths;
 		this.updateThemesFromPaths(themePaths, metadataByPath);
 		for (const p of this.additionalThemePaths) {
-			if (!existsSync(p) && !this.themeDiagnostics.some((d) => d.path === p)) {
-				this.themeDiagnostics.push({ type: "error", message: "Theme path does not exist", path: p });
+			const resolved = this.resolveResourcePath(p);
+			if (!existsSync(resolved) && !this.themeDiagnostics.some((d) => d.path === resolved)) {
+				this.themeDiagnostics.push({ type: "error", message: "Theme path does not exist", path: resolved });
 			}
 		}
 
@@ -562,10 +599,15 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private normalizeExtensionPaths(
 		entries: Array<{ path: string; metadata: PathMetadata }>,
 	): Array<{ path: string; metadata: PathMetadata }> {
-		return entries.map((entry) => ({
-			path: this.resolveResourcePath(entry.path),
-			metadata: entry.metadata,
-		}));
+		return entries.map((entry) => {
+			const metadata = entry.metadata.baseDir
+				? { ...entry.metadata, baseDir: this.resolveResourcePath(entry.metadata.baseDir) }
+				: entry.metadata;
+			return {
+				path: this.resolveResourcePath(entry.path),
+				metadata,
+			};
+		});
 	}
 
 	private updateSkillsFromPaths(skillPaths: string[], metadataByPath?: Map<string, PathMetadata>): void {
@@ -784,16 +826,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 
 	private resolveResourcePath(p: string): string {
-		const trimmed = p.trim();
-		let expanded = trimmed;
-		if (trimmed === "~") {
-			expanded = homedir();
-		} else if (trimmed.startsWith("~/")) {
-			expanded = join(homedir(), trimmed.slice(2));
-		} else if (trimmed.startsWith("~")) {
-			expanded = join(homedir(), trimmed.slice(1));
-		}
-		return resolve(this.cwd, expanded);
+		return resolvePath(p, this.cwd, { trim: true });
 	}
 
 	private loadThemes(
@@ -814,7 +847,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 
 		for (const p of paths) {
-			const resolved = resolve(this.cwd, p);
+			const resolved = this.resolveResourcePath(p);
 			if (!existsSync(resolved)) {
 				diagnostics.push({ type: "warning", message: "theme path does not exist", path: resolved });
 				continue;
@@ -875,6 +908,25 @@ export class DefaultResourceLoader implements ResourceLoader {
 			const message = error instanceof Error ? error.message : "failed to load theme";
 			diagnostics.push({ type: "warning", message, path: filePath });
 		}
+	}
+
+	private async loadExtensionHooks(runtime: ExtensionRuntime): Promise<{
+		extensions: Extension[];
+		errors: Array<{ path: string; error: string }>;
+	}> {
+		const extensions: Extension[] = [];
+		const errors: Array<{ path: string; error: string }> = [];
+		for (const action of getActions(load)) {
+			const path = actionSource(action);
+			try {
+				const extension = await loadExtensionFromFactory(action.callback, this.cwd, this.eventBus, runtime, path);
+				extensions.push(extension);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "failed to hook extension";
+				errors.push({ path, error: message });
+			}
+		}
+		return { extensions, errors };
 	}
 
 	private async loadExtensionFactories(runtime: ExtensionRuntime): Promise<{

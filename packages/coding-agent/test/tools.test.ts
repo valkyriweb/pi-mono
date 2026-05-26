@@ -1,3 +1,4 @@
+import { applyPatch } from "diff";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -5,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeBashWithOperations } from "../src/core/bash-executor.ts";
 import { type BashOperations, createBashTool, createLocalBashOperations } from "../src/core/tools/bash.ts";
 import { computeEditsDiff } from "../src/core/tools/edit-diff.ts";
-import { buildBfsArgs, buildFdArgs, buildRgFindArgs } from "../src/core/tools/find.ts";
+import { buildBfsArgs, buildFdArgs } from "../src/core/tools/find.ts";
 import { buildRgArgs, buildUgrepArgs } from "../src/core/tools/grep.ts";
 import { createAllToolDefinitions } from "../src/core/tools/index.ts";
 import {
@@ -16,7 +17,6 @@ import {
 	createGrepToolDefinition,
 	createLsTool,
 	createReadTool,
-	createUppercaseGrepToolDefinition,
 	createWriteTool,
 } from "../src/index.ts";
 import * as shellModule from "../src/utils/shell.ts";
@@ -30,9 +30,12 @@ const findTool = createFindTool(process.cwd());
 const lsTool = createLsTool(process.cwd());
 
 describe("capitalized built-in tool aliases", () => {
-	it("registers uppercase native tool names alongside lowercase compatibility names", () => {
+	// Read/Edit/Write/Grep/Find/Ls Uppercase aliases now live in
+	// my-pi/extensions/native-tool-aliases (PR #1C). Only Bash/Agent/Task Uppercase
+	// variants remain in core.
+	it("registers Bash/Agent/Task Uppercase variants alongside lowercase", () => {
 		const tools = createAllToolDefinitions(process.cwd());
-		for (const name of ["Read", "Bash", "Edit", "Write", "Grep", "Find", "Ls", "Agent", "Task"]) {
+		for (const name of ["Bash", "Agent", "Task"]) {
 			expect(tools).toHaveProperty(name);
 			expect(tools[name as keyof typeof tools].name).toBe(name);
 		}
@@ -260,6 +263,12 @@ describe("Coding Agent Tools", () => {
 			expect(result.details.diff).toBeDefined();
 			expect(typeof result.details.diff).toBe("string");
 			expect(result.details.diff).toContain("testing");
+			expect(result.details.patch).toContain("--- ");
+			expect(result.details.patch).toContain("+++ ");
+			expect(result.details.patch).toContain("@@");
+			expect(result.details.patch).toContain("-Hello, world!");
+			expect(result.details.patch).toContain("+Hello, testing!");
+			expect(applyPatch(originalContent, result.details.patch)).toBe("Hello, testing!");
 		});
 
 		it("should fail if text not found", async () => {
@@ -649,6 +658,28 @@ describe("Coding Agent Tools", () => {
 			expect(getTextOutput(result)).toContain("line 4999");
 		});
 
+		it("should not count a trailing newline as an extra truncated bash output line", async () => {
+			const operations: BashOperations = {
+				exec: async (_command, _cwd, { onData }) => {
+					for (let i = 1; i <= 4000; i++) {
+						onData(Buffer.from(`line-${String(i).padStart(4, "0")}\n`, "utf-8"));
+					}
+					return { exitCode: 0 };
+				},
+			};
+			const bash = createBashTool(testDir, { operations });
+
+			const result = await bash.execute("test-call-trailing-newline-line-count", { command: "many-lines" });
+			const output = getTextOutput(result);
+
+			expect(result.details?.truncation?.totalLines).toBe(4000);
+			expect(result.details?.truncation?.outputLines).toBe(2000);
+			expect(output).toContain("line-2001");
+			expect(output).toContain("line-4000");
+			expect(output).toMatch(/\[Showing lines 2001-4000 of 4000\. Full output: /);
+			expect(output).not.toContain("4001");
+		});
+
 		it("should decode UTF-8 characters split across output chunks", async () => {
 			const euro = Buffer.from("€\n", "utf-8");
 			const operations: BashOperations = {
@@ -838,12 +869,11 @@ describe("Coding Agent Tools", () => {
 
 		it("should expose Claude-style output fields in the schema", () => {
 			const definition = createGrepToolDefinition(process.cwd());
-			const uppercaseDefinition = createUppercaseGrepToolDefinition(process.cwd());
+			// Uppercase Grep is now extension-provided via native-tool-aliases.
+			// Verify the lowercase factory still exposes the Claude-style fields.
 			const properties = (definition.parameters as any).properties;
 
 			expect(definition.name).toBe("grep");
-			expect(uppercaseDefinition.name).toBe("Grep");
-			expect(uppercaseDefinition.parameters).toBe(definition.parameters);
 			expect(properties.outputMode).toBeDefined();
 			expect(properties.output_mode).toBeDefined();
 			expect(properties.headLimit).toBeDefined();
@@ -1098,14 +1128,6 @@ describe("Coding Agent Tools", () => {
 					"-limit",
 					"5",
 				]),
-			);
-		});
-
-		it("should build rg argv for mtime-sorted file discovery", () => {
-			const args = buildRgFindArgs({ pattern: "src/**/*.ts", searchPath: testDir });
-
-			expect(args).toEqual(
-				expect.arrayContaining(["--files", "--hidden", "--sort=modified", "--glob=src/**/*.ts", testDir]),
 			);
 		});
 

@@ -1,8 +1,8 @@
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Text } from "@earendil-works/pi-tui";
 import { spawn } from "child_process";
-import { readFileSync, statSync } from "fs";
 import path from "path";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
@@ -239,8 +239,8 @@ export interface GrepOperations {
 }
 
 const defaultGrepOperations: GrepOperations = {
-	isDirectory: (p) => statSync(p).isDirectory(),
-	readFile: (p) => readFileSync(p, "utf-8"),
+	isDirectory: async (p) => (await fsStat(p)).isDirectory(),
+	readFile: (p) => fsReadFile(p, "utf-8"),
 };
 
 export interface GrepToolOptions {
@@ -807,15 +807,4 @@ export function createGrepToolDefinition(
 
 export function createGrepTool(cwd: string, options?: GrepToolOptions): AgentTool<typeof grepSchema> {
 	return wrapToolDefinition(createGrepToolDefinition(cwd, options));
-}
-
-export function createUppercaseGrepToolDefinition(
-	cwd: string,
-	options?: GrepToolOptions,
-): ToolDefinition<typeof grepSchema, GrepToolDetails | undefined> {
-	return createGrepToolDefinition(cwd, { ...options, toolName: "Grep", label: "Grep" });
-}
-
-export function createUppercaseGrepTool(cwd: string, options?: GrepToolOptions): AgentTool<typeof grepSchema> {
-	return wrapToolDefinition(createUppercaseGrepToolDefinition(cwd, options));
 }

@@ -51,7 +51,7 @@ import { buildBaseOptions } from "./simple-options.ts";
 
 const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const JWT_CLAIM_PATH = "https://api.openai.com/auth" as const;
-const MAX_RETRIES = 3;
+const DEFAULT_MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const CODEX_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 const WEBSOCKET_MESSAGE_TOO_BIG_CLOSE_CODE = 1009;
@@ -94,7 +94,6 @@ interface RequestBody {
 	text?: { verbosity?: string };
 	include?: string[];
 	prompt_cache_key?: string;
-	prompt_cache_retention?: "24h";
 	max_output_tokens?: number;
 	[key: string]: unknown;
 }
@@ -234,8 +233,9 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 			// Fetch with retry logic for rate limits and transient errors
 			let response: Response | undefined;
 			let lastError: Error | undefined;
+			const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
 
-			for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+			for (let attempt = 0; attempt <= maxRetries; attempt++) {
 				if (options?.signal?.aborted) {
 					throw new Error("Request was aborted");
 				}
@@ -257,7 +257,7 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 					}
 
 					const errorText = await response.text();
-					if (attempt < MAX_RETRIES && isRetryableError(response.status, errorText)) {
+					if (attempt < maxRetries && isRetryableError(response.status, errorText)) {
 						let delayMs = BASE_DELAY_MS * 2 ** attempt;
 
 						const retryAfterMs = response.headers.get("retry-after-ms");
@@ -300,7 +300,7 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 					}
 					lastError = error instanceof Error ? error : new Error(String(error));
 					// Network errors are retryable
-					if (attempt < MAX_RETRIES && !lastError.message.includes("usage limit")) {
+					if (attempt < maxRetries && !lastError.message.includes("usage limit")) {
 						const delayMs = BASE_DELAY_MS * 2 ** attempt;
 						await sleep(delayMs, options?.signal);
 						continue;
@@ -393,7 +393,6 @@ function buildRequestBody(
 			cacheRetention === "none"
 				? undefined
 				: clampOpenAIPromptCacheKey(options?.cacheAffinityKey ?? options?.sessionId),
-		prompt_cache_retention: cacheRetention === "long" ? "24h" : undefined,
 		tool_choice: "auto",
 		parallel_tool_calls: true,
 	};

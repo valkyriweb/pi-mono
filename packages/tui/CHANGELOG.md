@@ -2,9 +2,25 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `Shift+Enter` in Apple Terminal by detecting local macOS modifier state when Terminal.app sends plain Return.
+- Fixed Windows Terminal capability detection to enable OSC 8 hyperlinks, preserving clickable long URLs across wrapped lines ([#4923](https://github.com/earendil-works/pi/issues/4923)).
+
+## [0.75.5] - 2026-05-23
+
+### Changed
+
+## [0.75.4] - 2026-05-20
+
 ### Changed
 
 - Removed the package-level development watch script now that the root TypeScript check validates strip-only-compatible sources.
+
+### Fixed
+
+- Fixed loader initialization so indicator startup cannot run before frames are initialized.
+- Fixed truecolor capability detection to align terminal image rendering with the interactive theme detector.
 
 ## [0.75.3] - 2026-05-18
 

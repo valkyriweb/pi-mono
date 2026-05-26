@@ -92,13 +92,13 @@ export const nodeSchema = Type.Union([
 	Type.Object({
 		type: Type.Literal("radio_group"),
 		id: Type.String(),
-		options: Type.Array(optionSchema),
+		options: Type.Array(optionSchema, { minItems: 1 }),
 		value: Type.Optional(Type.String()),
 	}),
 	Type.Object({
 		type: Type.Literal("checkbox_group"),
 		id: Type.String(),
-		options: Type.Array(optionSchema),
+		options: Type.Array(optionSchema, { minItems: 1 }),
 		value: Type.Optional(Type.Array(Type.String())),
 	}),
 	Type.Object({
@@ -108,6 +108,7 @@ export const nodeSchema = Type.Union([
 				header: Type.String(),
 				content: Type.This(),
 			}),
+			{ minItems: 1 },
 		),
 	}),
 	Type.Object({

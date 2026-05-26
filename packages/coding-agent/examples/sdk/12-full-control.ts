@@ -38,14 +38,16 @@ const settingsManager = SettingsManager.inMemory({
 
 const cwd = process.cwd();
 
+const emptyExtensionsResult = {
+	extensions: [],
+	deferredExtensions: [],
+	errors: [],
+	eventBus: createEventBus(),
+	runtime: createExtensionRuntime(),
+};
 const resourceLoader: ResourceLoader = {
-	getExtensions: () => ({
-		extensions: [],
-		deferredExtensions: [],
-		errors: [],
-		eventBus: createEventBus(),
-		runtime: createExtensionRuntime(),
-	}),
+	getExtensions: () => emptyExtensionsResult,
+	getExtensionsForRunner: () => emptyExtensionsResult,
 	getSkills: () => ({ skills: [], diagnostics: [] }),
 	getPrompts: () => ({ prompts: [], diagnostics: [] }),
 	getThemes: () => ({ themes: [], diagnostics: [] }),

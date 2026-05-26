@@ -1,9 +1,13 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
-import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.ts";
+import {
+	clearAgentRecentRunsForTests,
+	formatAgentFooterStatus,
+	startAgentRecentRun,
+} from "../src/core/agents/status.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
-import { FooterComponent } from "../src/modes/interactive/components/footer.ts";
+import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 type AssistantUsage = {
@@ -55,6 +59,24 @@ function createSession(options: {
 		modelRegistry: {
 			isUsingOAuth: () => false,
 		},
+		extensionRunner: {
+			// Mirrors the production agents extension hook (core/extensions/agents.ts)
+			// which contributes the background-agent status pill.
+			getRegisteredFooters: () => {
+				const rendered = formatAgentFooterStatus();
+				if (rendered === undefined) return [];
+				return [
+					{
+						id: "agents-status",
+						extensionPath: "<builtin:hook:agents>",
+						spec: {
+							render: () => rendered,
+							onActivate: () => {},
+						},
+					},
+				];
+			},
+		},
 	};
 
 	return session as unknown as AgentSession;
@@ -73,6 +95,17 @@ function createFooterData(providerCount: number): ReadonlyFooterDataProvider {
 
 	return provider;
 }
+
+describe("formatCwdForFooter", () => {
+	it("does not abbreviate sibling paths that share the home prefix", () => {
+		expect(formatCwdForFooter("/home/user2", "/home/user")).toBe("/home/user2");
+	});
+
+	it("abbreviates the home directory and descendants", () => {
+		expect(formatCwdForFooter("/home/user", "/home/user")).toBe("~");
+		expect(formatCwdForFooter("/home/user/project", "/home/user")).toBe("~/project");
+	});
+});
 
 describe("FooterComponent width handling", () => {
 	beforeAll(() => {
