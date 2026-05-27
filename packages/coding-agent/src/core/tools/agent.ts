@@ -203,16 +203,43 @@ function normalizeAgentTaskAliases(task: AgentTaskParams): NonNullable<AgentTool
 	};
 }
 
+/**
+ * Coerce a `tasks`/`chain` value that some providers serialize as a JSON
+ * string into the array shape declared by the schema. Schema validation
+ * isn't always enforced by the provider before the tool runs, so without
+ * this guard a stringified array crashes `.map` deep inside normalization
+ * with the unhelpful `tasks?.map is not a function`. A single object is
+ * also wrapped — same providers occasionally drop the outer array entirely.
+ */
+function coerceTaskList(value: unknown, field: "tasks" | "chain"): NonNullable<AgentToolInput["tasks"]> | undefined {
+	if (value === undefined || value === null) return undefined;
+	let candidate: unknown = value;
+	if (typeof candidate === "string") {
+		try {
+			candidate = JSON.parse(candidate);
+		} catch {
+			throw new Error(`agent tool ${field} must be a JSON array of task objects, got an unparseable string`);
+		}
+	}
+	if (Array.isArray(candidate)) return candidate as NonNullable<AgentToolInput["tasks"]>;
+	if (typeof candidate === "object") {
+		return [candidate] as NonNullable<AgentToolInput["tasks"]>;
+	}
+	throw new Error(`agent tool ${field} must be an array of task objects, got ${typeof candidate}`);
+}
+
 export function normalizeAgentToolAliases(params: AgentToolInput): AgentToolInput {
 	const input = params as AgentToolParams;
 	rejectUnsupportedFutureFields(input);
+	const tasks = coerceTaskList(params.tasks, "tasks");
+	const chain = coerceTaskList(params.chain, "chain");
 	return {
 		...params,
 		agent: resolveStringAlias(input, "agent", "subagent_type") ?? params.agent,
 		task: resolveStringAlias(input, "task", "prompt") ?? params.task,
 		background: resolveBooleanAlias(input, "background", "run_in_background") ?? params.background,
-		tasks: params.tasks?.map((task) => normalizeAgentTaskAliases(task as AgentTaskParams)),
-		chain: params.chain?.map((task) => normalizeAgentTaskAliases(task as AgentTaskParams)),
+		tasks: tasks?.map((task) => normalizeAgentTaskAliases(task as AgentTaskParams)),
+		chain: chain?.map((task) => normalizeAgentTaskAliases(task as AgentTaskParams)),
 	};
 }
 
@@ -483,7 +510,8 @@ export function createAgentToolDefinition(
 		promptGuidelines: [
 			"Launch a child agent to handle complex, multi-step tasks. Each agent has specific tools and a tailored system prompt — specify it via `agent` (or `subagent_type`).",
 			"Reach for this when the task matches one of the available agent types, when you have independent work to run in parallel, or when answering would mean reading across several files — delegate it and you keep the conclusion, not the file dumps. For a single-fact lookup where you already know the file, symbol, or value, search directly with `read`/`grep`/`find`. Once you've delegated a search, don't also run it yourself — wait for the result.",
-			"Available agents: `explore` — fast read-only search for files, symbols, and code paths (cheap model, no transcript/project context/skills; specify breadth in `extraContext`: quick | medium | very thorough). `decompose` — read-only splitter for broad/token-heavy work into bounded sub-tasks with evidence requirements. `plan` — read-only architect for implementation strategy and risks on a known requirement. `reviewer` — read-only correctness/regression review with VERDICT line. `worker` — implementation worker for scoped coding tasks. `general` — general delegated task execution.",
+			'Routing rule: **default to `explore`** for any read-only investigation (search, find, where/how/which, investigate, audit, map, trace). Choose `general` ONLY when the child itself must write files, run bash, or mix search+edit+verify in one run — "open-ended research" alone is not enough. If every step is read/grep/find/ls, it\'s `explore`.',
+			"Available agents: `explore` — fast read-only search for files, symbols, and code paths (cheap model, no transcript/project context/skills; specify breadth in `extraContext`: quick | medium | very thorough). `decompose` — read-only splitter for broad/token-heavy work into bounded sub-tasks with evidence requirements. `plan` — read-only architect for implementation strategy and risks on a known requirement. `reviewer` — read-only correctness/regression review with VERDICT line. `worker` — implementation worker for scoped coding tasks with known file paths. `general` — delegated execution for children that must write files, run bash, or mix search+edit+verify in one run; not for pure read-only investigation (use `explore`).",
 			"Read-only agents (`explore`, `decompose`, `plan`, `reviewer`) cannot edit, write, or run bash — assign them research, search, planning, or review work only. Never assign them implementation.",
 			"Brief the agent like a smart colleague who just walked in: explain what you're trying to accomplish and why, describe what you've already ruled out, give enough context that the agent can make judgment calls rather than follow a narrow instruction. Terse command-style prompts produce shallow, generic work. Never delegate understanding — don't write 'based on your findings, fix the bug'; write prompts that prove you understood (file paths, line numbers, what specifically to change).",
 			"When parallel exploration or review is needed, send multiple `agent` tool-use blocks in one assistant message; Pi runs those calls concurrently. Use `tasks[]` only for explicit batched fan-out inside one agent call.",
