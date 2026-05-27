@@ -568,169 +568,260 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: options?.maxRetries ?? 0,
 			};
-			const response = await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
+			let response = await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			stream.push({ type: "start", partial: output });
 
 			type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson: string })) & { index: number };
 			const blocks = output.content as Block[];
 
-			for await (const event of iterateAnthropicEvents(response, options?.signal)) {
-				if (event.type === "message_start") {
-					output.responseId = event.message.id;
-					// Capture initial token usage from message_start event
-					// This ensures we have input token counts even if the stream is aborted early
-					output.usage.input = event.message.usage.input_tokens || 0;
-					output.usage.output = event.message.usage.output_tokens || 0;
-					output.usage.cacheRead = event.message.usage.cache_read_input_tokens || 0;
-					output.usage.cacheWrite = event.message.usage.cache_creation_input_tokens || 0;
-					// Anthropic doesn't provide total_tokens, compute from components
-					output.usage.totalTokens =
-						output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
-					calculateCost(model, output.usage);
-				} else if (event.type === "content_block_start") {
-					if (event.content_block.type === "text") {
-						const block: Block = {
-							type: "text",
-							text: "",
-							index: event.index,
-						};
-						output.content.push(block);
-						stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
-					} else if (event.content_block.type === "thinking") {
-						const block: Block = {
-							type: "thinking",
-							thinking: "",
-							thinkingSignature: "",
-							index: event.index,
-						};
-						output.content.push(block);
-						stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
-					} else if (event.content_block.type === "redacted_thinking") {
-						const block: Block = {
-							type: "thinking",
-							thinking: "[Reasoning redacted]",
-							thinkingSignature: event.content_block.data,
-							redacted: true,
-							index: event.index,
-						};
-						output.content.push(block);
-						stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
-					} else if (event.content_block.type === "tool_use") {
-						const block: Block = {
-							type: "toolCall",
-							id: event.content_block.id,
-							name: isOAuth
-								? fromClaudeCodeName(event.content_block.name, context.tools)
-								: event.content_block.name,
-							arguments: (event.content_block.input as Record<string, any>) ?? {},
-							partialJson: "",
-							index: event.index,
-						};
-						output.content.push(block);
-						stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
-					}
-				} else if (event.type === "content_block_delta") {
-					if (event.delta.type === "text_delta") {
+			// Anthropic returns stop_reason "pause_turn" when a long-running
+			// server-side tool (web_search / web_fetch / code_execution) needs
+			// another turn to finish. Per the API contract the client must echo
+			// the partial assistant message back unmodified to resume. If we
+			// surfaced pause_turn as the final stop reason, the agent loop would
+			// persist the partial turn to the session JSONL, and the next user
+			// prompt (or auto-compaction) would replay it as the latest assistant
+			// message. Any byte-level drift in a thinking signature on replay then
+			// triggers a hard 400 ("`thinking` or `redacted_thinking` blocks in
+			// the latest assistant message cannot be modified") that poisons every
+			// subsequent request — including compaction — until the bad turn is
+			// trimmed. Resolve pause_turn in-stream so callers only ever see a
+			// completed turn. See `mapStopReason` and the signed-thinking-block
+			// round-trip path below (~line 1163). (#thinking-roundtrip)
+			let rawStopReason: string | undefined;
+			let pauseResumeCount = 0;
+			const MAX_PAUSE_TURN_RESUMES = 16;
+
+			// Each Anthropic API call reports usage for THAT call only — not
+			// cumulative across the logical assistant turn. message_start and
+			// message_delta both overwrite `output.usage`, so without a carry-over
+			// the resumed turn would only report the final call's tokens and
+			// undercount cost by ~N× the resume count. We snapshot the completed
+			// call's totals into `carryOverUsage` before each resume; the
+			// per-event handlers then add the current call's tokens on top so
+			// `output.usage` always reflects the full assistant turn.
+			const carryOverUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+			while (true) {
+				for await (const event of iterateAnthropicEvents(response, options?.signal)) {
+					if (event.type === "message_start") {
+						output.responseId = event.message.id;
+						// Capture initial token usage from message_start event
+						// This ensures we have input token counts even if the stream is aborted early.
+						// On pause_turn resumes, add to carryOverUsage so totals stay cumulative.
+						output.usage.input = carryOverUsage.input + (event.message.usage.input_tokens || 0);
+						output.usage.output = carryOverUsage.output + (event.message.usage.output_tokens || 0);
+						output.usage.cacheRead =
+							carryOverUsage.cacheRead + (event.message.usage.cache_read_input_tokens || 0);
+						output.usage.cacheWrite =
+							carryOverUsage.cacheWrite + (event.message.usage.cache_creation_input_tokens || 0);
+						// Anthropic doesn't provide total_tokens, compute from components
+						output.usage.totalTokens =
+							output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+						calculateCost(model, output.usage);
+					} else if (event.type === "content_block_start") {
+						if (event.content_block.type === "text") {
+							const block: Block = {
+								type: "text",
+								text: "",
+								index: event.index,
+							};
+							output.content.push(block);
+							stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
+						} else if (event.content_block.type === "thinking") {
+							const block: Block = {
+								type: "thinking",
+								thinking: "",
+								thinkingSignature: "",
+								index: event.index,
+							};
+							output.content.push(block);
+							stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
+						} else if (event.content_block.type === "redacted_thinking") {
+							const block: Block = {
+								type: "thinking",
+								thinking: "[Reasoning redacted]",
+								thinkingSignature: event.content_block.data,
+								redacted: true,
+								index: event.index,
+							};
+							output.content.push(block);
+							stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
+						} else if (event.content_block.type === "tool_use") {
+							const block: Block = {
+								type: "toolCall",
+								id: event.content_block.id,
+								name: isOAuth
+									? fromClaudeCodeName(event.content_block.name, context.tools)
+									: event.content_block.name,
+								arguments: (event.content_block.input as Record<string, any>) ?? {},
+								partialJson: "",
+								index: event.index,
+							};
+							output.content.push(block);
+							stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
+						}
+					} else if (event.type === "content_block_delta") {
+						if (event.delta.type === "text_delta") {
+							const index = blocks.findIndex((b) => b.index === event.index);
+							const block = blocks[index];
+							if (block && block.type === "text") {
+								block.text += event.delta.text;
+								stream.push({
+									type: "text_delta",
+									contentIndex: index,
+									delta: event.delta.text,
+									partial: output,
+								});
+							}
+						} else if (event.delta.type === "thinking_delta") {
+							const index = blocks.findIndex((b) => b.index === event.index);
+							const block = blocks[index];
+							if (block && block.type === "thinking") {
+								block.thinking += event.delta.thinking;
+								stream.push({
+									type: "thinking_delta",
+									contentIndex: index,
+									delta: event.delta.thinking,
+									partial: output,
+								});
+							}
+						} else if (event.delta.type === "input_json_delta") {
+							const index = blocks.findIndex((b) => b.index === event.index);
+							const block = blocks[index];
+							if (block && block.type === "toolCall") {
+								block.partialJson += event.delta.partial_json;
+								block.arguments = parseStreamingJson(block.partialJson);
+								stream.push({
+									type: "toolcall_delta",
+									contentIndex: index,
+									delta: event.delta.partial_json,
+									partial: output,
+								});
+							}
+						} else if (event.delta.type === "signature_delta") {
+							const index = blocks.findIndex((b) => b.index === event.index);
+							const block = blocks[index];
+							if (block && block.type === "thinking") {
+								block.thinkingSignature = block.thinkingSignature || "";
+								block.thinkingSignature += event.delta.signature;
+							}
+						}
+					} else if (event.type === "content_block_stop") {
 						const index = blocks.findIndex((b) => b.index === event.index);
 						const block = blocks[index];
-						if (block && block.type === "text") {
-							block.text += event.delta.text;
-							stream.push({
-								type: "text_delta",
-								contentIndex: index,
-								delta: event.delta.text,
-								partial: output,
-							});
+						if (block) {
+							delete (block as any).index;
+							if (block.type === "text") {
+								stream.push({
+									type: "text_end",
+									contentIndex: index,
+									content: block.text,
+									partial: output,
+								});
+							} else if (block.type === "thinking") {
+								stream.push({
+									type: "thinking_end",
+									contentIndex: index,
+									content: block.thinking,
+									partial: output,
+								});
+							} else if (block.type === "toolCall") {
+								block.arguments = parseStreamingJson(block.partialJson);
+								// Finalize in-place and strip the scratch buffer so replay only
+								// carries parsed arguments.
+								delete (block as { partialJson?: string }).partialJson;
+								stream.push({
+									type: "toolcall_end",
+									contentIndex: index,
+									toolCall: block,
+									partial: output,
+								});
+							}
 						}
-					} else if (event.delta.type === "thinking_delta") {
-						const index = blocks.findIndex((b) => b.index === event.index);
-						const block = blocks[index];
-						if (block && block.type === "thinking") {
-							block.thinking += event.delta.thinking;
-							stream.push({
-								type: "thinking_delta",
-								contentIndex: index,
-								delta: event.delta.thinking,
-								partial: output,
-							});
+					} else if (event.type === "message_delta") {
+						if (event.delta.stop_reason) {
+							rawStopReason = event.delta.stop_reason;
+							output.stopReason = mapStopReason(event.delta.stop_reason);
 						}
-					} else if (event.delta.type === "input_json_delta") {
-						const index = blocks.findIndex((b) => b.index === event.index);
-						const block = blocks[index];
-						if (block && block.type === "toolCall") {
-							block.partialJson += event.delta.partial_json;
-							block.arguments = parseStreamingJson(block.partialJson);
-							stream.push({
-								type: "toolcall_delta",
-								contentIndex: index,
-								delta: event.delta.partial_json,
-								partial: output,
-							});
+						// Only update usage fields if present (not null).
+						// Preserves input_tokens from message_start when proxies omit it in message_delta.
+						// On pause_turn resumes, add to carryOverUsage so totals stay cumulative.
+						if (event.usage.input_tokens != null) {
+							output.usage.input = carryOverUsage.input + event.usage.input_tokens;
 						}
-					} else if (event.delta.type === "signature_delta") {
-						const index = blocks.findIndex((b) => b.index === event.index);
-						const block = blocks[index];
-						if (block && block.type === "thinking") {
-							block.thinkingSignature = block.thinkingSignature || "";
-							block.thinkingSignature += event.delta.signature;
+						if (event.usage.output_tokens != null) {
+							output.usage.output = carryOverUsage.output + event.usage.output_tokens;
 						}
-					}
-				} else if (event.type === "content_block_stop") {
-					const index = blocks.findIndex((b) => b.index === event.index);
-					const block = blocks[index];
-					if (block) {
-						delete (block as any).index;
-						if (block.type === "text") {
-							stream.push({
-								type: "text_end",
-								contentIndex: index,
-								content: block.text,
-								partial: output,
-							});
-						} else if (block.type === "thinking") {
-							stream.push({
-								type: "thinking_end",
-								contentIndex: index,
-								content: block.thinking,
-								partial: output,
-							});
-						} else if (block.type === "toolCall") {
-							block.arguments = parseStreamingJson(block.partialJson);
-							// Finalize in-place and strip the scratch buffer so replay only
-							// carries parsed arguments.
-							delete (block as { partialJson?: string }).partialJson;
-							stream.push({
-								type: "toolcall_end",
-								contentIndex: index,
-								toolCall: block,
-								partial: output,
-							});
+						if (event.usage.cache_read_input_tokens != null) {
+							output.usage.cacheRead = carryOverUsage.cacheRead + event.usage.cache_read_input_tokens;
 						}
+						if (event.usage.cache_creation_input_tokens != null) {
+							output.usage.cacheWrite = carryOverUsage.cacheWrite + event.usage.cache_creation_input_tokens;
+						}
+						// Anthropic doesn't provide total_tokens, compute from components
+						output.usage.totalTokens =
+							output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+						calculateCost(model, output.usage);
 					}
-				} else if (event.type === "message_delta") {
-					if (event.delta.stop_reason) {
-						output.stopReason = mapStopReason(event.delta.stop_reason);
-					}
-					// Only update usage fields if present (not null).
-					// Preserves input_tokens from message_start when proxies omit it in message_delta.
-					if (event.usage.input_tokens != null) {
-						output.usage.input = event.usage.input_tokens;
-					}
-					if (event.usage.output_tokens != null) {
-						output.usage.output = event.usage.output_tokens;
-					}
-					if (event.usage.cache_read_input_tokens != null) {
-						output.usage.cacheRead = event.usage.cache_read_input_tokens;
-					}
-					if (event.usage.cache_creation_input_tokens != null) {
-						output.usage.cacheWrite = event.usage.cache_creation_input_tokens;
-					}
-					// Anthropic doesn't provide total_tokens, compute from components
-					output.usage.totalTokens =
-						output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
-					calculateCost(model, output.usage);
 				}
+
+				if (rawStopReason !== "pause_turn" || options?.signal?.aborted) break;
+
+				if (++pauseResumeCount > MAX_PAUSE_TURN_RESUMES) {
+					throw new Error(
+						`Anthropic pause_turn resume limit (${MAX_PAUSE_TURN_RESUMES}) exceeded; assistant turn did not complete`,
+					);
+				}
+
+				// Defensive: content_block_stop should have cleared these scratch
+				// fields, but a pause that ends mid-block must not leak `index` or
+				// `partialJson` into the continuation payload.
+				for (const block of output.content) {
+					delete (block as { index?: number }).index;
+					delete (block as { partialJson?: string }).partialJson;
+				}
+
+				// Echo the partial assistant turn back unmodified. transformMessages +
+				// the signed-thinking-block branch in the assistant-block builder
+				// round-trip thinking signatures byte-for-byte, which is what
+				// Anthropic validates against on resume.
+				const continuationContext: Context = {
+					...context,
+					messages: [
+						...context.messages,
+						{
+							role: "assistant",
+							content: output.content,
+							api: output.api,
+							provider: output.provider,
+							model: output.model,
+							usage: output.usage,
+							stopReason: "stop",
+							timestamp: output.timestamp,
+						} satisfies AssistantMessage,
+					],
+				};
+
+				let continuationParams = buildParams(model, continuationContext, isOAuth, options);
+				const nextContinuation = await options?.onPayload?.(continuationParams, model);
+				if (nextContinuation !== undefined) {
+					continuationParams = nextContinuation as MessageCreateParamsStreaming;
+				}
+
+				// Snapshot the completed call's cumulative totals; the next call's
+				// message_start/delta will add this call's contribution on top.
+				carryOverUsage.input = output.usage.input;
+				carryOverUsage.output = output.usage.output;
+				carryOverUsage.cacheRead = output.usage.cacheRead;
+				carryOverUsage.cacheWrite = output.usage.cacheWrite;
+
+				rawStopReason = undefined;
+				response = await client.messages
+					.create({ ...continuationParams, stream: true }, requestOptions)
+					.asResponse();
+				await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			}
 
 			if (options?.signal?.aborted) {
@@ -1424,7 +1515,13 @@ function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReas
 			return "toolUse";
 		case "refusal":
 			return "error";
-		case "pause_turn": // Stop is good enough -> resubmit
+		case "pause_turn":
+			// pause_turn is resolved inside `streamAnthropic` by echoing the
+			// partial assistant turn back to Anthropic until a real terminal
+			// reason arrives. If anything ever bypasses that loop (e.g. a
+			// caller wiring `mapStopReason` directly), surface it as "stop"
+			// so the agent loop at least halts cleanly instead of looping on
+			// an unknown value. (#thinking-roundtrip)
 			return "stop";
 		case "stop_sequence":
 			return "stop"; // We don't supply stop sequences, so this should never happen
