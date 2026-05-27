@@ -251,6 +251,16 @@ export interface AgentSessionConfig {
 	agentToolServices?: AgentToolParentServices;
 	/** Session start event metadata emitted when extensions bind to this runtime. */
 	sessionStartEvent?: SessionStartEvent;
+	/**
+	 * Origin of this session. Exposed on `ExtensionContext.source` so hooks
+	 * can distinguish user-driven sessions (interactive TUI, `pi --print`,
+	 * RPC) from machine-driven ones (in-process child-agent runs spawned by
+	 * the built-in `agent` tool / `ctx.forkAgent`, or out-of-process Pi
+	 * children spawned with `pi --source child-agent`). Defaults to
+	 * `"interactive"`. Replaces the legacy `PI_MEMORY_SUBAGENT=1` env
+	 * contract used by dream-memory / pi-memory.
+	 */
+	source?: InputSource;
 }
 
 export interface ExtensionBindings {
@@ -474,6 +484,7 @@ export class AgentSession {
 	// When true, before_agent_start extension handlers must not overwrite agent.state.systemPrompt.
 	// Set by overrideBaseSystemPrompt() for fork children inheriting the parent's frozen prompt.
 	private _systemPromptFrozen = false;
+	private _source: InputSource = "interactive";
 
 	constructor(config: AgentSessionConfig) {
 		this.agent = config.agent;
@@ -490,6 +501,7 @@ export class AgentSession {
 		this._baseToolsOverride = config.baseToolsOverride;
 		this._agentToolServices = config.agentToolServices;
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
+		if (config.source) this._source = config.source;
 
 		// Always subscribe to agent events for internal handling
 		// (session persistence, extensions, auto-compaction, retry logic)
@@ -505,6 +517,11 @@ export class AgentSession {
 	/** Model registry for API key resolution and model discovery */
 	get modelRegistry(): ModelRegistry {
 		return this._modelRegistry;
+	}
+
+	/** Origin of this session — see `AgentSessionConfig.source`. */
+	get source(): InputSource {
+		return this._source;
 	}
 
 	private async _getRequiredRequestAuth(model: Model<any>): Promise<{
@@ -1554,12 +1571,15 @@ export class AgentSession {
 			}
 			this._pendingNextTurnMessages = [];
 
-			// Emit before_agent_start extension event
+			// Emit before_agent_start extension event. Forward the prompt's source
+			// (defaulting to "interactive") so hooks can discriminate user-driven
+			// turns from machine-driven ones (child-agent runs, extension steers).
 			const result = await this._extensionRunner.emitBeforeAgentStart(
 				expandedText,
 				currentImages,
 				this._baseSystemPrompt,
 				this._baseSystemPromptOptions,
+				options?.source ?? "interactive",
 			);
 			// Add all custom messages from extensions
 			if (result?.messages) {
@@ -1809,12 +1829,17 @@ export class AgentSession {
 			// before triggerTurn:true) is never consumed and the model is invoked with
 			// the base system prompt + an opaque custom message it can't see, so it
 			// has no way to know what the goal/objective is.
+			// triggerTurn fires for custom-message-driven turns. These are never
+			// direct user input — the caller is an extension hook (e.g. pi-goal's
+			// pendingControlPrompt). Tag as "extension" so memory hooks skip recall
+			// and persistent-memory inject for these synthetic turns.
 			const beforeStart = this._baseSystemPromptOptions
 				? await this._extensionRunner.emitBeforeAgentStart(
 						"",
 						undefined,
 						this._baseSystemPrompt,
 						this._baseSystemPromptOptions,
+						"extension",
 					)
 				: undefined;
 			const extraMessages: AgentMessage[] = [];
@@ -3213,6 +3238,7 @@ export class AgentSession {
 			this._cwd,
 			this.sessionManager,
 			this._modelRegistry,
+			this._source,
 		);
 		if (this._extensionRunnerRef) {
 			this._extensionRunnerRef.current = this._extensionRunner;

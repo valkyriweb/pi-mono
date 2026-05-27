@@ -1687,6 +1687,7 @@ export class InteractiveMode {
 				ui: this.createExtensionUIContext(),
 				hasUI: true,
 				cwd: this.sessionManager.getCwd(),
+				source: runnerCtx.source,
 				sessionManager: this.sessionManager,
 				modelRegistry: session.modelRegistry,
 				model: session.model,

@@ -8,6 +8,7 @@
 
 import type { AssistantMessage, ImageContent } from "@earendil-works/pi-ai";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
+import type { InputSource } from "../core/extensions/types.ts";
 import { flushRawStdout, writeRawStdout } from "../core/output-guard.ts";
 import { killTrackedDetachedChildren } from "../utils/shell.ts";
 
@@ -23,6 +24,14 @@ export interface PrintModeOptions {
 	initialMessage?: string;
 	/** Images to attach to the initial message */
 	initialImages?: ImageContent[];
+	/**
+	 * Caller-declared origin of the prompts. Forwarded into
+	 * `session.prompt({ source })` so extension hooks can distinguish
+	 * user-driven turns from machine-driven ones (sub-agent spawns,
+	 * extension-initiated steers). Defaults to `"interactive"` when
+	 * unset, matching the historical behaviour of `pi --print`.
+	 */
+	source?: InputSource;
 }
 
 /**
@@ -30,7 +39,7 @@ export interface PrintModeOptions {
  * Sends prompts to the agent and outputs the result.
  */
 export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: PrintModeOptions): Promise<number> {
-	const { mode, messages = [], initialMessage, initialImages } = options;
+	const { mode, messages = [], initialMessage, initialImages, source } = options;
 	let exitCode = 0;
 	let session = runtimeHost.session;
 	let unsubscribe: (() => void) | undefined;
@@ -117,12 +126,21 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 
 		await rebindSession();
 
+		// Only thread `source` into PromptOptions when the caller explicitly set
+		// it; an undefined source is left out entirely so AgentSession.prompt sees
+		// no key and falls back to its default. Keeps existing test assertions
+		// (which check exact PromptOptions shape) honest.
+		const sourceOpts = source !== undefined ? { source } : {};
 		if (initialMessage) {
-			await session.prompt(initialMessage, { images: initialImages });
+			await session.prompt(initialMessage, { images: initialImages, ...sourceOpts });
 		}
 
 		for (const message of messages) {
-			await session.prompt(message);
+			if (source !== undefined) {
+				await session.prompt(message, { source });
+			} else {
+				await session.prompt(message);
+			}
 		}
 
 		if (mode === "text") {

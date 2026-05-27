@@ -532,6 +532,20 @@ export interface ExtensionContext {
 	hasUI: boolean;
 	/** Current working directory */
 	cwd: string;
+	/**
+	 * Origin of this AgentSession. Set once at session construction from
+	 * `CreateAgentSessionOptions.source` (or `--source` on the CLI) and never
+	 * mutated. Hooks that fire on per-session or per-turn events without a
+	 * dedicated `source` field (`session_start`, `session_shutdown`,
+	 * `turn_end`, `tool_call`, `tool_result`, tool execution) read this to
+	 * tell user-driven sessions from machine-driven ones (in-process
+	 * child-agent delegations, Pi children spawned with `pi --source
+	 * child-agent`). Per-turn events that DO carry source (`input`,
+	 * `before_agent_start`) should prefer `event.source` since extension
+	 * steers can inject an `"extension"` turn into an otherwise
+	 * `"interactive"` session. Defaults to `"interactive"`.
+	 */
+	source: InputSource;
 	/** Session manager (read-only) */
 	sessionManager: ReadonlySessionManager;
 	/** Model registry for API key resolution */
@@ -895,6 +909,14 @@ export interface BeforeAgentStartEvent {
 	/** Structured options used to build the system prompt. Extensions can inspect this to understand what Pi loaded without re-discovering resources. */
 	systemPromptOptions: BuildSystemPromptOptions;
 	/**
+	 * Origin of this turn. Mirrors `InputEvent.source` so hooks that should
+	 * only fire for user-driven prompts (memory recall, persistent-memory
+	 * inject, save-prompt) can skip cleanly for `"child-agent"` and
+	 * `"extension"` runs. Defaults to `"interactive"` when the caller
+	 * didn't pass `PromptOptions.source`.
+	 */
+	source: InputSource;
+	/**
 	 * When true, this invocation is a dry-run preview (e.g. from
 	 * `ctx.getEffectiveSystemPrompt()` for diagnostic UI like /context).
 	 * Handlers MUST NOT mutate session state, consume single-shot flags,
@@ -1020,8 +1042,19 @@ export interface UserBashEvent {
 // Input Events
 // ============================================================================
 
-/** Source of user input */
-export type InputSource = "interactive" | "rpc" | "extension";
+/**
+ * Origin of a single agent turn. Hooks that should only fire for user input
+ * (memory recall, persistent-memory inject, save-prompt) gate on this.
+ *
+ * - `"interactive"` — a real human typed into the TUI or invoked `pi --print`.
+ * - `"rpc"`         — an RPC client sent a `prompt` command.
+ * - `"extension"`   — an extension hook called `steer` or `sendCustomMessage`.
+ * - `"child-agent"` — an in-process delegated run from the built-in `agent`
+ *                    tool / `ctx.forkAgent`, or an out-of-process Pi child
+ *                    spawned with `pi --source child-agent`. Replaces the
+ *                    legacy `PI_MEMORY_SUBAGENT=1` env contract.
+ */
+export type InputSource = "interactive" | "rpc" | "extension" | "child-agent";
 
 /** Fired when user input is received, before agent processing */
 export interface InputEvent {

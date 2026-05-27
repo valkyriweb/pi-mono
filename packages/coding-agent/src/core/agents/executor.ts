@@ -612,6 +612,12 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		thinkingLevel: thinking,
 		tools: effectiveTools,
 		sessionStartEvent: { type: "session_start", reason: "startup" },
+		// Tag the session-level source so non-input hooks (session_start,
+		// session_shutdown, turn_end, tool_call/tool_result, memory_note tool
+		// execution) can gate on `ctx.source === "child-agent"`. The per-turn
+		// `source: "child-agent"` passed to `session.prompt` below covers
+		// input/before_agent_start independently.
+		source: "child-agent",
 	});
 
 	if (policy.includeTranscript) {
@@ -828,6 +834,7 @@ async function resumeSingleBackgroundRun(
 			reason: "resume",
 			previousSessionFile: options.parentSessionManager.getSessionFile(),
 		},
+		source: "child-agent",
 	});
 	details.loadedSkills = childServices.resourceLoader.getSkills().skills.map((skill) => skill.name);
 

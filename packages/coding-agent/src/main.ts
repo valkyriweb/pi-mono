@@ -608,6 +608,13 @@ export async function main(args: string[], options?: MainOptions) {
 			tools: sessionOptions.tools,
 			noTools: sessionOptions.noTools,
 			customTools: sessionOptions.customTools,
+			// `--source <input-source>` (defaults to interactive). Set once at
+			// session construction and exposed on `ExtensionContext.source` so
+			// memory extensions can skip cascades for `child-agent`/`extension`
+			// sessions without depending on env-var conventions. Per-turn source
+			// (e.g. for extension steers inside an interactive session) is
+			// independently carried on InputEvent/BeforeAgentStartEvent.
+			source: parsed.source,
 		});
 		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
 		if (created.session.model && cliThinkingOverride) {
@@ -722,6 +729,7 @@ export async function main(args: string[], options?: MainOptions) {
 			messages: parsed.messages,
 			initialMessage,
 			initialImages,
+			source: parsed.source,
 		});
 		stopThemeWatcher();
 		restoreStdout();

@@ -370,5 +370,27 @@ describe("parseArgs", () => {
 			expect(result.fileArgs).toEqual(["prompt.md"]);
 			expect(result.messages).toEqual(["Do the task"]);
 		});
+
+		test("parses --source child-agent", () => {
+			const result = parseArgs(["--print", "--source", "child-agent", "prompt"]);
+			expect(result.source).toBe("child-agent");
+			expect(result.diagnostics).toEqual([]);
+		});
+
+		test("accepts every InputSource value", () => {
+			for (const src of ["interactive", "rpc", "extension", "child-agent"]) {
+				const result = parseArgs(["--source", src]);
+				expect(result.source).toBe(src);
+				expect(result.diagnostics).toEqual([]);
+			}
+		});
+
+		test("warns on invalid --source value and leaves source unset", () => {
+			const result = parseArgs(["--source", "nonsense"]);
+			expect(result.source).toBeUndefined();
+			expect(result.diagnostics).toEqual([
+				{ type: "warning", message: expect.stringContaining("Invalid --source") },
+			]);
+		});
 	});
 });
