@@ -1560,6 +1560,7 @@ export class AgentSession {
 				currentImages,
 				this._baseSystemPrompt,
 				this._baseSystemPromptOptions,
+				options?.source ?? "interactive",
 			);
 			// Add all custom messages from extensions
 			if (result?.messages) {

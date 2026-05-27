@@ -26,6 +26,7 @@ export {
 	shouldCompact,
 } from "./harness/compaction/compaction.ts";
 export * from "./harness/messages.ts";
+export * from "./harness/progressive-disclosure.ts";
 export * from "./harness/prompt-templates.ts";
 export * from "./harness/session/jsonl-repo.ts";
 export * from "./harness/session/memory-repo.ts";

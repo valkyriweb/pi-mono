@@ -895,6 +895,13 @@ export interface BeforeAgentStartEvent {
 	/** Structured options used to build the system prompt. Extensions can inspect this to understand what Pi loaded without re-discovering resources. */
 	systemPromptOptions: BuildSystemPromptOptions;
 	/**
+	 * Where the triggering prompt came from. Mirrors `InputEvent.source` so a
+	 * `before_agent_start` handler can apply the same skip rules its `input`
+	 * handler does — needed because child-agent / extension turns don't go
+	 * through the `input` hook the way an interactive turn does.
+	 */
+	source: InputSource;
+	/**
 	 * When true, this invocation is a dry-run preview (e.g. from
 	 * `ctx.getEffectiveSystemPrompt()` for diagnostic UI like /context).
 	 * Handlers MUST NOT mutate session state, consume single-shot flags,
@@ -1020,8 +1027,20 @@ export interface UserBashEvent {
 // Input Events
 // ============================================================================
 
-/** Source of user input */
-export type InputSource = "interactive" | "rpc" | "extension";
+/**
+ * Source of a prompt entering the agent loop. Lets extension hooks
+ * (`input`, `before_agent_start`) discriminate user-driven turns from
+ * machine-driven ones so they can skip work that only makes sense for humans
+ * (memory recall, persistent-memory inject, dream-notify, …).
+ *
+ * - `interactive` — typed in the TUI by the user.
+ * - `rpc` — programmatic SDK / RPC mode caller.
+ * - `extension` — an extension hook called `session.steer()` / `sendCustomMessage(triggerTurn)` / similar.
+ * - `child-agent` — an in-process child spawned by the built-in `agent` tool
+ *   or `ctx.forkAgent()`. Always machine-driven, never a human. Use this as
+ *   the canonical skip signal for memory pipelines inside delegated runs.
+ */
+export type InputSource = "interactive" | "rpc" | "extension" | "child-agent";
 
 /** Fired when user input is received, before agent processing */
 export interface InputEvent {

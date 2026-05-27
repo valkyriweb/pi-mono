@@ -469,7 +469,13 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 
 	try {
 		if (options.signal?.aborted) throw new Error(`Agent run ${getAbortedRunStatus(options)}`);
-		await session.prompt(options.prompt, { expandPromptTemplates: false, source: "extension" });
+		// `source: "child-agent"` is the canonical signal for in-process delegated
+		// runs (built-in `agent` tool + `ctx.forkAgent`). Distinct from `"extension"`,
+		// which means "an extension hook called steer/sendCustomMessage". Extensions
+		// that should never run inside delegated turns (memory recall,
+		// persistent-memory inject, dream-notify, …) gate on this in their `input`
+		// and `before_agent_start` handlers.
+		await session.prompt(options.prompt, { expandPromptTemplates: false, source: "child-agent" });
 		if (options.signal?.aborted) throw new Error(`Agent run ${getAbortedRunStatus(options)}`);
 		const finalOutput = extractFinalAssistantText(session.messages);
 		const output = await writeAgentOutput({

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -432,6 +433,162 @@ export interface BashToolOptions {
 	shellPath?: string;
 	/** Hook to adjust command, cwd, or env before execution */
 	spawnHook?: BashSpawnHook;
+}
+
+// ---------- Bash policy (read-only child agents) ----------
+//
+// A per-invocation policy used to enforce a deny-list against bash commands
+// executed inside a specific child agent (currently: `explore`). Set via
+// `runWithBashPolicy()` around `session.prompt(...)` in the agents executor;
+// read at the top of bash `execute`. AsyncLocalStorage keeps the policy bound
+// to the child's async context without plumbing options through session
+// factories.
+//
+// This is a soft guard, not a sandbox: it rejects commands whose first word in
+// any pipeline/sequence segment matches a deny pattern, and rejects unquoted
+// output redirection (`>`, `>>`, `tee`). It will not catch every adversarial
+// construction (eval, $(), backticks, here-docs) and is not a substitute for
+// the broader Claude-Code-style permissions layer.
+export interface BashPolicy {
+	/** Human-readable label used in error messages. */
+	label: string;
+	/** Command-name patterns to reject (case-sensitive, word-boundary match). Multi-word entries (e.g. "git push") match consecutive tokens. */
+	denyCommands: string[];
+	/** When true, reject unquoted output redirection (`>`, `>>`, `tee`, `| sponge`). */
+	denyWrites?: boolean;
+}
+
+const bashPolicyStore = new AsyncLocalStorage<BashPolicy>();
+
+/** Run `fn` with `policy` bound to the current async context. */
+export function runWithBashPolicy<T>(policy: BashPolicy, fn: () => Promise<T>): Promise<T> {
+	return bashPolicyStore.run(policy, fn);
+}
+
+/** Deny list applied to the `explore` agent: no mutations, no writes, no network sends. */
+export const EXPLORE_BASH_POLICY: BashPolicy = {
+	label: "explore (read-only)",
+	denyWrites: true,
+	denyCommands: [
+		// Filesystem mutation
+		"rm",
+		"mv",
+		"cp",
+		"mkdir",
+		"rmdir",
+		"touch",
+		"chmod",
+		"chown",
+		"ln",
+		// In-place editors
+		"sed -i",
+		"perl -i",
+		"awk -i",
+		// Git mutation
+		"git add",
+		"git commit",
+		"git push",
+		"git pull",
+		"git fetch",
+		"git checkout",
+		"git switch",
+		"git reset",
+		"git restore",
+		"git stash",
+		"git merge",
+		"git rebase",
+		"git cherry-pick",
+		"git tag",
+		"git branch",
+		"git worktree",
+		// gh mutation (read uses `gh api -X GET`)
+		"gh pr create",
+		"gh pr edit",
+		"gh pr close",
+		"gh pr merge",
+		"gh issue create",
+		"gh issue edit",
+		"gh issue close",
+		"gh issue comment",
+		"gh release",
+		"gh repo create",
+		"gh repo delete",
+		// Package / process / service
+		"npm install",
+		"npm i",
+		"npm run",
+		"npm publish",
+		"pnpm install",
+		"pnpm add",
+		"yarn install",
+		"yarn add",
+		"pip install",
+		"pipx install",
+		"brew install",
+		"cargo install",
+		"go install",
+		"kill",
+		"pkill",
+		"killall",
+		"systemctl",
+		"launchctl",
+		"docker run",
+		"docker exec",
+		"kubectl apply",
+		"kubectl delete",
+		"kubectl create",
+		"kubectl edit",
+		"kubectl patch",
+		// Network writes
+		"scp",
+		"rsync",
+		// Code interpreters that can do anything
+		"eval",
+		"exec",
+		"source",
+		// shell init / dotfile sourcing risk
+	],
+};
+
+/** Tokenize the command into pipeline/sequence segments to inspect each independently. */
+function splitBashSegments(command: string): string[] {
+	// Split on `;`, `&&`, `||`, `|`, newline. Keep it simple — quoting is not tracked.
+	return command
+		.split(/(?:;|&&|\|\|?|\n)/g)
+		.map((s) => s.trim())
+		.filter(Boolean);
+}
+
+/** First two whitespace-separated tokens of a segment (covers "git push" style). */
+function firstTokens(segment: string): string {
+	const trimmed = segment.replace(/^[!\s]+/, "").trim();
+	const tokens = trimmed.split(/\s+/).slice(0, 3);
+	return tokens.join(" ");
+}
+
+/**
+ * Check `command` against `policy`. Returns a human-readable reason if denied,
+ * else undefined. Inspected: each pipeline segment's first 1-3 tokens against
+ * `denyCommands` (prefix match), and unquoted `>`/`>>`/`tee`/`sponge` when
+ * `denyWrites` is set.
+ */
+export function checkBashPolicy(command: string, policy: BashPolicy): string | undefined {
+	const segments = splitBashSegments(command);
+	for (const segment of segments) {
+		const head = firstTokens(segment);
+		for (const pattern of policy.denyCommands) {
+			if (head === pattern || head.startsWith(`${pattern} `)) {
+				return `bash policy [${policy.label}] denied: "${pattern}" is not permitted (segment: ${segment.slice(0, 80)}). Report what you need in Open Questions instead.`;
+			}
+		}
+		if (policy.denyWrites) {
+			// Reject unquoted `>` / `>>` (but not `2>&1`, `>&2`, etc.) and `tee` / `sponge`.
+			if (/(^|[^&\d])>>?(?![&])/.test(segment) || /\btee\b/.test(segment) || /\bsponge\b/.test(segment)) {
+				return `bash policy [${policy.label}] denied: output redirection / tee is not permitted (segment: ${segment.slice(0, 80)}).`;
+			}
+		}
+	}
+	return undefined;
 }
 
 const BASH_PREVIEW_LINES = 5;
@@ -878,6 +1035,17 @@ export function createBashToolDefinition(
 			onUpdate?,
 			_ctx?,
 		) {
+			const policy = bashPolicyStore.getStore();
+			if (policy) {
+				const denied = checkBashPolicy(command, policy);
+				if (denied) {
+					return {
+						isError: true,
+						content: [{ type: "text", text: denied }],
+						details: undefined,
+					};
+				}
+			}
 			if (redundantCdToCurrentWorkingDirectory(command, cwd)) {
 				return {
 					isError: true,
@@ -906,7 +1074,7 @@ export function createBashToolDefinition(
 					`Backgrounded bash job ${job.id} (pid=${job.pid ?? "unknown"}).\n` +
 					`Command: ${command}\n` +
 					`Log: ${job.logPath}\n\n` +
-					`Read output with bash_output(bgId="${job.id}"). Stop with bash_kill(bgId="${job.id}").`;
+					`Use bash_output(bgId="${job.id}") for one snapshot. If it is still running, switch to monitor wakeups instead of polling. Stop with bash_kill(bgId="${job.id}").`;
 				return {
 					content: [{ type: "text", text }],
 					details: {

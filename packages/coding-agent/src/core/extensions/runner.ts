@@ -1237,8 +1237,9 @@ export class ExtensionRunner {
 		images: ImageContent[] | undefined,
 		systemPrompt: string,
 		systemPromptOptions: BuildSystemPromptOptions,
+		source: InputSource = "interactive",
 	): Promise<BeforeAgentStartCombinedResult | undefined> {
-		return this._runBeforeAgentStart(prompt, images, systemPrompt, systemPromptOptions, false);
+		return this._runBeforeAgentStart(prompt, images, systemPrompt, systemPromptOptions, false, source);
 	}
 
 	/**
@@ -1250,7 +1251,14 @@ export class ExtensionRunner {
 		systemPrompt: string,
 		systemPromptOptions: BuildSystemPromptOptions,
 	): Promise<string> {
-		const result = await this._runBeforeAgentStart("", undefined, systemPrompt, systemPromptOptions, true);
+		const result = await this._runBeforeAgentStart(
+			"",
+			undefined,
+			systemPrompt,
+			systemPromptOptions,
+			true,
+			"interactive",
+		);
 		return result?.systemPrompt ?? systemPrompt;
 	}
 
@@ -1260,6 +1268,7 @@ export class ExtensionRunner {
 		systemPrompt: string,
 		systemPromptOptions: BuildSystemPromptOptions,
 		preview: boolean,
+		source: InputSource,
 	): Promise<BeforeAgentStartCombinedResult | undefined> {
 		if (this.staleMessage) return undefined;
 		let currentSystemPrompt = systemPrompt;
@@ -1306,6 +1315,7 @@ export class ExtensionRunner {
 						images,
 						systemPrompt: currentSystemPrompt,
 						systemPromptOptions,
+						source,
 						...(preview ? { preview: true } : {}),
 					};
 					const handlerResult = await handler(event, ctx);
