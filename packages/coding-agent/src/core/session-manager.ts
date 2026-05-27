@@ -840,6 +840,11 @@ export class SessionManager {
 		return this.sessionFile;
 	}
 
+	getParentSession(): string | undefined {
+		const header = this.fileEntries.find((entry) => entry.type === "session") as SessionHeader | undefined;
+		return header?.parentSession;
+	}
+
 	_persist(entry: SessionEntry): void {
 		if (!this.persist || !this.sessionFile) return;
 

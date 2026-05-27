@@ -8,7 +8,13 @@ import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
 import { AuthStorage } from "./auth-storage.ts";
 import { createPromptCacheAffinityKey } from "./cache-affinity.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
-import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
+import type {
+	ExtensionRunner,
+	InputSource,
+	LoadExtensionsResult,
+	SessionStartEvent,
+	ToolDefinition,
+} from "./extensions/index.ts";
 import { convertToLlm } from "./messages.ts";
 import { ModelRegistry } from "./model-registry.ts";
 import { findInitialModel } from "./model-resolver.ts";
@@ -81,6 +87,13 @@ export interface CreateAgentSessionOptions {
 	settingsManager?: SettingsManager;
 	/** Session start event metadata for extension runtime startup. */
 	sessionStartEvent?: SessionStartEvent;
+	/**
+	 * Origin of this session. Forwarded to `AgentSession` and exposed on
+	 * `ExtensionContext.source`. CLI sets this from `--source`; the built-in
+	 * `agent` tool sets `"child-agent"` for in-process delegated runs.
+	 * Defaults to `"interactive"`. See `AgentSessionConfig.source`.
+	 */
+	source?: InputSource;
 }
 
 /** Result from createAgentSession */
@@ -168,6 +181,32 @@ function getAttributionHeaders(
 	}
 
 	return undefined;
+}
+
+function isClaudeBridgeModel(model: Model<any>): boolean {
+	return (
+		model.provider === "claude-bridge" ||
+		model.baseUrl.includes("127.0.0.1:9100") ||
+		model.baseUrl.includes("localhost:9100")
+	);
+}
+
+function getClaudeBridgeHeaders(
+	sessionManager: SessionManager,
+	source: InputSource | undefined,
+): Record<string, string> {
+	const headers: Record<string, string> = {
+		"x-pi-session-id": sessionManager.getSessionId(),
+		"x-pi-cwd": sessionManager.getCwd(),
+		"x-pi-pid": String(process.pid),
+		"x-pi-source": source ?? "interactive",
+		"x-pi-child-agent": source === "child-agent" ? "true" : "false",
+	};
+	const title = sessionManager.getSessionName();
+	if (title) headers["x-pi-session-title"] = title;
+	const parentSession = sessionManager.getParentSession();
+	if (parentSession) headers["x-pi-parent-session"] = parentSession;
+	return headers;
 }
 
 /**
@@ -311,6 +350,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			: defaultActiveToolNames;
 
 	let agent: Agent;
+	const sessionSource = options.source ?? "interactive";
 
 	// Create convertToLlm wrapper that filters images if blockImages is enabled (defense-in-depth)
 	const convertToLlmWithBlockImages = (messages: AgentMessage[]): Message[] => {
@@ -390,6 +430,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 			const providerRetrySettings = settingsManager.getProviderRetrySettings();
 			const attributionHeaders = getAttributionHeaders(model, settingsManager, options?.sessionId);
+			const bridgeHeaders = isClaudeBridgeModel(model)
+				? getClaudeBridgeHeaders(sessionManager, sessionSource)
+				: undefined;
 			return streamSimple(model, context, {
 				...options,
 				apiKey: auth.apiKey,
@@ -397,8 +440,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
 				maxRetryDelayMs: options?.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
 				headers:
-					attributionHeaders || auth.headers || options?.headers
-						? { ...attributionHeaders, ...auth.headers, ...options?.headers }
+					attributionHeaders || bridgeHeaders || auth.headers || options?.headers
+						? { ...attributionHeaders, ...bridgeHeaders, ...auth.headers, ...options?.headers }
 						: undefined,
 			});
 		},
@@ -458,6 +501,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		allowedToolNames,
 		extensionRunnerRef,
 		sessionStartEvent: options.sessionStartEvent,
+		source: sessionSource,
 	});
 	const extensionsResult = resourceLoader.getExtensions();
 
