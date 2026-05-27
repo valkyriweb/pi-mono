@@ -10,6 +10,7 @@ import { fastModelPerProvider, mediumModelPerProvider, parseModelPattern } from 
 import { type ReadonlySessionManager, SessionManager } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import { appendTaskMessage } from "../tasks/messages.ts";
+import { EXPLORE_BASH_POLICY, runWithBashPolicy } from "../tools/bash.ts";
 import {
 	buildAgentSystemAppend,
 	buildChildTaskPrompt,
@@ -469,7 +470,16 @@ async function driveChildSession(session: AgentSession, options: DriveChildSessi
 
 	try {
 		if (options.signal?.aborted) throw new Error(`Agent run ${getAbortedRunStatus(options)}`);
-		await session.prompt(options.prompt, { expandPromptTemplates: false, source: "extension" });
+		// `explore` is gated to read-only bash via an AsyncLocalStorage policy read
+		// by the bash tool. Soft guard, not a sandbox — see EXPLORE_BASH_POLICY.
+		// `source: "child-agent"` tags every in-process delegated run (built-in
+		// `agent` tool + `ctx.forkAgent`) distinctly from `"extension"` (which
+		// means "an extension hook called steer/sendCustomMessage"). Memory
+		// extensions gate recall / persistent-memory inject on this in their
+		// `input` and `before_agent_start` handlers. Replaces the legacy
+		// `PI_MEMORY_SUBAGENT=1` env contract for in-process children.
+		const runPrompt = () => session.prompt(options.prompt, { expandPromptTemplates: false, source: "child-agent" });
+		await (details.agent === "explore" ? runWithBashPolicy(EXPLORE_BASH_POLICY, runPrompt) : runPrompt());
 		if (options.signal?.aborted) throw new Error(`Agent run ${getAbortedRunStatus(options)}`);
 		const finalOutput = extractFinalAssistantText(session.messages);
 		const output = await writeAgentOutput({

@@ -3,7 +3,8 @@ import type { AgentDefinition } from "./types.ts";
 export const BUILTIN_AGENT_DEFINITIONS: AgentDefinition[] = [
 	{
 		id: "general",
-		description: "General delegated task execution with the parent's active tools.",
+		description:
+			"Delegated task execution for children that must write files OR run bash with mutation (rm/mv/git push/npm install/...) OR mix search+edit+verify in one run. For pure read-only investigation use `explore` (now has read-only bash for git log/diff/cat etc.); for scoped implementation with known file paths use `worker`.",
 		tools: "*",
 		denyTools: ["agent"],
 		model: "inherit",
@@ -35,9 +36,9 @@ Do not delegate. Do not broaden scope. Report changes, validation, and blockers.
 	{
 		id: "explore",
 		description:
-			'Fast read-only search agent for locating code. Use it to find files by pattern (eg. `src/components/**/*.tsx`), grep for symbols or keywords (eg. "API endpoints"), or answer "where is X defined / which files reference Y." Do NOT use it for code review, design-doc auditing, cross-file consistency checks, or open-ended analysis — it reads excerpts rather than whole files and will miss content past its read window. When calling, specify search breadth in `extraContext`: "quick" for a single targeted lookup, "medium" for moderate exploration, or "very thorough" to search across multiple locations and naming conventions. Runs on a cheap model with no transcript, project context, or skills — brief the agent in `task` and `extraContext` like a smart colleague who just walked in.',
-		tools: ["read", "grep", "find", "ls"],
-		denyTools: ["agent", "edit", "write", "bash"],
+			'Fast read-only search agent. PREFER over `general` for any task whose every step is read/grep/find/ls or read-only bash (git log/status/diff/show/blame, cat/head/tail, wc, stat, `gh pr view`/`gh issue view`) — "search for X", "find where Y", "where is Z defined", "how does W work", "which files use V", "explore/investigate/audit the codebase", "map out", "trace", "who changed X", "when was Y introduced". Use it to find files by pattern (eg. `src/components/**/*.tsx`), grep for symbols or keywords, answer "where is X defined / which files reference Y", or inspect git history. Specify breadth in `extraContext`: "quick" for a single targeted lookup, "medium" for moderate exploration, or "very thorough" to search across multiple locations and naming conventions. Runs on a cheap model with no transcript, project context, or skills — brief the agent in `task` and `extraContext` like a smart colleague who just walked in. NOT for: code review (use `reviewer`), design-doc auditing or cross-file consistency analysis (use `plan`), or anything that mutates state (use `general`/`worker`) — mutating bash commands are blocked at the executor.',
+		tools: ["read", "grep", "find", "ls", "bash"],
+		denyTools: ["agent", "edit", "write"],
 		model: "fast",
 		thinking: "off",
 		defaultContext: "none",
@@ -47,16 +48,25 @@ Do not delegate. Do not broaden scope. Report changes, validation, and blockers.
 		source: "builtin",
 		prompt: `You are a file search specialist for Pi. You excel at thoroughly navigating and exploring codebases.
 
-=== CRITICAL: READ-ONLY MODE — NO FILE MODIFICATIONS ===
+=== CRITICAL: READ-ONLY MODE — NO STATE CHANGES ===
 This is a READ-ONLY exploration task. You are STRICTLY PROHIBITED from:
-- Creating new files (no write, touch, or file creation of any kind)
-- Modifying existing files (no edit operations)
-- Deleting, moving, or copying files
-- Creating temporary files anywhere, including /tmp
-- Running ANY commands that change system state
-Your role is EXCLUSIVELY to search and analyze existing code. You do NOT have access to file-editing or bash tools — attempting to use them will fail.
+- Creating, modifying, deleting, moving, or copying files (including in /tmp)
+- Running ANY bash command that mutates state
+- Network requests that send data (no POST/PUT/DELETE, no \`git push\`, no \`gh pr create\`, no \`curl -X POST\`)
+- Installing packages, starting servers, killing processes, or changing config
+
+You have NO \`edit\` or \`write\` tool — attempts will fail. You DO have \`bash\`, but the executor enforces a deny-list (rm/mv/cp/git push/git commit/npm install/kubectl apply/output redirection/etc.) and will reject mutating commands. Use bash ONLY for read-only inspection.
 
 You get only the task text and any Additional context the parent passes. You do not receive the parent transcript, project instructions, or skills by default. Treat the brief as complete.
+
+Allowed bash (examples):
+- Git inspection: \`git status\`, \`git log\`, \`git diff\`, \`git show\`, \`git blame\`, \`git rev-parse\`, \`git ls-files\`
+- File inspection: \`cat\`, \`head\`, \`tail\`, \`wc\`, \`file\`, \`stat\`, \`du\`
+- Discovery: \`which\`, \`type\`, \`command -v\`
+- Read-only \`gh\`: \`gh pr view\`, \`gh issue view\`, \`gh api -X GET\`, \`gh repo view\`
+- Pipelines combining the above with \`grep\`, \`awk\`, \`sed -n\` (no in-place edit), \`sort\`, \`uniq\`, \`jq\`
+
+If a task seems to require a forbidden command, stop and report what you'd need in Open Questions — do not attempt a workaround.
 
 What you do:
 - Rapidly find files using glob patterns with \`find\`
@@ -64,6 +74,7 @@ What you do:
 - Read and analyze file contents with \`read\`
 - List directories with \`ls\` when you need a layout
 - Use \`read\` when you know the specific file path you need
+- Use \`bash\` for git history, file metadata, or read-only \`gh\` queries when those answer the question faster than re-reading files
 - For conceptual questions, search likely terms first, then read the smallest useful files
 - Adapt your search approach based on the thoroughness level the caller specifies (quick / medium / very thorough)
 - Communicate your final report directly as a regular message — do NOT attempt to create files
