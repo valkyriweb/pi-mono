@@ -281,6 +281,69 @@ function adoptBashBackground(child: ReturnType<typeof spawn>, command: string, c
 	return job;
 }
 
+/**
+ * Disposition of a foreground bash command that exceeds its timeout.
+ *
+ * Additive seam: the exec path stays one call deep and the policy lives in the
+ * resolver, so the fork (or a my-pi extension) can change timeout behaviour
+ * without reshaping the upstream exec loop. `background()` adopts the live
+ * process into the bg registry (it keeps running); `kill()` terminates it.
+ */
+export interface BashTimeout {
+	readonly command: string;
+	readonly cwd: string;
+	readonly timeoutMs: number;
+	background(): BashBgJob;
+	kill(): void;
+}
+
+export type BashTimeoutOutcome = { backgroundedJobId: string } | { failed: true };
+
+/** Upstream-faithful default: kill the timed-out process and report failure.
+ *  Detach-on-timeout is opt-in via `onBashTimeout()` — the my-pi
+ *  `native-tool-aliases` extension installs the detach resolver for Luke's
+ *  `Bash` tool, so the opinionated policy lives there, not in core. */
+function killOnBashTimeout(t: BashTimeout): BashTimeoutOutcome {
+	t.kill();
+	return { failed: true };
+}
+
+let bashTimeoutResolver: (t: BashTimeout) => BashTimeoutOutcome = killOnBashTimeout;
+
+/**
+ * Override what happens when a foreground bash command times out. Returns a
+ * restore function. Consumers that choose `{ failed: true }` are responsible for
+ * killing the process (e.g. via `t.kill()`); the default already kills.
+ * Choose `{ backgroundedJobId }` (via `t.background()`) to detach instead.
+ */
+export function onBashTimeout(resolve: (t: BashTimeout) => BashTimeoutOutcome): () => void {
+	const previous = bashTimeoutResolver;
+	bashTimeoutResolver = resolve;
+	return () => {
+		bashTimeoutResolver = previous;
+	};
+}
+
+/** Apply the configured timeout disposition to a still-running foreground child. */
+function disposeBashTimeout(
+	child: ReturnType<typeof spawn>,
+	command: string,
+	cwd: string,
+	timeoutMs: number,
+): BashTimeoutOutcome {
+	return bashTimeoutResolver({
+		command,
+		cwd,
+		timeoutMs,
+		background: () => adoptBashBackground(child, command, cwd),
+		kill: () => {
+			try {
+				child.kill("SIGKILL");
+			} catch {}
+		},
+	});
+}
+
 const VERTICAL_TUI_RUN_MIN_LINES = 12;
 // Shared byte cap for every bash-tool surface (foreground bash, background bash_output).
 // Smaller than DEFAULT_MAX_BYTES (50KB) because shell output is the loudest single
@@ -449,10 +512,11 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
 					if (signal.aborted) onAbort();
 					else signal.addEventListener("abort", onAbort, { once: true });
 				}
-				// Race real exit against the timeout. On timeout we do NOT kill — we adopt
-				// the still-running process into a background job (mirrors Claude Code's
-				// auto-background-on-timeout) so long work keeps running and stays
-				// readable/killable by bgId.
+				// Race real exit against the timeout. On timeout the disposition seam
+				// decides what happens (core default: kill and fail). Consumers opt into
+				// detach-on-timeout via onBashTimeout() — e.g. Luke's native-tool-aliases
+				// extension adopts the live process into a background job (Claude Code
+				// parity) so long work keeps running and stays readable/killable by bgId.
 				const exitPromise = waitForChildProcess(child).then((code) => ({ kind: "exit" as const, code }));
 				const timeoutPromise =
 					timeout !== undefined && timeout > 0
@@ -465,12 +529,18 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
 					throw new Error("aborted");
 				}
 				if (outcome.kind === "timeout") {
-					// Detach: hand the live process + its streams to the background registry.
+					// Detach the foreground listeners first so the bg log is the single sink,
+					// then hand off to the configured disposition.
 					child.stdout?.off("data", onData);
 					child.stderr?.off("data", onData);
-					const job = adoptBashBackground(child, command, cwd);
-					backgroundedJobId = job.id;
-					return { exitCode: null, backgroundedJobId };
+					const disposition = disposeBashTimeout(child, command, cwd, (timeout ?? 0) * 1000);
+					if ("backgroundedJobId" in disposition) {
+						backgroundedJobId = disposition.backgroundedJobId;
+						return { exitCode: null, backgroundedJobId };
+					}
+					// Failed disposition (the default kills): surface the timeout sentinel so
+					// the tool layer reports "Command timed out after Ns" instead of a bare exit code.
+					throw new Error(`timeout:${timeout ?? 0}`);
 				}
 				return { exitCode: outcome.code };
 			} finally {
@@ -1299,8 +1369,8 @@ export function createBashToolDefinition(
 					if (err instanceof Error && err.message === "aborted") {
 						throw new Error(appendStatus(text, "Command aborted"));
 					}
-					// Fallback: timeouts normally detach (no throw) via backgroundedJobId, but
-					// custom BashOperations may still throw the legacy sentinel.
+					// A timed-out command whose disposition failed (the core default kills)
+					// throws the `timeout:N` sentinel; detach dispositions return a bgId instead.
 					if (err instanceof Error && err.message.startsWith("timeout:")) {
 						const timeoutSecs = err.message.split(":")[1];
 						throw new Error(appendStatus(text, `Command timed out after ${timeoutSecs} seconds`));

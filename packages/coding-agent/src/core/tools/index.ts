@@ -19,6 +19,8 @@ export {
 	type BashOutputToolInput,
 	type BashSpawnContext,
 	type BashSpawnHook,
+	type BashTimeout,
+	type BashTimeoutOutcome,
 	type BashToolDetails,
 	type BashToolInput,
 	type BashToolOptions,
@@ -39,6 +41,7 @@ export {
 	getBashBgJob,
 	getRunningBashBgJobsSorted,
 	listBashBgJobs,
+	onBashTimeout,
 	subscribeBashBgJobs,
 } from "./bash.ts";
 export {
