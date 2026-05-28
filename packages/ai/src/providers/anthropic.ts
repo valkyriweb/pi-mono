@@ -1438,6 +1438,10 @@ function convertOneTool(
 		return {
 			name: "web_fetch",
 			type: "web_fetch_20260309",
+			// allowed_callers: ["direct"] lets models that don't support
+			// programmatic tool calling (e.g. claude-haiku-4-5) use web_fetch
+			// directly. Without this the API returns a 400 error on those models.
+			allowed_callers: ["direct"],
 			allowed_domains: schema.properties?.allowed_domains?.default ?? null,
 			blocked_domains: schema.properties?.blocked_domains?.default ?? null,
 			max_content_tokens: schema.properties?.max_content_tokens?.default ?? null,
