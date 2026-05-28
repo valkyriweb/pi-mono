@@ -27,6 +27,7 @@
 
 ### Fixed
 
+- Hardened terminal keyboard protocol negotiation (`terminal.ts`).
 - Fixed loader initialization so indicator startup cannot run before frames are initialized.
 - Fixed truecolor capability detection to align terminal image rendering with the interactive theme detector.
 
