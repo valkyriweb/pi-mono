@@ -29,7 +29,10 @@ const bashSchema = Type.Object({
 	command: Type.String({ description: "Bash command to execute" }),
 	timeout: Type.Optional(
 		Type.Union([
-			Type.Number({ description: "Timeout in seconds. Defaults to 300 seconds." }),
+			Type.Number({
+				description:
+					"Timeout in seconds. Defaults to 300 seconds. On timeout the still-running command is automatically detached into a background job (returns a bgId) rather than being killed, so long work keeps running. Read it with bash_output(bgId), stop it with bash_kill(bgId).",
+			}),
 			Type.Literal(false, { description: "Disable timeout for this command." }),
 		]),
 	),
@@ -338,7 +341,7 @@ export interface BashOperations {
 			timeout?: number;
 			env?: NodeJS.ProcessEnv;
 		},
-	) => Promise<{ exitCode: number | null }>;
+	) => Promise<{ exitCode: number | null; backgroundedJobId?: string }>;
 }
 
 /**
@@ -1225,7 +1228,27 @@ export function createBashToolDefinition(
 					}
 					if (err instanceof Error && err.message.startsWith("timeout:")) {
 						const timeoutSecs = err.message.split(":")[1];
-						throw new Error(appendStatus(text, `Command timed out after ${timeoutSecs} seconds`));
+						// Auto-background-on-timeout (mirrors Claude Code's
+						// tengu_bash_command_timeout_backgrounded): instead of failing, re-launch
+						// the command as a background job so long work keeps going and the
+						// conversation stays responsive. Simple version: pi already killed the
+						// timed-out foreground process, so this re-runs from scratch — the model is
+						// warned to verify side effects.
+						const job = spawnBashBackground(command, cwd, options?.shellPath, commandPrefix);
+						const status =
+							`Command timed out after ${timeoutSecs}s and was re-launched in the background as bgId=${job.id} (pid=${job.pid ?? "unknown"}). ` +
+							`NOTE: the command was started again from scratch — if it has side effects, verify before assuming a single run. ` +
+							`Read output with bash_output(bgId="${job.id}"); stop with bash_kill(bgId="${job.id}").`;
+						return {
+							content: [{ type: "text", text: appendStatus(text, status) }],
+							details: {
+								bgId: job.id,
+								pid: job.pid,
+								logPath: job.logPath,
+								command,
+								startedAt: job.startedAt,
+							} as BashBgDetails as any,
+						};
 					}
 					throw err;
 				}

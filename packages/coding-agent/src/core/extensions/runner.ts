@@ -1030,6 +1030,9 @@ export class ExtensionRunner {
 		}
 
 		try {
+			// CACHE CRITICAL: message:end filters rewrite finalized transcript
+			// messages. Non-deterministic rewrites of prior turns change the next
+			// cached message prefix, so filters must be stable for the same input.
 			const filteredMessage = await applyFilters("message:end", currentMessage, event);
 			if (filteredMessage !== currentMessage) {
 				if (filteredMessage.role !== currentMessage.role) {
@@ -1161,6 +1164,10 @@ export class ExtensionRunner {
 	}
 
 	async emitContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
+		// CACHE CRITICAL: context handlers replace the model-facing message list
+		// before provider conversion on every LLM call. Keep prior history stable;
+		// use this seam to filter stale dynamic artifacts or append one-call tail
+		// context without mutating the durable transcript.
 		if (this.staleMessage) return messages;
 		const ctx = this.createContext();
 		let currentMessages = structuredClone(messages);
@@ -1194,6 +1201,9 @@ export class ExtensionRunner {
 	}
 
 	async emitBeforeProviderRequest(payload: unknown): Promise<unknown> {
+		// CACHE CRITICAL: before_provider_request and provider:beforeRequest see
+		// the serialized provider payload. Reordering system/tools/messages or
+		// adding dynamic values before cache breakpoints invalidates prompt cache.
 		if (this.staleMessage) return payload;
 		const ctx = this.createContext();
 		let currentPayload = payload;
@@ -1280,6 +1290,9 @@ export class ExtensionRunner {
 		if (this.staleMessage) return undefined;
 		let currentSystemPrompt = systemPrompt;
 		try {
+			// CACHE CRITICAL: systemPrompt:build feeds the cached system prefix.
+			// Keep output byte-stable across turns; put cwd/session/timestamp/file
+			// data in messages or after the cacheable prefix instead.
 			currentSystemPrompt = await applyFilters("systemPrompt:build", currentSystemPrompt, systemPromptOptions, {
 				prompt,
 				images,

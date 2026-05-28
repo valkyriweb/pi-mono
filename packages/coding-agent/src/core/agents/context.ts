@@ -1,5 +1,5 @@
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { DefaultResourceLoaderOptions } from "../resource-loader.ts";
 import { buildSessionContext, type ReadonlySessionManager } from "../session-manager.ts";
 import type { AgentDefinition, AgentTaskConfig, ContextMode, ResolvedContextPolicy } from "./types.ts";
@@ -66,22 +66,13 @@ export function getChildResourceLoaderOptions(
 	};
 }
 
-function filterDeniedToolArtifacts(messages: AgentMessage[], deniedToolNames: Set<string>): AgentMessage[] {
-	return messages
-		.map((message): AgentMessage | undefined => {
-			if (message.role === "toolResult") {
-				return deniedToolNames.has(message.toolName) ? undefined : message;
-			}
-			if (message.role !== "assistant") return message;
-			const filteredContent = message.content.filter((part) => {
-				return part.type !== "toolCall" || !deniedToolNames.has(part.name);
-			});
-			if (filteredContent.length === message.content.length) return message;
-			if (filteredContent.length === 0) return undefined;
-			return { ...message, content: filteredContent };
-		})
-		.filter((message): message is AgentMessage => Boolean(message));
-}
+// `filterDeniedToolArtifacts` (pre-2026-05-28) used to strip parent `agent`/
+// `subagent` tool_use blocks from the fork prefix. That broke prompt-cache
+// continuity at the first stripped call: bytes diverged from the parent's
+// cached prefix for every subsequent block. Replaced by
+// `substitutePlaceholdersForUnresolvedToolCalls` below, which keeps the
+// tool_use blocks in place and supplies fixed-bytes placeholder results so
+// the fork child's prefix stays byte-identical to the parent's cache key.
 
 function collectToolCallIds(messages: AgentMessage[]): Set<string> {
 	const ids = new Set<string>();
@@ -121,10 +112,72 @@ export function filterIncompleteToolCalls(messages: AgentMessage[]): AgentMessag
 		.filter((message): message is AgentMessage => Boolean(message));
 }
 
+/**
+ * Fixed-bytes placeholder text used to substitute for any unresolved tool_use
+ * in the fork prefix. Must be identical across all fork children (siblings
+ * spawned from the same parent turn, or sequential forks at the same point)
+ * so their API request prefixes stay byte-identical for prompt-cache sharing.
+ *
+ * Pattern matches Claude Code's `FORK_PLACEHOLDER_RESULT` in
+ * `src/tools/AgentTool/forkSubagent.ts` (2.1.x). The shared placeholder is
+ * what lets sibling forks cache-hit off each other, not just off the parent.
+ */
+const FORK_PLACEHOLDER_RESULT_TEXT = "Sibling agent task in progress.";
+
+function makeForkPlaceholderResult(toolCallId: string, toolName: string): ToolResultMessage {
+	return {
+		role: "toolResult",
+		toolCallId,
+		toolName,
+		content: [{ type: "text", text: FORK_PLACEHOLDER_RESULT_TEXT }],
+		isError: false,
+		// Timestamp is not serialized to the provider wire (Anthropic tool_result
+		// blocks include type/tool_use_id/content/is_error only). Using a fixed
+		// value keeps the in-memory representation byte-stable across siblings
+		// without affecting display order — placeholders always sit immediately
+		// after their parent assistant message.
+		timestamp: 0,
+	};
+}
+
+/**
+ * Substitute fixed-bytes placeholder tool_results for any tool_use blocks
+ * that lack a matching tool_result in the message stream. Preserves the
+ * parent's assistant-message structure (including `agent`/`subagent`
+ * tool_uses) so the fork child's API prefix stays byte-identical to the
+ * parent's cached prefix.
+ *
+ * Drops orphan tool_results (results referencing nonexistent tool_uses) —
+ * those would confuse the provider API.
+ *
+ * Mirrors Claude Code's `buildForkedMessages` strategy (see CC
+ * `src/tools/AgentTool/forkSubagent.ts`). The key correctness property is
+ * that any two fork children spawned from the same parent state produce
+ * byte-identical prefixes through every leading block, diverging only at
+ * the child-specific user directive appended after.
+ */
+export function substitutePlaceholdersForUnresolvedToolCalls(messages: AgentMessage[]): AgentMessage[] {
+	const resultIds = collectToolResultIds(messages);
+	const out: AgentMessage[] = [];
+	for (const message of messages) {
+		out.push(message);
+		if (message.role !== "assistant") continue;
+		for (const block of message.content) {
+			if (block.type !== "toolCall") continue;
+			if (resultIds.has(block.id)) continue;
+			out.push(makeForkPlaceholderResult(block.id, block.name));
+			resultIds.add(block.id);
+		}
+	}
+	const callIds = collectToolCallIds(out);
+	return out.filter(
+		(message): message is AgentMessage => message.role !== "toolResult" || callIds.has(message.toolCallId),
+	);
+}
+
 export function getFilteredForkMessages(sessionManager: ReadonlySessionManager): AgentMessage[] {
-	const deniedToolNames = new Set(["agent", "subagent"]);
 	const messages = buildSessionContext(sessionManager.getEntries(), sessionManager.getLeafId()).messages;
-	return filterIncompleteToolCalls(filterDeniedToolArtifacts(messages, deniedToolNames));
+	return substitutePlaceholdersForUnresolvedToolCalls(messages);
 }
 
 // Static reminder prepended to every child task message. Lives in the user

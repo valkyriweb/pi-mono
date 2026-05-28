@@ -70,6 +70,7 @@ import {
 	prepareCompaction,
 	shouldCompact,
 } from "./compaction/index.ts";
+import { CONTEXT_USAGE_SERVICE_ID, type ContextUsageSnapshotService } from "./context-usage.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 
 import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.ts";
@@ -3831,6 +3832,11 @@ export class AgentSession {
 				return { tokens: null, contextWindow, percent: null };
 			}
 		}
+
+		const contextUsageService =
+			this._extensionRunner?.getService<ContextUsageSnapshotService>(CONTEXT_USAGE_SERVICE_ID);
+		const serviceUsage = contextUsageService?.get();
+		if (serviceUsage && serviceUsage.contextWindow === contextWindow) return serviceUsage;
 
 		const estimate = estimateContextTokens(this.messages);
 		const systemPromptTokens = estimateSystemPromptTokens(this.systemPrompt);

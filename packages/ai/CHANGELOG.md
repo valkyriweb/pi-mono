@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `transformMessages` now skips synthesizing a `tool_result` for hidden/empty hook messages (e.g. cache-tail context injections). Providers drop these messages later, so synthesizing a missing result before that produced duplicate `tool_result` blocks and Anthropic rejected the request. Keeps assistant `tool_use` -> `tool_result` adjacency intact (cache-critical). Covered by `anthropic-tool-serialization-stable` and `transform-messages-copilot-openai-to-anthropic` tests.
+
 ## [0.76.0] - 2026-05-27
 
 ### Fixed

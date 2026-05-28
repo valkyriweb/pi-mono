@@ -96,6 +96,9 @@ export function addFilter<T = unknown>(
 	callback: FilterCallback<T>,
 	options?: { priority?: number },
 ): () => void {
+	// CACHE CRITICAL: filter ids, priorities, and registration order affect
+	// cache-bearing seams such as systemPrompt:build, provider:beforeRequest,
+	// and message:end. Keep registrations deterministic across turns.
 	if (!hasHook(hook)) registerHook(hook);
 	const filter: Filter = {
 		hook,

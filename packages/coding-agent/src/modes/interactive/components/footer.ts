@@ -47,6 +47,7 @@ interface UsageTotals {
 	totalCacheRead: number;
 	totalCacheWrite: number;
 	totalCost: number;
+	assistantTurns: number;
 }
 
 /**
@@ -64,6 +65,7 @@ export class FooterComponent implements Component {
 		totalCacheRead: 0,
 		totalCacheWrite: 0,
 		totalCost: 0,
+		assistantTurns: 0,
 	};
 	private selectedExtensionFooterId: string | undefined = undefined;
 
@@ -145,6 +147,7 @@ export class FooterComponent implements Component {
 			totalCacheRead: 0,
 			totalCacheWrite: 0,
 			totalCost: 0,
+			assistantTurns: 0,
 		};
 
 		for (const entry of entries) {
@@ -154,6 +157,7 @@ export class FooterComponent implements Component {
 				totals.totalCacheRead += entry.message.usage.cacheRead;
 				totals.totalCacheWrite += entry.message.usage.cacheWrite;
 				totals.totalCost += entry.message.usage.cost.total;
+				totals.assistantTurns += 1;
 			}
 		}
 
@@ -164,7 +168,8 @@ export class FooterComponent implements Component {
 
 	render(width: number): string[] {
 		const state = this.session.state;
-		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost } = this.getUsageTotals();
+		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, assistantTurns } =
+			this.getUsageTotals();
 
 		const contextUsage = this.session.getContextUsage();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
@@ -201,6 +206,27 @@ export class FooterComponent implements Component {
 		if (totalOutput) leftParts.push(theme.fg("dim", `↓${formatTokens(totalOutput)}`));
 		if (totalCacheRead) leftParts.push(theme.fg("dim", `R${formatTokens(totalCacheRead)}`));
 		if (totalCacheWrite) leftParts.push(theme.fg("dim", `W${formatTokens(totalCacheWrite)}`));
+		const cacheDenom = totalInput + totalCacheRead + totalCacheWrite;
+		if (cacheDenom > 0 && (totalCacheRead || totalCacheWrite)) {
+			const hitPct = (totalCacheRead / cacheDenom) * 100;
+			const label = `cache ${hitPct.toFixed(0)}%`;
+			// Past the warmup window (≥10 assistant turns) the prefix should be
+			// steady-state cached. <90% means real drift; <80% means something is
+			// mutating the cached prefix every turn. Under 10 turns we keep the
+			// loose thresholds because turn 1 always writes the full prefix.
+			const steadyState = assistantTurns >= 10;
+			let colored: string;
+			if (steadyState) {
+				if (hitPct >= 90) colored = theme.fg("success", label);
+				else if (hitPct >= 80) colored = theme.fg("warning", label);
+				else colored = theme.fg("error", theme.bold(label));
+			} else {
+				if (hitPct >= 80) colored = theme.fg("success", label);
+				else if (hitPct >= 50) colored = theme.fg("dim", label);
+				else colored = theme.fg("warning", label);
+			}
+			leftParts.push(colored);
+		}
 
 		const usingSubscription = state.model ? this.session.modelRegistry.isUsingOAuth(state.model) : false;
 		if (totalCost || usingSubscription) {

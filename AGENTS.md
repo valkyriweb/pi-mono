@@ -14,6 +14,7 @@
 - Read files in full before making wide-ranging changes, before editing files you have not already fully inspected, and when the user asks you to investigate or audit something. Do not rely only on search snippets for broad changes.
 - Add custom Pi functionality as a `my-pi` extension or pi package first. Modify `packages/coding-agent` core only when documented extension/package APIs cannot achieve the behavior.
 - Use the extension hook/action/filter surfaces for fork-only composition before editing core: `pi.hooks.removeAction("load", id)`, `addAction`, `addFilter`, and `applyFilters`. Keep environment/tool aliases in extensions such as `~/Projects/personal/my-pi/extensions/native-tool-aliases/` unless core lacks the seam.
+- For Pi behavior changes, read only the relevant local docs/examples first, then implement through hooks, filters, actions, or a `my-pi` extension when the documented extension/package API can express it. Edit `packages/coding-agent` core only after recording the missing extension seam.
 - When upstream changes a built-in tool that a local extension wraps or aliases (for example `read` → `Read`), compare `upstream/main:packages/coding-agent/src/core/tools/<tool>.ts` with the extension wrapper and port improvements in the extension first.
 - Before core changes, read the local Pi docs for the touched surface and record why core is required.
 - For every `pi-mono-fork` or `my-pi` modification/update, run Matt Pocock's architecture lens: `~/Projects/agent-scripts/skills/matt-pocock/references/improve-codebase-architecture.md`; apply only local, incremental simplifications unless Luke asks for a larger refactor.
@@ -42,6 +43,7 @@ Read local docs before changing the matching surface:
 - Packages: `packages/coding-agent/docs/packages.md` and `packages/coding-agent/examples/README.md`.
 - SDK: `packages/coding-agent/docs/sdk.md` and `packages/coding-agent/examples/sdk/`.
 - Core/source development: `packages/coding-agent/docs/development.md`, `packages/coding-agent/docs/index.md`, `packages/coding-agent/docs/tui.md`, and `packages/coding-agent/src/`.
+- Fork-mode sub-agent cache (`context: "fork"`, `worker` agent, sibling fan-out cache parity, placeholder tool_results): `packages/coding-agent/docs/fork-cache-architecture.md`. Read before touching `core/agents/context.ts`, `core/agents/executor.ts` fork branch, or anything that captures parent's system prompt / active tools at turn-start.
 
 ## PR Review Gate
 

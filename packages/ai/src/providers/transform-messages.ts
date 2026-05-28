@@ -69,6 +69,12 @@ function downgradeUnsupportedImages<TApi extends Api>(messages: Message[], model
 	});
 }
 
+function hasVisibleUserContent(message: Message): boolean {
+	if (message.role !== "user") return false;
+	if (typeof message.content === "string") return message.content.trim().length > 0;
+	return message.content.some((block) => block.type !== "text" || block.text.trim().length > 0);
+}
+
 /**
  * Normalize tool call ID for cross-provider compatibility.
  * OpenAI Responses API generates IDs that are 450+ chars with special characters like `|`.
@@ -218,6 +224,12 @@ export function transformMessages<TApi extends Api>(
 			existingToolResultIds.add(msg.toolCallId);
 			result.push(msg);
 		} else if (msg.role === "user") {
+			// CACHE CRITICAL: hidden/empty hook messages must not interrupt the
+			// assistant tool_use -> toolResult adjacency. Providers drop these
+			// messages later; synthesizing missing results before that creates
+			// duplicate tool_result blocks and Anthropic rejects the request.
+			if (!hasVisibleUserContent(msg)) continue;
+
 			// User message interrupts tool flow - insert synthetic results for orphaned calls
 			insertSyntheticToolResults();
 			result.push(msg);

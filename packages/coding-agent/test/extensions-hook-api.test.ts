@@ -18,7 +18,7 @@ import { ExtensionRunner } from "../src/core/extensions/runner.ts";
 import type { LoadExtensionsResult } from "../src/core/extensions/types.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
-import { assistantMsg, createTestExtensionsResult } from "./utilities.ts";
+import { assistantMsg, createTestExtensionsResult, userMsg } from "./utilities.ts";
 
 describe("extension hooks API", () => {
 	let tempDir: string;
@@ -49,6 +49,18 @@ describe("extension hooks API", () => {
 			SessionManager.inMemory(),
 			ModelRegistry.create(AuthStorage.create(path.join(tempDir, "auth.json"))),
 		);
+	}
+
+	function systemPromptOptions() {
+		return {
+			cwd: tempDir,
+			selectedTools: [],
+			toolSnippets: {},
+			promptGuidelines: [],
+			appendSystemPrompt: "",
+			contextFiles: [],
+			skills: [],
+		};
 	}
 
 	it("supports fluent and direct action/filter registration with priority ordering and removal", async () => {
@@ -188,5 +200,165 @@ describe("extension hooks API", () => {
 		await replacement?.callback({} as never);
 		expect(originalCalled).toBe(false);
 		expect(replacementCalled).toBe(true);
+	});
+
+	describe("cache-critical hook contracts", () => {
+		it("lets context handlers replace model-facing messages without mutating the transcript", async () => {
+			const result = await createTestExtensionsResult(
+				[
+					(pi) => {
+						pi.on("context", (event) => ({
+							messages: event.messages.filter(
+								(message) =>
+									!(message.role === "custom" && message.customType === "dream-memory.active-recall"),
+							),
+						}));
+						pi.on("context", (event) => ({
+							messages: [
+								...event.messages,
+								{
+									role: "custom" as const,
+									customType: "dream-memory.active-recall",
+									content: "fresh recall",
+									display: false,
+									timestamp: 2,
+								},
+							],
+						}));
+					},
+				],
+				tempDir,
+			);
+			const runner = createRunner(result);
+			const first = userMsg("stable prefix");
+			const staleRecall = {
+				role: "custom" as const,
+				customType: "dream-memory.active-recall",
+				content: "stale recall",
+				display: false,
+				timestamp: 1,
+			};
+			const latest = userMsg("latest user");
+			const transcript = [first, staleRecall, latest];
+
+			const modelMessages = await runner.emitContext(transcript);
+
+			expect(transcript).toEqual([first, staleRecall, latest]);
+			expect(modelMessages).toEqual([
+				first,
+				latest,
+				{
+					role: "custom",
+					customType: "dream-memory.active-recall",
+					content: "fresh recall",
+					display: false,
+					timestamp: 2,
+				},
+			]);
+		});
+
+		it("lets provider filters remove volatile request fields after request hooks run", async () => {
+			type ProviderPayload = {
+				messages: Array<{ role: string; content: string }>;
+				tools: Array<{ name: string }>;
+				nonce?: string;
+			};
+			const stablePayload: ProviderPayload = {
+				messages: [{ role: "user", content: "stable" }],
+				tools: [{ name: "Read" }],
+			};
+			let nonce = 0;
+			const result = await createTestExtensionsResult(
+				[
+					(pi) => {
+						pi.on("before_provider_request", (event) => ({
+							...(event.payload as ProviderPayload),
+							nonce: `turn-${++nonce}`,
+						}));
+						pi.hooks.addFilter<ProviderPayload>("provider:beforeRequest", "test-provider-filter", (payload) => {
+							const { nonce: _nonce, ...cacheStablePayload } = payload;
+							return cacheStablePayload;
+						});
+					},
+				],
+				tempDir,
+			);
+			const runner = createRunner(result);
+
+			expect(await runner.emitBeforeProviderRequest(stablePayload)).toEqual(stablePayload);
+			expect(await runner.emitBeforeProviderRequest(stablePayload)).toEqual(stablePayload);
+		});
+
+		it("runs systemPrompt:build before before_agent_start so dynamic inputs can be normalized", async () => {
+			const seenByBeforeAgentStart: string[] = [];
+			const result = await createTestExtensionsResult(
+				[
+					(pi) => {
+						pi.hooks.addFilter<string>("systemPrompt:build", "test-system-prompt-filter", (prompt) =>
+							prompt.replace(/^volatile:.*$/m, "volatile:<stable>"),
+						);
+						pi.on("before_agent_start", (event) => {
+							seenByBeforeAgentStart.push(event.systemPrompt);
+							return { systemPrompt: `${event.systemPrompt}\ntail:${event.prompt}` };
+						});
+					},
+				],
+				tempDir,
+			);
+			const runner = createRunner(result);
+
+			const first = await runner.emitBeforeAgentStart(
+				"turn one",
+				undefined,
+				"base\nvolatile:one",
+				systemPromptOptions(),
+			);
+			const second = await runner.emitBeforeAgentStart(
+				"turn two",
+				undefined,
+				"base\nvolatile:two",
+				systemPromptOptions(),
+			);
+
+			expect(seenByBeforeAgentStart).toEqual(["base\nvolatile:<stable>", "base\nvolatile:<stable>"]);
+			expect(first?.systemPrompt).toBe("base\nvolatile:<stable>\ntail:turn one");
+			expect(second?.systemPrompt).toBe("base\nvolatile:<stable>\ntail:turn two");
+		});
+
+		it("runs message:end filters after message_end handlers so volatile transcript changes can be normalized", async () => {
+			let suffix = 0;
+			const result = await createTestExtensionsResult(
+				[
+					(pi) => {
+						pi.on("message_end", (event) => ({
+							message: {
+								...event.message,
+								content: [{ type: "text", text: `volatile:${++suffix}` }],
+							},
+						}));
+						pi.hooks.addFilter<ReturnType<typeof assistantMsg>>(
+							"message:end",
+							"test-message-filter",
+							(message) => ({
+								...message,
+								content: [{ type: "text", text: "stable" }],
+							}),
+						);
+					},
+				],
+				tempDir,
+			);
+			const runner = createRunner(result);
+
+			const first = await runner.emitMessageEnd({ type: "message_end", message: assistantMsg("base") });
+			const second = await runner.emitMessageEnd({ type: "message_end", message: assistantMsg("base") });
+
+			expect((first as ReturnType<typeof assistantMsg> | undefined)?.content).toEqual([
+				{ type: "text", text: "stable" },
+			]);
+			expect((second as ReturnType<typeof assistantMsg> | undefined)?.content).toEqual([
+				{ type: "text", text: "stable" },
+			]);
+		});
 	});
 });

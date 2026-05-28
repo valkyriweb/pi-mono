@@ -188,4 +188,44 @@ describe("OpenAI to Anthropic session migration for Copilot Claude", () => {
 			content: [{ type: "text", text: "No result provided" }],
 		});
 	});
+
+	it("does not let hidden empty user messages synthesize duplicate tool results", () => {
+		const model = makeCopilotClaudeModel();
+		const messages: Message[] = [
+			{ role: "user", content: "run commands", timestamp: Date.now() },
+			makeAssistantMessage([
+				{ type: "toolCall", id: "toolu_01", name: "bash", arguments: { command: "ls" } },
+				{ type: "toolCall", id: "toolu_02", name: "find", arguments: { pattern: "*.md" } },
+			]),
+			{ role: "user", content: [], timestamp: Date.now() },
+			{
+				role: "toolResult",
+				toolCallId: "toolu_01",
+				toolName: "bash",
+				content: [{ type: "text", text: "done" }],
+				isError: false,
+				timestamp: Date.now(),
+			},
+			{
+				role: "toolResult",
+				toolCallId: "toolu_02",
+				toolName: "find",
+				content: [{ type: "text", text: "none" }],
+				isError: false,
+				timestamp: Date.now(),
+			},
+		];
+
+		const result = transformMessages(messages, model, anthropicNormalizeToolCallId);
+		const toolResults = result.filter((message) => message.role === "toolResult");
+
+		expect(
+			result.some(
+				(message) => message.role === "user" && Array.isArray(message.content) && message.content.length === 0,
+			),
+		).toBe(false);
+		expect(toolResults).toHaveLength(2);
+		expect(toolResults.map((message) => message.toolCallId)).toEqual(["toolu_01", "toolu_02"]);
+		expect(toolResults.some((message) => message.isError)).toBe(false);
+	});
 });

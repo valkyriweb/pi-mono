@@ -67,7 +67,7 @@ describe("OpenClaw progressive disclosure helpers", () => {
 		progressiveTools = createOpenClawProgressiveDisclosureTools({
 			getTools: (): AgentTool[] => [...progressiveTools, ...runtimeTools],
 			getActiveToolNames: () => activeToolNames,
-			setActiveToolNames: (toolNames) => {
+			setActiveToolNames: (toolNames: string[]) => {
 				activeToolNames = toolNames;
 			},
 			getSkills: () => Array.from({ length: 22 }, (_value, index) => catalogSkill(index)),
@@ -97,7 +97,7 @@ describe("OpenClaw progressive disclosure helpers", () => {
 		searchTools = createOpenClawProgressiveDisclosureTools({
 			getTools: (): AgentTool[] => [...searchTools, ...runtimeTools],
 			getActiveToolNames: () => activeToolNames,
-			setActiveToolNames: (toolNames) => {
+			setActiveToolNames: (toolNames: string[]) => {
 				activeToolNames = toolNames;
 			},
 			getSkills: () => skills,
@@ -118,7 +118,7 @@ describe("OpenClaw progressive disclosure helpers", () => {
 		progressiveTools = createOpenClawProgressiveDisclosureTools({
 			getTools: (): AgentTool[] => progressiveTools,
 			getActiveToolNames: () => activeToolNames,
-			setActiveToolNames: (toolNames) => {
+			setActiveToolNames: (toolNames: string[]) => {
 				activeToolNames = toolNames;
 			},
 			getSkills: () => skills,

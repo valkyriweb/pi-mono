@@ -256,6 +256,66 @@ describe("Anthropic convertTools — cache-stable serialization", () => {
 		expect(serializedMessages).not.toContain('"type":"base64"');
 	});
 
+	it("does not duplicate tool results when a hidden empty user message sits before tool output", async () => {
+		const body = await captureRequestBody({
+			messages: [
+				{ role: "user", content: "run commands", timestamp: Date.now() },
+				{
+					role: "assistant",
+					content: [
+						{ type: "toolCall", id: "toolu_01", name: "Bash", arguments: { command: "ls" } },
+						{ type: "toolCall", id: "toolu_02", name: "Find", arguments: { pattern: "*.md" } },
+					],
+					api: "anthropic-messages",
+					provider: "test-anthropic",
+					model: "claude-opus-4-7",
+					usage: {
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					stopReason: "toolUse",
+					timestamp: Date.now(),
+				},
+				{ role: "user", content: [], timestamp: Date.now() },
+				{
+					role: "toolResult",
+					toolCallId: "toolu_01",
+					toolName: "Bash",
+					content: [{ type: "text", text: "done" }],
+					isError: false,
+					timestamp: Date.now(),
+				},
+				{
+					role: "toolResult",
+					toolCallId: "toolu_02",
+					toolName: "Find",
+					content: [{ type: "text", text: "none" }],
+					isError: false,
+					timestamp: Date.now(),
+				},
+			],
+		});
+
+		const messages = body.messages as Array<{ role: string; content: unknown }>;
+		const assistant = messages.find((message) => message.role === "assistant");
+		const toolResultMessage = messages.find((message) => {
+			const content = message.content;
+			return Array.isArray(content) && content.some((block) => block?.type === "tool_result");
+		});
+
+		expect((assistant?.content as Array<{ type: string }>).filter((block) => block.type === "tool_use")).toHaveLength(
+			2,
+		);
+		expect(toolResultMessage?.content).toEqual([
+			expect.objectContaining({ type: "tool_result", tool_use_id: "toolu_01" }),
+			expect.objectContaining({ type: "tool_result", tool_use_id: "toolu_02" }),
+		]);
+	});
+
 	it("emits byte-identical tools when required array order differs", async () => {
 		const toolA: Tool = {
 			name: "lookup",
