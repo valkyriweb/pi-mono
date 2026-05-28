@@ -211,6 +211,7 @@ function getAnthropicCompat(
 		sendSessionAffinityHeaders:
 			model.compat?.sendSessionAffinityHeaders ?? !!(isFireworks || isCloudflareAiGatewayAnthropic),
 		supportsCacheControlOnTools: model.compat?.supportsCacheControlOnTools ?? !isFireworks,
+		allowEmptySignature: model.compat?.allowEmptySignature ?? false,
 	};
 }
 
@@ -1084,7 +1085,14 @@ function buildParams(
 	const compat = getAnthropicCompat(model);
 	const params: MessageCreateParamsStreaming = {
 		model: model.id,
-		messages: convertMessages(context.messages, model, isOAuthToken, cacheControl, compat.supportsDeferredTools),
+		messages: convertMessages(
+			context.messages,
+			model,
+			isOAuthToken,
+			cacheControl,
+			compat.supportsDeferredTools,
+			compat.allowEmptySignature,
+		),
 		max_tokens: options?.maxTokens ?? model.maxTokens,
 		stream: true,
 	};
@@ -1185,6 +1193,7 @@ function convertMessages(
 	isOAuthToken: boolean,
 	cacheControl?: CacheControlEphemeral,
 	supportsDeferredTools = true,
+	allowEmptySignature = false,
 ): MessageParam[] {
 	const params: MessageParam[] = [];
 
@@ -1270,13 +1279,23 @@ function convertMessages(
 						continue;
 					}
 					// No signature (e.g. aborted stream): we can't round-trip as a thinking block.
-					// Drop empty text entirely; convert non-empty text to a plain text block so
-					// the model doesn't start mimicking <thinking> tags in subsequent turns.
+					// Drop empty text entirely. For non-empty text, convert to a plain text block
+					// so the model doesn't start mimicking <thinking> tags in subsequent turns —
+					// unless this model is marked allowEmptySignature (some compatible providers
+					// emit and accept empty signatures), in which case keep it as a thinking block.
 					if (block.thinking.trim().length === 0) continue;
-					blocks.push({
-						type: "text",
-						text: sanitizeSurrogates(block.thinking),
-					});
+					blocks.push(
+						allowEmptySignature
+							? {
+									type: "thinking",
+									thinking: sanitizeSurrogates(block.thinking),
+									signature: "",
+								}
+							: {
+									type: "text",
+									text: sanitizeSurrogates(block.thinking),
+								},
+					);
 				} else if (block.type === "toolCall") {
 					blocks.push({
 						type: "tool_use",
