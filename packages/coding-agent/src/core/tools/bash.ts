@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
+import { closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, statSync, writeSync } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -218,6 +218,69 @@ function spawnBashBackground(command: string, cwd: string, shellPath?: string, c
 	return job;
 }
 
+/**
+ * Adopt an already-running foreground child into the background registry instead
+ * of killing it. Used by auto-background-on-timeout (mirrors Claude Code): the
+ * live process keeps running, its stdout/stderr are redirected to the bg log, and
+ * it becomes readable/killable by bgId. Callers must detach their own `onData`
+ * listeners before calling so output isn't double-counted.
+ */
+function adoptBashBackground(child: ReturnType<typeof spawn>, command: string, cwd: string): BashBgJob {
+	const id = nextBashBgId();
+	const logPath = join(bashBgLogDir(), `${id}.log`);
+	const fd = openSync(logPath, "a");
+	try {
+		writeSync(fd, "[detached into background after foreground timeout \u2014 process still running]\n");
+	} catch {}
+	const append = (data: Buffer) => {
+		try {
+			writeSync(fd, data);
+		} catch {}
+	};
+	child.stdout?.on("data", append);
+	child.stderr?.on("data", append);
+	const job: BashBgJob = {
+		id,
+		command,
+		cwd,
+		pid: child.pid,
+		startedAt: Date.now(),
+		status: "running",
+		exitCode: null,
+		signal: null,
+		logPath,
+		endedAt: undefined,
+		error: undefined,
+	};
+	bashBgJobs.set(id, job);
+	notifyBashBgJobsChanged();
+	child.on("error", (err) => {
+		job.status = "failed";
+		job.error = err.message;
+		job.endedAt = Date.now();
+		try {
+			closeSync(fd);
+		} catch {}
+		if (child.pid) untrackDetachedChildPid(child.pid);
+		notifyBashBgJobsChanged();
+	});
+	child.on("exit", (code, signal) => {
+		job.exitCode = code;
+		job.signal = signal;
+		job.endedAt = Date.now();
+		if (job.status === "running") {
+			job.status = signal ? "killed" : "exited";
+		}
+		try {
+			closeSync(fd);
+		} catch {}
+		if (child.pid) untrackDetachedChildPid(child.pid);
+		notifyBashBgJobsChanged();
+	});
+	child.unref();
+	return job;
+}
+
 const VERTICAL_TUI_RUN_MIN_LINES = 12;
 // Shared byte cap for every bash-tool surface (foreground bash, background bash_output).
 // Smaller than DEFAULT_MAX_BYTES (50KB) because shell output is the loudest single
@@ -371,20 +434,13 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
 				windowsHide: true,
 			});
 			if (child.pid) trackDetachedChildPid(child.pid);
-			let timedOut = false;
+			let backgroundedJobId: string | undefined;
 			let timeoutHandle: NodeJS.Timeout | undefined;
 			const onAbort = () => {
 				if (child.pid) killProcessTree(child.pid);
 			};
 
 			try {
-				// Set timeout if provided.
-				if (timeout !== undefined && timeout > 0) {
-					timeoutHandle = setTimeout(() => {
-						timedOut = true;
-						if (child.pid) killProcessTree(child.pid);
-					}, timeout * 1000);
-				}
 				// Stream stdout and stderr.
 				child.stdout?.on("data", onData);
 				child.stderr?.on("data", onData);
@@ -393,18 +449,33 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
 					if (signal.aborted) onAbort();
 					else signal.addEventListener("abort", onAbort, { once: true });
 				}
-				// Handle shell spawn errors and wait for the process to terminate without hanging
-				// on inherited stdio handles held by detached descendants.
-				const exitCode = await waitForChildProcess(child);
+				// Race real exit against the timeout. On timeout we do NOT kill — we adopt
+				// the still-running process into a background job (mirrors Claude Code's
+				// auto-background-on-timeout) so long work keeps running and stays
+				// readable/killable by bgId.
+				const exitPromise = waitForChildProcess(child).then((code) => ({ kind: "exit" as const, code }));
+				const timeoutPromise =
+					timeout !== undefined && timeout > 0
+						? new Promise<{ kind: "timeout" }>((resolveTimeout) => {
+								timeoutHandle = setTimeout(() => resolveTimeout({ kind: "timeout" }), timeout * 1000);
+							})
+						: undefined;
+				const outcome = timeoutPromise ? await Promise.race([exitPromise, timeoutPromise]) : await exitPromise;
 				if (signal?.aborted) {
 					throw new Error("aborted");
 				}
-				if (timedOut) {
-					throw new Error(`timeout:${timeout}`);
+				if (outcome.kind === "timeout") {
+					// Detach: hand the live process + its streams to the background registry.
+					child.stdout?.off("data", onData);
+					child.stderr?.off("data", onData);
+					const job = adoptBashBackground(child, command, cwd);
+					backgroundedJobId = job.id;
+					return { exitCode: null, backgroundedJobId };
 				}
-				return { exitCode };
+				return { exitCode: outcome.code };
 			} finally {
-				if (child.pid) untrackDetachedChildPid(child.pid);
+				// Adopted children stay tracked — the background job owns the pid now.
+				if (!backgroundedJobId && child.pid) untrackDetachedChildPid(child.pid);
 				if (timeoutHandle) clearTimeout(timeoutHandle);
 				if (signal) signal.removeEventListener("abort", onAbort);
 			}
@@ -1212,6 +1283,7 @@ export function createBashToolDefinition(
 
 			try {
 				let exitCode: number | null;
+				let backgroundedJobId: string | undefined;
 				try {
 					const result = await ops.exec(spawnContext.command, spawnContext.cwd, {
 						onData: handleData,
@@ -1220,41 +1292,35 @@ export function createBashToolDefinition(
 						env: spawnContext.env,
 					});
 					exitCode = result.exitCode;
+					backgroundedJobId = result.backgroundedJobId;
 				} catch (err) {
 					const snapshot = await finishOutput();
 					const { text } = formatOutput(snapshot, "");
 					if (err instanceof Error && err.message === "aborted") {
 						throw new Error(appendStatus(text, "Command aborted"));
 					}
+					// Fallback: timeouts normally detach (no throw) via backgroundedJobId, but
+					// custom BashOperations may still throw the legacy sentinel.
 					if (err instanceof Error && err.message.startsWith("timeout:")) {
 						const timeoutSecs = err.message.split(":")[1];
-						// Auto-background-on-timeout (mirrors Claude Code's
-						// tengu_bash_command_timeout_backgrounded): instead of failing, re-launch
-						// the command as a background job so long work keeps going and the
-						// conversation stays responsive. Simple version: pi already killed the
-						// timed-out foreground process, so this re-runs from scratch — the model is
-						// warned to verify side effects.
-						const job = spawnBashBackground(command, cwd, options?.shellPath, commandPrefix);
-						const status =
-							`Command timed out after ${timeoutSecs}s and was re-launched in the background as bgId=${job.id} (pid=${job.pid ?? "unknown"}). ` +
-							`NOTE: the command was started again from scratch — if it has side effects, verify before assuming a single run. ` +
-							`Read output with bash_output(bgId="${job.id}"); stop with bash_kill(bgId="${job.id}").`;
-						return {
-							content: [{ type: "text", text: appendStatus(text, status) }],
-							details: {
-								bgId: job.id,
-								pid: job.pid,
-								logPath: job.logPath,
-								command,
-								startedAt: job.startedAt,
-							} as BashBgDetails as any,
-						};
+						throw new Error(appendStatus(text, `Command timed out after ${timeoutSecs} seconds`));
 					}
 					throw err;
 				}
 
 				const snapshot = await finishOutput();
 				const { text: outputText, details } = formatOutput(snapshot);
+				if (backgroundedJobId) {
+					const job = getBashBgJob(backgroundedJobId);
+					const status =
+						`Command exceeded ${timeoutSeconds}s and is still running — detached into background job bgId=${backgroundedJobId}` +
+						(job?.pid ? ` (pid=${job.pid})` : "") +
+						`. The process was NOT killed. Read live output with bash_output(bgId="${backgroundedJobId}"); stop it with bash_kill(bgId="${backgroundedJobId}").`;
+					return {
+						content: [{ type: "text", text: appendStatus(outputText, status) }],
+						details: job ? ({ ...job, fullOutputPath: job.logPath } as unknown as BashBgDetails) : details,
+					};
+				}
 				if (tui_only) {
 					const durationStr = formatDuration(Date.now() - startedAt);
 					const sizeStr = `${snapshot.truncation.totalLines} lines, ${formatSize(snapshot.truncation.totalBytes)}`;
