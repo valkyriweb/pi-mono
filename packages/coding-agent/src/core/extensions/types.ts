@@ -482,6 +482,15 @@ export interface ForkAgentOptions {
 	 * hard cap — can only lower, never raise it.
 	 */
 	maxOutputTokens?: number;
+	/**
+	 * Arbitrary metadata forwarded verbatim to the forked child's
+	 * `SessionStartEvent.forkMetadata`. Lets the launching extension correlate a
+	 * fork with per-call state (e.g. a structured-output schema id) so it can
+	 * react inside the child — register a tool, gate a hook — without baking that
+	 * logic into core. Not sent to the model; keep the bytes stable per caller if
+	 * the child uses it to build cache-relevant state.
+	 */
+	metadata?: Record<string, unknown>;
 }
 
 /** Result of `ctx.forkAgent()`. */
@@ -793,6 +802,13 @@ export interface SessionStartEvent {
 	reason: "startup" | "reload" | "new" | "resume" | "fork";
 	/** Previously active session file. Present for "new", "resume", and "fork". */
 	previousSessionFile?: string;
+	/**
+	 * Verbatim metadata supplied by the launcher via `ForkAgentOptions.metadata`
+	 * (in-process `ctx.forkAgent` forks only). Lets an extension running inside
+	 * the child correlate it with per-call launcher state. Undefined for normal
+	 * (non-fork) session starts.
+	 */
+	forkMetadata?: Record<string, unknown>;
 }
 
 /** Fired before switching to another session (can be cancelled) */

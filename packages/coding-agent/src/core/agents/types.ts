@@ -77,6 +77,12 @@ export interface AgentTaskConfig {
 	 * into the user `task` text instead.
 	 */
 	systemPrompt?: string;
+	/**
+	 * Verbatim metadata surfaced on the child's `session_start` event as
+	 * `forkMetadata`. Set by `ctx.forkAgent({ metadata })`; lets the launching
+	 * extension correlate the fork with per-call state from inside the child.
+	 */
+	forkMetadata?: Record<string, unknown>;
 	output?: string;
 	outputMode?: AgentOutputMode;
 }

@@ -611,7 +611,7 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		model: effectiveModel,
 		thinkingLevel: thinking,
 		tools: effectiveTools,
-		sessionStartEvent: { type: "session_start", reason: "startup" },
+		sessionStartEvent: { type: "session_start", reason: "startup", forkMetadata: options.task.forkMetadata },
 		// Tag the session-level source so non-input hooks (session_start,
 		// session_shutdown, turn_end, tool_call/tool_result, memory_note tool
 		// execution) can gate on `ctx.source === "child-agent"`. The per-turn
@@ -833,6 +833,7 @@ async function resumeSingleBackgroundRun(
 			type: "session_start",
 			reason: "resume",
 			previousSessionFile: options.parentSessionManager.getSessionFile(),
+			forkMetadata: task.forkMetadata,
 		},
 		source: "child-agent",
 	});

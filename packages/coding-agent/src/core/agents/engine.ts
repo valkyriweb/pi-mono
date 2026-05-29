@@ -126,6 +126,9 @@ export function createAgentEngine(options: AgentEngineOptions): AgentEngine {
 							// When provided, fully replaces the auto-built child prompt — caller
 							// owns every byte for byte-stable cross-session/cross-cwd cache reuse.
 							systemPrompt: opts.systemPrompt,
+							// Forwarded verbatim to the child's session_start event so a
+							// launching extension can correlate the fork with per-call state.
+							forkMetadata: opts.metadata,
 						},
 					],
 				},

@@ -85,6 +85,7 @@ function forkExtensionFactory(
 		abortImmediately?: boolean;
 		context?: "fork" | "slim" | "none";
 		forkEveryTurn?: boolean;
+		metadata?: Record<string, unknown>;
 	} = {},
 ) {
 	const handles: AgentHandle[] = [];
@@ -99,6 +100,7 @@ function forkExtensionFactory(
 					description: "fork-agent test",
 					...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
 					...(options.context ? { context: options.context } : {}),
+					...(options.metadata ? { metadata: options.metadata } : {}),
 					...(controller ? { signal: controller.signal } : {}),
 				});
 				captured.handle = result.handle;
@@ -143,6 +145,24 @@ describe("ctx.forkAgent", () => {
 		expect(details.runs[0]?.status).toBe("completed");
 		// Both parent and child made LLM calls; the recording factory captured them.
 		expect(record.contexts.length).toBe(2);
+		expect(record.contexts.some(isChildContext)).toBe(true);
+	});
+
+	it("forwards forkAgent({ metadata }) through the fork path without breaking the child run", async () => {
+		const captured = newCaptured();
+		const record: ContextRecord = { contexts: [] };
+		const { factory } = forkExtensionFactory(captured, { metadata: { structuredOutputCallId: "call-xyz" } });
+		const harness = await createHarness({ extensionFactories: [factory] });
+		harnesses.push(harness);
+		makeAgentServices(harness);
+		harness.setResponses([recordingFactory(record, "msg"), recordingFactory(record, "msg")]);
+
+		await harness.session.prompt("kick off");
+
+		expect(captured.error).toBeUndefined();
+		const details = await captured.handle!.wait();
+		expect(details.status).toBe("completed");
+		expect(details.runs[0]?.status).toBe("completed");
 		expect(record.contexts.some(isChildContext)).toBe(true);
 	});
 
