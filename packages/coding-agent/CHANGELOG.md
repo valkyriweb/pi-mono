@@ -2,10 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Exported `convertToPng` for extension authors.
+
 ## [0.77.0] - 2026-05-28
 
 ### New Features
 
+- **Startup session naming** - `--name` / `-n` sets the session display name at startup for interactive, print, JSON, and RPC modes.
 - **Claude Opus 4.8 support** - Adds Anthropic Claude Opus 4.8 metadata and updates Opus adaptive-thinking coverage.
 - **Selective tool disablement** - `--exclude-tools` / `-xt` disables specific built-in, extension, or custom tools while leaving the rest available. See [Tool Options](docs/usage.md#tool-options).
 - **Headless Codex subscription login** - `/login` can use device-code auth for ChatGPT Plus/Pro Codex subscriptions. See [Subscriptions](docs/providers.md#subscriptions) and [OpenAI Codex](docs/providers.md#openai-codex).
@@ -13,6 +18,7 @@
 
 ### Added
 
+- Added `--name` / `-n` to set the session display name at startup ([#5153](https://github.com/earendil-works/pi/issues/5153)).
 - Added `--exclude-tools` / `-xt` to disable specific built-in, extension, or custom tools while leaving the rest available ([#5109](https://github.com/earendil-works/pi/issues/5109)).
 - Added OpenAI Codex subscription device-code login as a selectable headless alternative while keeping browser login as the default ([#4911](https://github.com/earendil-works/pi/pull/4911) by [@vegarsti](https://github.com/vegarsti)).
 - Added `streamingBehavior` to extension input events so extensions can distinguish idle prompts from mid-stream steers and queued follow-ups ([#5107](https://github.com/earendil-works/pi/pull/5107) by [@DanielThomas](https://github.com/DanielThomas)).

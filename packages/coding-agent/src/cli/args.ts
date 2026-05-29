@@ -21,6 +21,7 @@ export interface Args {
 	help?: boolean;
 	version?: boolean;
 	mode?: Mode;
+	name?: string;
 	noSession?: boolean;
 	session?: string;
 	sessionId?: string;
@@ -107,6 +108,12 @@ export function parseArgs(args: string[]): Args {
 		} else if (arg === "--append-system-prompt" && i + 1 < args.length) {
 			result.appendSystemPrompt = result.appendSystemPrompt ?? [];
 			result.appendSystemPrompt.push(args[++i]);
+		} else if (arg === "--name" || arg === "-n") {
+			if (i + 1 < args.length) {
+				result.name = args[++i];
+			} else {
+				result.diagnostics.push({ type: "error", message: "--name requires a value" });
+			}
 		} else if (arg === "--no-session") {
 			result.noSession = true;
 		} else if (arg === "--session" && i + 1 < args.length) {
@@ -262,6 +269,7 @@ ${chalk.bold("Options:")}
   --fork <path|id>               Fork specific session file or partial UUID into a new session
   --session-dir <dir>            Directory for session storage and lookup
   --no-session                   Don't save session (ephemeral)
+  --name, -n <name>              Set session display name
   --models <patterns>            Comma-separated model patterns for Ctrl+P cycling
                                  Supports globs (anthropic/*, *sonnet*) and fuzzy matching
   --no-tools, -nt                Disable all tools by default (built-in and extension)
@@ -310,6 +318,9 @@ ${chalk.bold("Examples:")}
 
   # Continue previous session
   ${APP_NAME} --continue "What did we discuss?"
+
+  # Start a named session
+  ${APP_NAME} --name "Refactor auth module"
 
   # Use different model
   ${APP_NAME} --provider openai --model gpt-4o-mini "Help me refactor this code"
