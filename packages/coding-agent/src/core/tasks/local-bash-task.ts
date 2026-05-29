@@ -14,8 +14,8 @@
  */
 
 import type { BashBgJob } from "../tools/bash.ts";
-import { getBashBgJob, killBashBgJob } from "../tools/bash.ts";
-import type { Task, TaskControlResult, TaskSnapshot, TaskStatus } from "./types.ts";
+import { getBashBgJob, killBashBgJob, renderBashBgOutput } from "../tools/bash.ts";
+import type { Task, TaskControlResult, TaskOutputResult, TaskSnapshot, TaskStatus } from "./types.ts";
 
 function mapStatus(status: BashBgJob["status"]): TaskStatus {
 	switch (status) {
@@ -59,6 +59,13 @@ export const LocalBashTask: Task = {
 
 	snapshot(taskId) {
 		return lookup(taskId);
+	},
+
+	async output(taskId, options): Promise<TaskOutputResult | undefined> {
+		const job = getBashBgJob(taskId);
+		if (!job) return undefined;
+		const rendered = renderBashBgOutput(job, options);
+		return { text: rendered.text, fullOutputPath: rendered.fullOutputPath, snapshot: snapshotFromJob(job) };
 	},
 
 	async kill(taskId): Promise<TaskControlResult> {

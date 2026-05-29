@@ -1479,6 +1479,40 @@ export function createUppercaseBashTool(cwd: string, options?: BashToolOptions):
 // bash_output — read accumulated output from a backgrounded bash job
 // ===========================================================================
 
+/**
+ * Render a background bash job's status header + bounded log slice — the body
+ * of BashOutput, extracted so the unified TaskOutput tool and the task-registry
+ * seam (`core/tasks`) reuse the exact same bash rendering (tail/head/all
+ * slicing, line caps, elapsed/size header) instead of reimplementing it.
+ */
+export function renderBashBgOutput(
+	job: BashBgJob,
+	options?: { mode?: "tail" | "head" | "all"; maxLines?: number },
+): { text: string; fullOutputPath: string } {
+	const { text, shownLines, totalLines, truncated } = readBashBgLog(job, {
+		mode: options?.mode ?? "tail",
+		maxLines: options?.maxLines ?? 200,
+	});
+	let logSize = 0;
+	try {
+		logSize = statSync(job.logPath).size;
+	} catch {}
+	const elapsed = ((job.endedAt ?? Date.now()) - job.startedAt) / 1000;
+	const header =
+		`bgId: ${job.id}\n` +
+		`status: ${job.status}` +
+		(job.status === "exited" ? ` (exit ${job.exitCode})` : "") +
+		(job.status === "killed" && job.signal ? ` (${job.signal})` : "") +
+		(job.status === "failed" && job.error ? ` (${job.error})` : "") +
+		`\nelapsed: ${elapsed.toFixed(1)}s\n` +
+		`log: ${job.logPath} (${(logSize / 1024).toFixed(1)} KB, ${totalLines} lines)` +
+		(truncated
+			? ` \u2014 showing ${shownLines} of ${totalLines}, capped at ${formatSize(BASH_MAX_OUTPUT_BYTES)}`
+			: "");
+	const body = text || "(no output yet)";
+	return { text: `${header}\n\n${body}`, fullOutputPath: job.logPath };
+}
+
 const bashOutputSchema = Type.Object({
 	bgId: Type.String({ description: "Background job id returned by bash(run_in_background:true)." }),
 	mode: Type.Optional(
@@ -1522,30 +1556,10 @@ export function createBashOutputToolDefinition(options?: {
 					details: undefined,
 				};
 			}
-			const { text, shownLines, totalLines, truncated } = readBashBgLog(job, {
-				mode: mode ?? "tail",
-				maxLines: maxLines ?? 200,
-			});
-			let logSize = 0;
-			try {
-				logSize = statSync(job.logPath).size;
-			} catch {}
-			const elapsed = ((job.endedAt ?? Date.now()) - job.startedAt) / 1000;
-			const header =
-				`bgId: ${job.id}\n` +
-				`status: ${job.status}` +
-				(job.status === "exited" ? ` (exit ${job.exitCode})` : "") +
-				(job.status === "killed" && job.signal ? ` (${job.signal})` : "") +
-				(job.status === "failed" && job.error ? ` (${job.error})` : "") +
-				`\nelapsed: ${elapsed.toFixed(1)}s\n` +
-				`log: ${job.logPath} (${(logSize / 1024).toFixed(1)} KB, ${totalLines} lines)` +
-				(truncated
-					? ` \u2014 showing ${shownLines} of ${totalLines}, capped at ${formatSize(BASH_MAX_OUTPUT_BYTES)}`
-					: "");
-			const body = text || "(no output yet)";
+			const rendered = renderBashBgOutput(job, { mode, maxLines });
 			return {
-				content: [{ type: "text", text: `${header}\n\n${body}` }],
-				details: { ...job, fullOutputPath: job.logPath },
+				content: [{ type: "text", text: rendered.text }],
+				details: { ...job, fullOutputPath: rendered.fullOutputPath },
 			};
 		},
 	};

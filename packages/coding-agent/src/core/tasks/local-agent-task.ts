@@ -22,8 +22,8 @@ import {
 	interruptAgentRecentRun,
 	resumeAgentRecentRun,
 } from "../agents/status.ts";
-import type { AgentToolStatus } from "../agents/types.ts";
-import type { Task, TaskControlResult, TaskSnapshot, TaskStatus } from "./types.ts";
+import type { AgentRunDetails, AgentToolStatus } from "../agents/types.ts";
+import type { Task, TaskControlResult, TaskOutputResult, TaskSnapshot, TaskStatus } from "./types.ts";
 
 function mapStatus(status: AgentToolStatus): TaskStatus {
 	switch (status) {
@@ -65,6 +65,23 @@ function lookup(taskId: string): TaskSnapshot | undefined {
 	return run ? snapshotFromRun(run) : undefined;
 }
 
+/** Best-available result text for one sub-run: final output, else raw, else recent snippets. */
+function runOutputText(detail: AgentRunDetails): string {
+	const body = detail.finalOutput ?? detail.rawOutput ?? detail.recentOutputSnippets.join("\n");
+	return body.trim();
+}
+
+function renderRunOutput(run: AgentRecentRun): string {
+	const header = `${run.id}: ${mapStatus(run.status)}${run.error ? ` (${run.error})` : ""}`;
+	if (run.runs.length === 0) return `${header}\n\n(no output yet)`;
+	const sections = run.runs.map((detail) => {
+		const text = runOutputText(detail);
+		const label = run.runs.length > 1 ? `── ${detail.agent} ──\n` : "";
+		return `${label}${text || "(no output yet)"}`;
+	});
+	return `${header}\n\n${sections.join("\n\n")}`;
+}
+
 function toControlResult(taskId: string, ok: boolean, message: string): TaskControlResult {
 	return { ok, message, snapshot: lookup(taskId) };
 }
@@ -74,6 +91,13 @@ export const LocalAgentTask: Task = {
 
 	snapshot(taskId) {
 		return lookup(taskId);
+	},
+
+	async output(taskId): Promise<TaskOutputResult | undefined> {
+		const run = findAgentRecentRun(taskId);
+		if (!run) return undefined;
+		const outputPath = run.outputPaths[0] ?? run.runs.find((detail) => detail.outputPath)?.outputPath;
+		return { text: renderRunOutput(run), fullOutputPath: outputPath, snapshot: snapshotFromRun(run) };
 	},
 
 	async kill(taskId) {

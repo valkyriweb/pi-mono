@@ -259,14 +259,36 @@ export {
 export { createSyntheticSourceInfo } from "./core/source-info.ts";
 export {
 	appendTaskMessage,
+	findTaskAdapter,
 	getTaskMessages,
+	getTaskSnapshot,
 	isTerminalTaskStatus,
 	LocalAgentTask,
+	LocalBashTask,
 	listTasks,
+	registerTaskAdapter,
 	subscribeTaskMessages,
+	subscribeTasks,
+	type Task,
+	type TaskControlResult,
 	type TaskMessageEvent,
 	type TaskSnapshot,
+	type TaskStatus,
+	type TaskType,
 } from "./core/tasks/index.ts";
+export type { TaskOutputOptions, TaskOutputResult } from "./core/tasks/types.ts";
+// Unified background-task tools (CC task_id parity): TaskOutput / TaskStop / TaskList
+export {
+	createTaskListTool,
+	createTaskListToolDefinition,
+	createTaskOutputTool,
+	createTaskOutputToolDefinition,
+	createTaskStopTool,
+	createTaskStopToolDefinition,
+	type TaskListToolInput,
+	type TaskOutputToolInput,
+	type TaskStopToolInput,
+} from "./core/tools/background-tasks.ts";
 // Tools
 export {
 	type BashBgJob,

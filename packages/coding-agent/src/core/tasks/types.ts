@@ -41,6 +41,23 @@ export interface TaskControlResult {
 	snapshot?: TaskSnapshot;
 }
 
+/** Options for reading a task's accumulated output. */
+export interface TaskOutputOptions {
+	/** Which slice of a log-backed task (e.g. bash) to return. Default: tail. */
+	mode?: "tail" | "head" | "all";
+	/** Max lines to return for a log-backed task. */
+	maxLines?: number;
+}
+
+/** A task's current output, rendered for the model. */
+export interface TaskOutputResult {
+	/** Human/model-readable output: status header + log for bash, final result for agents. */
+	text: string;
+	snapshot?: TaskSnapshot;
+	/** Path to the full persisted output, when one exists (e.g. bash log file). */
+	fullOutputPath?: string;
+}
+
 /**
  * Capability surface for a single task. Adapters wire each verb to whatever
  * underlying registry (agent runs, bash bg, etc.) actually owns the lifecycle.
@@ -51,6 +68,12 @@ export interface TaskControlResult {
 export interface Task {
 	type: TaskType;
 	snapshot(taskId: string): TaskSnapshot | undefined;
+	/**
+	 * Read the task's accumulated output. Each adapter renders its native shape:
+	 * bash returns its status header + bounded log slice; an agent returns its
+	 * final result text. Returns undefined when the id is unknown to the adapter.
+	 */
+	output?: (taskId: string, options?: TaskOutputOptions) => Promise<TaskOutputResult | undefined>;
 	/** Hard stop. Aborts immediately, status → cancelled/killed. */
 	kill?: (taskId: string) => Promise<TaskControlResult>;
 	/** Cooperative stop. Status → interrupted, may be resumable. */
