@@ -74,6 +74,8 @@ export interface CreateAgentSessionOptions {
 	 * When provided, only the listed tool names are enabled.
 	 */
 	tools?: string[];
+	/** Optional denylist of tool names to disable. Applies after `tools` when both are provided. */
+	excludeTools?: string[];
 	/** Custom tools to register (in addition to built-in tools). */
 	customTools?: ToolDefinition[];
 
@@ -343,11 +345,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		"Ls",
 	];
 	const allowedToolNames = options.tools ?? (options.noTools === "all" ? [] : undefined);
-	const initialActiveToolNames: string[] = options.tools
-		? [...options.tools]
-		: options.noTools
-			? []
-			: defaultActiveToolNames;
+	const excludedToolNames = options.excludeTools;
+	const excludedToolNameSet = excludedToolNames ? new Set(excludedToolNames) : undefined;
+	const initialActiveToolNames: string[] = (
+		options.tools ? [...options.tools] : options.noTools ? [] : defaultActiveToolNames
+	).filter((name) => !excludedToolNameSet?.has(name));
 
 	let agent: Agent;
 	const sessionSource = options.source ?? "interactive";
@@ -506,6 +508,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		agentToolServices: { cwd, agentDir, authStorage, settingsManager, modelRegistry },
 		initialActiveToolNames,
 		allowedToolNames,
+		excludedToolNames,
 		extensionRunnerRef,
 		sessionStartEvent: options.sessionStartEvent,
 		source: sessionSource,

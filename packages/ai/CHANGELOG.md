@@ -2,14 +2,17 @@
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-05-28
+
 ### Added
 
-- Added OpenAI Codex subscription device-code login as a selectable headless alternative while keeping browser login as the default.
+- Added OpenAI Codex subscription device-code login as a selectable headless alternative while keeping browser login as the default ([#4911](https://github.com/earendil-works/pi/pull/4911) by [@vegarsti](https://github.com/vegarsti)).
 - Added Claude Opus 4.8 model metadata for Anthropic and updated Opus adaptive-thinking coverage to use it.
 
 ### Fixed
 
 - `transformMessages` now skips synthesizing a `tool_result` for hidden/empty hook messages (e.g. cache-tail context injections). Providers drop these messages later, so synthesizing a missing result before that produced duplicate `tool_result` blocks and Anthropic rejected the request. Keeps assistant `tool_use` -> `tool_result` adjacency intact (cache-critical). Covered by `anthropic-tool-serialization-stable` and `transform-messages-copilot-openai-to-anthropic` tests.
+- Fixed OpenRouter DeepSeek V4 `xhigh` reasoning metadata to preserve OpenRouter's native effort instead of sending DeepSeek's `max` effort ([#4801](https://github.com/earendil-works/pi/issues/4801)).
 - Fixed OpenAI Codex Responses replay after switching from Anthropic extended-thinking sessions by generating unique fallback message item IDs for converted thinking/text blocks ([#5148](https://github.com/earendil-works/pi/issues/5148)).
 - Fixed Anthropic-compatible replay for providers that return empty thinking signatures by adding an opt-in `allowEmptySignature` compatibility flag ([#4464](https://github.com/earendil-works/pi/issues/4464)).
 - Fixed OpenAI and OpenRouter GPT-5.5 Pro thinking level metadata to expose only supported medium, high, and xhigh efforts.
