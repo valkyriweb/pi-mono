@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Subagent tool allow-lists now match by capability (case- and provider-prefix-insensitive) instead of exact name, so built-in agents (explore/plan/reviewer/worker/general/decompose) resolve their tools when a profile registers aliased tool names (e.g. `Read`/`Grep`/`Bash`). Previously the intersection could be empty, leaving subagents with zero tools.
+
 ### Added
 
 - Exported `convertToPng` for extension authors.
+- The `agent`/`Agent`/`Task` tool accepts a per-task `cwd` to root a child session in another directory, with `~`/relative-path expansion and existence validation before spawn.
 
 ## [0.77.0] - 2026-05-28
 

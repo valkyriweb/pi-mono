@@ -171,38 +171,74 @@ function normalizeTask(
 	};
 }
 
+/**
+ * Canonicalize a tool name for capability matching. Built-in agent definitions
+ * declare lowercase core names (`read`, `grep`, `bash`), but a profile may rename
+ * the same capability via tool aliases — e.g. Luke's native-tool-overrides
+ * registers `Read`/`Grep`/`Bash` and exposes deferred tools as `mcp__pi__Find`.
+ * Without normalization the allow-list intersection is empty and the child runs
+ * with NO tools (model then emits tool calls as literal text, 0 tool uses).
+ * Strip a leading provider/namespace prefix of the shape `<provider>__<ns>__`
+ * and lowercase so aliases of the same capability resolve to each other.
+ */
+const PROVIDER_TOOL_PREFIX = /^[a-z][a-z0-9]*__[a-z0-9]+__/i;
+function canonicalToolName(name: string): string {
+	return name.replace(PROVIDER_TOOL_PREFIX, "").toLowerCase();
+}
+
 export function resolveEffectiveTools(options: {
 	parentActiveTools: string[];
 	agent: AgentDefinition;
 	requestedTools?: string[];
 }): { effectiveTools: string[]; deniedTools: string[] } {
-	const parent = new Set(options.parentActiveTools);
+	// Map canonical name -> actual active tool name so matches resolve back to the
+	// real registered alias the child session must request.
+	const parentByCanonical = new Map<string, string>();
+	for (const tool of options.parentActiveTools) {
+		const key = canonicalToolName(tool);
+		if (!parentByCanonical.has(key)) parentByCanonical.set(key, tool);
+	}
+	const hasParent = (tool: string): boolean => parentByCanonical.has(canonicalToolName(tool));
 	const requested = options.requestedTools;
 	if (requested) {
-		const inactive = requested.filter((tool) => !parent.has(tool));
+		const inactive = requested.filter((tool) => !hasParent(tool));
 		if (inactive.length > 0) {
 			throw new Error(`Requested inactive tool(s): ${inactive.join(", ")}`);
 		}
 	}
 
-	let candidates = requested ?? Array.from(parent);
+	// Resolve candidates to the actual active alias names.
+	let candidates = (requested ?? options.parentActiveTools).map(
+		(tool) => parentByCanonical.get(canonicalToolName(tool)) ?? tool,
+	);
 	const agentTools = options.agent.tools ?? "*";
 	if (agentTools !== "*") {
-		const allowed = new Set(agentTools);
-		candidates = candidates.filter((tool) => allowed.has(tool));
+		const allowed = new Set(agentTools.map(canonicalToolName));
+		candidates = candidates.filter((tool) => allowed.has(canonicalToolName(tool)));
 	}
 
-	const deny = new Set([...(options.agent.denyTools ?? []), ...GLOBAL_DENY_TOOLS]);
-	const effectiveTools = candidates.filter((tool) => parent.has(tool) && !deny.has(tool));
-	const deniedTools = candidates.filter((tool) => deny.has(tool));
+	const deny = new Set([...(options.agent.denyTools ?? []), ...GLOBAL_DENY_TOOLS].map(canonicalToolName));
+	const isDenied = (tool: string): boolean => deny.has(canonicalToolName(tool));
+	const effectiveTools = candidates.filter((tool) => hasParent(tool) && !isDenied(tool));
+	const deniedTools = candidates.filter((tool) => isDenied(tool));
 
 	// Bundle the bash job-control trio: when `bash`/`Bash` is granted, also grant
 	// the parent's output/kill companions if active and not denied. Otherwise a
 	// child can spawn run_in_background:true jobs but never read or stop them.
-	if (effectiveTools.includes("bash") || effectiveTools.includes("Bash")) {
-		for (const companion of ["bash_output", "BashOutput", "bash_kill", "KillShell"] as const) {
-			if (parent.has(companion) && !deny.has(companion) && !effectiveTools.includes(companion)) {
-				effectiveTools.push(companion);
+	if (effectiveTools.some((tool) => canonicalToolName(tool) === "bash")) {
+		// Each group lists the known name variants for one capability; the active
+		// alias may be either the lowercase core name or a capitalized override.
+		const companionGroups = [
+			["bash_output", "BashOutput"],
+			["bash_kill", "KillShell"],
+		];
+		for (const variants of companionGroups) {
+			for (const variant of variants) {
+				const actual = parentByCanonical.get(canonicalToolName(variant));
+				if (actual && !isDenied(actual) && !effectiveTools.includes(actual)) {
+					effectiveTools.push(actual);
+					break;
+				}
 			}
 		}
 	}
