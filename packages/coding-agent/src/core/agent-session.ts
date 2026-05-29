@@ -388,11 +388,13 @@ function extensionForMimeType(mimeType: string): string {
 // AgentSession Class
 // ============================================================================
 
-const CLAUDE_BRIDGE_NATIVE_TOOL_NAMES = ["WebFetch", "WebSearch"] as const;
+// Wire names match the Anthropic-native server tools (web_fetch/web_search); the
+// extension registers these lowercase names and displays "WebFetch"/"WebSearch" via label.
+const CLAUDE_BRIDGE_NATIVE_TOOL_NAMES = ["web_fetch", "web_search"] as const;
 const CLAUDE_BRIDGE_NATIVE_TOOL_ALIASES = new Set<string>([
 	...CLAUDE_BRIDGE_NATIVE_TOOL_NAMES,
-	"web_fetch",
-	"web_search",
+	"WebFetch",
+	"WebSearch",
 ]);
 
 function syncClaudeBridgeNativeTools(toolNames: string[], model: Model<any> | undefined): string[] {
