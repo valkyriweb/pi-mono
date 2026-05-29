@@ -1,4 +1,5 @@
 export { LocalAgentTask } from "./local-agent-task.ts";
+export { LocalBashTask } from "./local-bash-task.ts";
 export type { TaskMessageEvent, TaskMessageListener } from "./messages.ts";
 export {
 	appendTaskMessage,

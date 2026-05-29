@@ -163,7 +163,12 @@ export function killAllBashBgJobs(): void {
 	notifyBashBgJobsChanged();
 }
 
-function spawnBashBackground(command: string, cwd: string, shellPath?: string, commandPrefix?: string): BashBgJob {
+export function spawnBashBackground(
+	command: string,
+	cwd: string,
+	shellPath?: string,
+	commandPrefix?: string,
+): BashBgJob {
 	const id = nextBashBgId();
 	const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
 	const logPath = join(bashBgLogDir(), `${id}.log`);

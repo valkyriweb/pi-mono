@@ -10,7 +10,17 @@ import {
 	updateAgentRecentRunProgress,
 } from "../src/core/agents/status.ts";
 import type { AgentRunDetails } from "../src/core/agents/types.ts";
-import { getTaskSnapshot, LocalAgentTask, listTasks } from "../src/core/tasks/index.ts";
+import { getTaskSnapshot, LocalAgentTask, LocalBashTask, listTasks } from "../src/core/tasks/index.ts";
+import { getBashBgJob, killAllBashBgJobs, spawnBashBackground } from "../src/core/tools/bash.ts";
+
+/** Poll a background bash job until it leaves the running state (or times out). */
+async function waitForJobToSettle(jobId: string, timeoutMs = 4000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (getBashBgJob(jobId)?.status !== "running") return;
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+}
 
 let tempDir = "";
 let childSessionPath = "";
@@ -194,5 +204,63 @@ describe("tasks registry — LocalAgentTask adapter", () => {
 		const snap = LocalAgentTask.snapshot(run.id);
 		expect(snap?.status).toBe("completed");
 		expect(snap?.endedAt).toBeGreaterThan(0);
+	});
+});
+
+describe("tasks registry — LocalBashTask adapter", () => {
+	let bashTempDir = "";
+
+	beforeEach(() => {
+		killAllBashBgJobs();
+		clearAgentRecentRunsForTests();
+		bashTempDir = mkdtempSync(join(tmpdir(), "tasks-bash-"));
+	});
+
+	afterEach(() => {
+		killAllBashBgJobs();
+		if (bashTempDir) rmSync(bashTempDir, { recursive: true, force: true });
+	});
+
+	test("snapshot maps a running BashBgJob onto TaskSnapshot", () => {
+		const job = spawnBashBackground("sleep 2", bashTempDir);
+		const snap = LocalBashTask.snapshot(job.id);
+		expect(snap).toMatchObject({ id: job.id, type: "local_bash", status: "running", resumable: false });
+		expect(snap?.description).toContain("sleep 2");
+		expect(snap?.startedAt).toBeGreaterThan(0);
+	});
+
+	test("kill stops a running background job", async () => {
+		const job = spawnBashBackground("sleep 30", bashTempDir);
+		const result = await LocalBashTask.kill?.(job.id);
+		expect(result?.ok).toBe(true);
+		expect(result?.snapshot?.status).toBe("killed");
+	});
+
+	test("kill on a finished job is a no-op success", async () => {
+		const job = spawnBashBackground("true", bashTempDir);
+		await waitForJobToSettle(job.id);
+		const result = await LocalBashTask.kill?.(job.id);
+		expect(result?.ok).toBe(true);
+		expect(result?.snapshot?.status).toBe("completed");
+	});
+
+	test("kill on unknown id returns ok=false", async () => {
+		const result = await LocalBashTask.kill?.("bg_nope");
+		expect(result?.ok).toBe(false);
+		expect(result?.message).toContain("bg_nope");
+	});
+
+	test("unified registry enumerates agent runs AND bash jobs in one seam", () => {
+		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map" }], { background: true });
+		const job = spawnBashBackground("sleep 2", bashTempDir);
+
+		const tasks = listTasks();
+		const byId = new Map(tasks.map((t) => [t.id, t.type]));
+		expect(byId.get(run.id)).toBe("local_agent");
+		expect(byId.get(job.id)).toBe("local_bash");
+
+		// Cross-adapter resolution: getTaskSnapshot finds either flavor by id alone.
+		expect(getTaskSnapshot(run.id)?.type).toBe("local_agent");
+		expect(getTaskSnapshot(job.id)?.type).toBe("local_bash");
 	});
 });

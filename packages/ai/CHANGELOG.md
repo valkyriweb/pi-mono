@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `streamAnthropic` now recovers from the Anthropic 400 "thinking/redacted_thinking blocks in the latest assistant message cannot be modified" by retrying once with all thinking blocks stripped from history (Anthropic only validates replayed thinking; fresh thinking is still generated). Previously this permanently wedged sessions across continue/new-prompt/compaction. Happy path untouched (cache-safe).
+
 ## [0.77.0] - 2026-05-28
 
 ### Added

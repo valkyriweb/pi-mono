@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Background bash jobs now flow through the unified task registry (`core/tasks`) as `local_bash` tasks, alongside `local_agent` runs. One `LocalBashTask` adapter maps a `BashBgJob` onto the shared `TaskSnapshot`/`Task` surface (snapshot + kill), and `listTasks()`/`subscribeTasks()`/`getTaskSnapshot()` now span both flavors — a single seam over every long-running thing, resolvable by id alone. No model-facing tool change (cache-neutral); this is the internal foundation for unified `TaskOutput`/`TaskStop` (Claude Code `task_id` parity).
+
 ### Fixed
 
 - Subagent tool allow-lists now match by capability (case- and provider-prefix-insensitive) instead of exact name, so built-in agents (explore/plan/reviewer/worker/general/decompose) resolve their tools when a profile registers aliased tool names (e.g. `Read`/`Grep`/`Bash`). Previously the intersection could be empty, leaving subagents with zero tools.

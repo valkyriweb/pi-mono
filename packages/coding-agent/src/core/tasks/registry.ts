@@ -11,7 +11,9 @@
  */
 
 import { listAgentRecentRuns, subscribeAgentRecentRuns } from "../agents/status.ts";
+import { listBashBgJobs, subscribeBashBgJobs } from "../tools/bash.ts";
 import { LocalAgentTask } from "./local-agent-task.ts";
+import { LocalBashTask } from "./local-bash-task.ts";
 import type { Task, TaskSnapshot, TaskType } from "./types.ts";
 
 const adapters = new Map<TaskType, Task>();
@@ -42,8 +44,8 @@ export function getTaskSnapshot(taskId: string): TaskSnapshot | undefined {
  * Enumerate every known task across registered adapters.
  *
  * Order is adapter-defined; callers needing a stable sort should sort by
- * `startedAt` themselves. v1 only enumerates `local_agent` tasks via the
- * existing `listAgentRecentRuns` helper.
+ * `startedAt` themselves. Enumerates every wired source of truth — agent runs
+ * via `listAgentRecentRuns` and background bash jobs via `listBashBgJobs`.
  */
 export function listTasks(): TaskSnapshot[] {
 	const out: TaskSnapshot[] = [];
@@ -53,17 +55,25 @@ export function listTasks(): TaskSnapshot[] {
 			if (snap) out.push(snap);
 		}
 	}
+	if (adapters.has("local_bash")) {
+		for (const job of listBashBgJobs()) {
+			const snap = LocalBashTask.snapshot(job.id);
+			if (snap) out.push(snap);
+		}
+	}
 	return out;
 }
 
 /**
- * Subscribe to task-state changes across every adapter.
- *
- * v1 only forwards `subscribeAgentRecentRuns` since that's the only source of
- * truth wired up. Returns an unsubscribe function.
+ * Subscribe to task-state changes across every adapter. Forwards both wired
+ * sources of truth (agent runs + background bash jobs) to one listener.
+ * Returns an unsubscribe function that detaches from every source.
  */
 export function subscribeTasks(listener: () => void): () => void {
-	return subscribeAgentRecentRuns(listener);
+	const unsubscribers = [subscribeAgentRecentRuns(listener), subscribeBashBgJobs(listener)];
+	return () => {
+		for (const unsubscribe of unsubscribers) unsubscribe();
+	};
 }
 
 /** For tests: clear the adapter table. Does NOT touch underlying registries. */
@@ -74,3 +84,4 @@ export function clearTaskAdaptersForTests(): void {
 // Default registration — keep at module bottom so `clearTaskAdaptersForTests`
 // callers can re-register explicitly in setup.
 registerTaskAdapter(LocalAgentTask);
+registerTaskAdapter(LocalBashTask);
