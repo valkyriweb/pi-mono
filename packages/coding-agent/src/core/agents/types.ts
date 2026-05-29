@@ -83,6 +83,11 @@ export interface AgentTaskConfig {
 	 * extension correlate the fork with per-call state from inside the child.
 	 */
 	forkMetadata?: Record<string, unknown>;
+	/**
+	 * Override the child session's working directory (e.g. a git worktree) for
+	 * isolation. Defaults to the parent's cwd. Set by `ctx.forkAgent({ cwd })`.
+	 */
+	cwd?: string;
 	output?: string;
 	outputMode?: AgentOutputMode;
 }

@@ -491,6 +491,12 @@ export interface ForkAgentOptions {
 	 * the child uses it to build cache-relevant state.
 	 */
 	metadata?: Record<string, unknown>;
+	/**
+	 * Override the child session's working directory. Defaults to the parent's
+	 * cwd. Used for isolation (e.g. running a subagent inside a git worktree) so
+	 * the child's resource discovery, tools and writes are scoped to that dir.
+	 */
+	cwd?: string;
 }
 
 /** Result of `ctx.forkAgent()`. */

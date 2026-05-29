@@ -129,6 +129,8 @@ export function createAgentEngine(options: AgentEngineOptions): AgentEngine {
 							// Forwarded verbatim to the child's session_start event so a
 							// launching extension can correlate the fork with per-call state.
 							forkMetadata: opts.metadata,
+							// Override the child cwd (e.g. a git worktree) for isolation.
+							cwd: opts.cwd,
 						},
 					],
 				},

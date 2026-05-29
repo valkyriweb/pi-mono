@@ -593,15 +593,17 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		startedAt,
 	});
 	const policy = details.context;
+	// Optional cwd override (e.g. a git worktree) for isolated child sessions.
+	const childCwd = options.task.cwd ?? options.parentServices.cwd;
 	const childServices = await createAgentSessionServices({
-		cwd: options.parentServices.cwd,
+		cwd: childCwd,
 		agentDir: options.parentServices.agentDir,
 		authStorage: options.parentServices.authStorage,
 		settingsManager: options.parentServices.settingsManager,
 		modelRegistry: options.parentServices.modelRegistry,
 		resourceLoaderOptions: getChildResourceLoaderOptions(policy, agent),
 	});
-	const childSessionManager = SessionManager.create(options.parentServices.cwd);
+	const childSessionManager = SessionManager.create(childCwd);
 	childSessionManager.newSession({ parentSession: options.parentSessionManager.getSessionFile() });
 	details.sessionId = childSessionManager.getSessionId();
 	details.sessionPath = childSessionManager.getSessionFile();

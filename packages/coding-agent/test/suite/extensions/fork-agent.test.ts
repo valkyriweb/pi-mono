@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
@@ -86,6 +89,7 @@ function forkExtensionFactory(
 		context?: "fork" | "slim" | "none";
 		forkEveryTurn?: boolean;
 		metadata?: Record<string, unknown>;
+		cwd?: string;
 	} = {},
 ) {
 	const handles: AgentHandle[] = [];
@@ -101,6 +105,7 @@ function forkExtensionFactory(
 					...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
 					...(options.context ? { context: options.context } : {}),
 					...(options.metadata ? { metadata: options.metadata } : {}),
+					...(options.cwd ? { cwd: options.cwd } : {}),
 					...(controller ? { signal: controller.signal } : {}),
 				});
 				captured.handle = result.handle;
@@ -163,6 +168,29 @@ describe("ctx.forkAgent", () => {
 		const details = await captured.handle!.wait();
 		expect(details.status).toBe("completed");
 		expect(details.runs[0]?.status).toBe("completed");
+		expect(record.contexts.some(isChildContext)).toBe(true);
+	});
+
+	it("forwards forkAgent({ cwd }) through the fork path without breaking the child run", async () => {
+		const captured = newCaptured();
+		const record: ContextRecord = { contexts: [] };
+		const overrideCwd = mkdtempSync(join(tmpdir(), "forkcwd-"));
+		const cwdSlug = overrideCwd.split("/").pop()!; // survives session-path slugification
+		const { factory } = forkExtensionFactory(captured, { cwd: overrideCwd });
+		const harness = await createHarness({ extensionFactories: [factory] });
+		harnesses.push(harness);
+		makeAgentServices(harness);
+		harness.setResponses([recordingFactory(record, "msg"), recordingFactory(record, "msg")]);
+
+		await harness.session.prompt("kick off");
+
+		expect(captured.error).toBeUndefined();
+		const details = await captured.handle!.wait();
+		expect(details.status).toBe("completed");
+		expect(details.runs[0]?.status).toBe("completed");
+		// The child session is namespaced under the overridden cwd (session paths
+		// slugify the cwd), proving forkAgent({ cwd }) reached the child services.
+		expect(details.runs[0]?.sessionPath ?? "").toContain(cwdSlug);
 		expect(record.contexts.some(isChildContext)).toBe(true);
 	});
 
