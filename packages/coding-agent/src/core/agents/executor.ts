@@ -174,16 +174,15 @@ function normalizeTask(
 /**
  * Canonicalize a tool name for capability matching. Built-in agent definitions
  * declare lowercase core names (`read`, `grep`, `bash`), but a profile may rename
- * the same capability via tool aliases — e.g. Luke's native-tool-overrides
+ * the same capability under an aliased name — e.g. a native-tool override that
  * registers `Read`/`Grep`/`Bash` and exposes deferred tools as `mcp__pi__Find`.
- * Without normalization the allow-list intersection is empty and the child runs
- * with NO tools (model then emits tool calls as literal text, 0 tool uses).
- * Strip a leading provider/namespace prefix of the shape `<provider>__<ns>__`
- * and lowercase so aliases of the same capability resolve to each other.
+ * Active tool names come from the internal registry (`agent.state.tools[].name`),
+ * so case is the only skew; lowercasing makes aliases of the same capability
+ * resolve to each other. Without it the allow-list intersection is empty and the
+ * child runs with NO tools (model then emits tool calls as literal text, 0 uses).
  */
-const PROVIDER_TOOL_PREFIX = /^[a-z][a-z0-9]*__[a-z0-9]+__/i;
 function canonicalToolName(name: string): string {
-	return name.replace(PROVIDER_TOOL_PREFIX, "").toLowerCase();
+	return name.toLowerCase();
 }
 
 export function resolveEffectiveTools(options: {

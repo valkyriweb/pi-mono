@@ -61,15 +61,12 @@ describe("resolveEffectiveTools capability matching", () => {
 		expect(effectiveTools).not.toContain("Bash");
 	});
 
-	it("strips a provider/namespace prefix when matching", () => {
-		// Build the prefix from parts: `<provider>__<ns>__Find`.
-		const prefix = `${["mcp", "pi"].join("__")}__`;
-		const prefixedFind = `${prefix}Find`;
+	it("matches case-insensitively against capitalized registry names", () => {
 		const { effectiveTools } = resolveEffectiveTools({
-			parentActiveTools: ["Read", "Grep", prefixedFind],
+			parentActiveTools: ["Read", "Grep", "Find"],
 			agent: agent({ tools: ["read", "grep", "find"] }),
 		});
-		expect(effectiveTools).toEqual(expect.arrayContaining(["Read", "Grep", prefixedFind]));
+		expect(effectiveTools).toEqual(expect.arrayContaining(["Read", "Grep", "Find"]));
 	});
 
 	it("denies the agent tool globally even with a wildcard allow-list", () => {
