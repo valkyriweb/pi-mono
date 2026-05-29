@@ -3084,9 +3084,27 @@ export class AgentSession {
 				isToolAvailableForModel(tool.definition, this.model) &&
 				!(tool.definition.name === "agent" && this._baseToolDefinitions.has("agent")),
 		);
+		// Extensions can fully supersede a core base builtin (e.g. native-tool-overrides
+		// provides capitalized Read/Edit/... and TaskOutput/TaskStop, replacing core's
+		// lowercase read/edit/... and bash_output/bash_kill). Collect the declared
+		// replacements so the superseded builtins drop out of the registry — the
+		// override becomes the single tool per capability. No declaration ⇒ base tools
+		// stay, so upstream/vanilla sessions are unaffected. Deterministic per build
+		// (no per-turn state), so the tools[] prefix stays cache-stable.
+		const replacedBuiltinNames = new Set<string>();
+		for (const tool of allCustomTools) {
+			for (const builtinName of tool.definition.replacesBuiltins ?? []) {
+				replacedBuiltinNames.add(builtinName);
+			}
+		}
 		const definitionRegistry = new Map<string, ToolDefinitionEntry>(
 			Array.from(this._baseToolDefinitions.entries())
-				.filter(([name, definition]) => isAllowedTool(name) && isToolAvailableForModel(definition, this.model))
+				.filter(
+					([name, definition]) =>
+						isAllowedTool(name) &&
+						!replacedBuiltinNames.has(name) &&
+						isToolAvailableForModel(definition, this.model),
+				)
 				.map(([name, definition]) => [
 					name,
 					{
@@ -3122,7 +3140,7 @@ export class AgentSession {
 		const wrappedExtensionTools = wrapRegisteredTools(allCustomTools, runner);
 		const wrappedBuiltInTools = wrapRegisteredTools(
 			Array.from(this._baseToolDefinitions.values())
-				.filter((definition) => isAllowedTool(definition.name))
+				.filter((definition) => isAllowedTool(definition.name) && !replacedBuiltinNames.has(definition.name))
 				.map((definition) => ({
 					definition,
 					sourceInfo: createSyntheticSourceInfo(`<builtin:${definition.name}>`, { source: "builtin" }),

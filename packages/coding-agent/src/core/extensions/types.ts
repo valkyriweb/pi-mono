@@ -722,6 +722,16 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	deferLoading?: boolean;
 	/** Keep this tool eagerly loaded even when other tools are deferred. */
 	alwaysLoad?: boolean;
+	/**
+	 * Names of core base builtins (e.g. "read", "edit", "bash_output") that this
+	 * tool fully supersedes. When the tool is registered, the listed base builtins
+	 * are dropped from the tool registry so the override is the single tool for that
+	 * capability — no duplicate (`Read`/`read`) schemas. No-op when nothing declares
+	 * a replacement, so vanilla/upstream sessions keep their base tools. Resolved
+	 * once at registry build (no per-turn state), keeping the tools[] prefix
+	 * cache-stable.
+	 */
+	replacesBuiltins?: readonly string[];
 	/** Concise searchable hint used by tool discovery surfaces. */
 	searchHint?: string;
 	/** Optional provider allow-list. When set, hide the tool from other providers' active/deferred surfaces. */
