@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, resolve } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, AssistantMessage, Model, TextContent, Usage } from "@earendil-works/pi-ai";
 import type { AgentSession } from "../agent-session.ts";
@@ -121,6 +123,26 @@ interface RunChildOptions extends AgentExecutorOptions {
 	progressRuns: AgentRunDetails[];
 	/** Recent-run id; sinks live events into core/tasks message buffer. */
 	taskId?: string;
+}
+
+/**
+ * Resolve and validate a child session's working directory. Expands a leading
+ * `~`/`~/...` to the home dir, resolves relative paths against the parent cwd,
+ * and confirms the result exists and is a directory. Throws a clear error
+ * (listing the resolved path) instead of letting the child boot in a bad cwd.
+ */
+export function resolveChildCwd(taskCwd: string | undefined, parentCwd: string): string {
+	if (taskCwd === undefined || taskCwd.trim() === "") return parentCwd;
+	const expanded =
+		taskCwd === "~" || taskCwd.startsWith("~/") ? resolve(homedir(), taskCwd.slice(1).replace(/^\/+/, "")) : taskCwd;
+	const resolved = isAbsolute(expanded) ? expanded : resolve(parentCwd, expanded);
+	if (!existsSync(resolved)) {
+		throw new Error(`Agent cwd does not exist: ${resolved} (from "${taskCwd}")`);
+	}
+	if (!statSync(resolved).isDirectory()) {
+		throw new Error(`Agent cwd is not a directory: ${resolved} (from "${taskCwd}")`);
+	}
+	return resolved;
 }
 
 function normalizeOutputMode(mode: AgentOutputMode | undefined): AgentOutputMode {
@@ -593,8 +615,13 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		startedAt,
 	});
 	const policy = details.context;
-	// Optional cwd override (e.g. a git worktree) for isolated child sessions.
-	const childCwd = options.task.cwd ?? options.parentServices.cwd;
+	// Optional cwd override (e.g. a git worktree, or exploring another repo) for
+	// isolated child sessions. Normalize before use: expand a leading `~`, resolve
+	// relative paths against the parent cwd, and validate the target is a real
+	// directory — otherwise a child silently roots somewhere wrong and every
+	// relative tool path resolves against the bad dir (the classic "explore
+	// guessed the wrong cwd" failure).
+	const childCwd = resolveChildCwd(options.task.cwd, options.parentServices.cwd);
 	const childServices = await createAgentSessionServices({
 		cwd: childCwd,
 		agentDir: options.parentServices.agentDir,
