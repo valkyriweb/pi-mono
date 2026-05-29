@@ -789,9 +789,10 @@ export async function main(args: string[], options?: MainOptions) {
 		});
 		stopThemeWatcher();
 		restoreStdout();
-		if (exitCode !== 0) {
-			process.exitCode = exitCode;
-		}
-		return;
+		// One-shot print/json mode: exit explicitly. runPrintMode disposes the
+		// runtime and flushes stdout in its finally, but a surviving handle (e.g. a
+		// provider/claude-bridge keep-alive socket) can keep the event loop alive
+		// and hang the process indefinitely after the output is written.
+		process.exit(exitCode);
 	}
 }
