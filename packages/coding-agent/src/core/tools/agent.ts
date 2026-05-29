@@ -75,6 +75,12 @@ const taskSchema = Type.Object({
 	),
 	output: Type.Optional(Type.String({ description: "Path for parent to save final child report" })),
 	outputMode: Type.Optional(outputModeSchema),
+	cwd: Type.Optional(
+		Type.String({
+			description:
+				"Working directory for the child session. Relative tool paths resolve against it. Defaults to the parent's cwd. Use an absolute path to run a child in a different repo/directory.",
+		}),
+	),
 });
 
 export const agentToolSchema = Type.Object({
@@ -109,6 +115,12 @@ export const agentToolSchema = Type.Object({
 	),
 	output: Type.Optional(Type.String()),
 	outputMode: Type.Optional(outputModeSchema),
+	cwd: Type.Optional(
+		Type.String({
+			description:
+				"Working directory for the child session (single mode). Relative tool paths resolve against it. Defaults to the parent's cwd. Use an absolute path to run a child in a different repo/directory.",
+		}),
+	),
 	chainDir: Type.Optional(Type.String({ description: "Base directory for relative chain outputs" })),
 	background: Type.Optional(
 		Type.Boolean({ description: "Run in the background and return immediately with a run id" }),
@@ -158,7 +170,7 @@ function countExecutionModes(params: AgentToolInput): number {
 type AgentToolParams = AgentToolInput & Record<string, unknown>;
 type AgentTaskParams = NonNullable<AgentToolInput["tasks"]>[number] & Record<string, unknown>;
 
-const unsupportedFutureFields = ["cwd", "worktree", "remote", "team_name", "name", "mode"] as const;
+const unsupportedFutureFields = ["worktree", "remote", "team_name", "name", "mode"] as const;
 
 function rejectUnsupportedFutureFields(params: Record<string, unknown>): void {
 	for (const field of unsupportedFutureFields) {
@@ -270,6 +282,7 @@ export function normalizeAgentToolMode(params: AgentToolInput): {
 					maxOutputTokens: normalized.maxOutputTokens,
 					output: normalized.output,
 					outputMode: normalized.outputMode,
+					cwd: normalized.cwd,
 				},
 			],
 		};
@@ -520,6 +533,7 @@ export function createAgentToolDefinition(
 			"When a background agent finishes you receive an automatic `agent_completion` message with runId, status, summary, result preview, outputPaths, and sessionPaths. Do NOT poll with `agent action=status/detail` while waiting — work on other things, sleep with goal_wait, or hand back to the user. Read sessionPaths or outputPaths on demand if you need the full transcript.",
 			"The agent's final message is returned as the tool result; it is not shown to the user — relay what matters in your own words.",
 			"Do not use agent recursively; child agents cannot call agent.",
+			"To run a child in another directory, pass `cwd` (absolute path) so its relative tool paths resolve there — e.g. exploring a different repo. Reads/greps with absolute paths already work from any cwd, so `cwd` is only needed when you want the child rooted elsewhere.",
 		],
 		parameters: agentToolSchema,
 		executionMode: "parallel",
