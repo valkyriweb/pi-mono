@@ -517,7 +517,7 @@ export function createAgentToolDefinition(
 		label,
 		description:
 			options?.description ??
-			"Launch a built-in or configured Pi child agent. Supports single {agent, task}, parallel {tasks: [{agent, task, ...}]}, sequential {chain: [{agent, task, ...}]}, background execution, and background run control actions. `tasks` and `chain` MUST be native JSON arrays of task objects — never a stringified JSON array.",
+			"Launch a built-in or configured Pi child agent. Supports single {agent, task}, parallel {tasks: [{agent, task, ...}]}, sequential {chain: [{agent, task, ...}]}, background execution, and background run control actions. Pass `tasks` and `chain` as native JSON arrays of task objects; a stringified JSON array is also accepted and parsed.",
 
 		promptSnippet: "Delegate a task to a child agent with bounded tools",
 		promptGuidelines: [
@@ -528,7 +528,7 @@ export function createAgentToolDefinition(
 			"Read-only agents (`explore`, `decompose`, `plan`, `reviewer`) cannot edit, write, or run bash — assign them research, search, planning, or review work only. Never assign them implementation.",
 			"Brief the agent like a smart colleague who just walked in: explain what you're trying to accomplish and why, describe what you've already ruled out, give enough context that the agent can make judgment calls rather than follow a narrow instruction. Terse command-style prompts produce shallow, generic work. Never delegate understanding — don't write 'based on your findings, fix the bug'; write prompts that prove you understood (file paths, line numbers, what specifically to change).",
 			"When parallel exploration or review is needed, send multiple `agent` tool-use blocks in one assistant message; Pi runs those calls concurrently. Use `tasks[]` only for explicit batched fan-out inside one agent call.",
-			'`tasks` and `chain` must be passed as native JSON arrays of task objects, e.g. `{"tasks": [{"agent": "explore", "task": "..."}]}`. Do not pass a stringified JSON array. Each task object requires `agent` and `task`; other fields (`context`, `description`, `extraContext`, `model`, `thinking`, ...) are optional.',
+			'Pass `tasks` and `chain` as native JSON arrays of task objects, e.g. `{"tasks": [{"agent": "explore", "task": "..."}]}`. A stringified JSON array (e.g. `"tasks": "[{...}]"`) is tolerated and auto-parsed, but native arrays are preferred. Each task object requires `agent` and `task`; other fields (`context`, `description`, `extraContext`, `model`, `thinking`, ...) are optional.',
 			"Use `background:true` for long-running delegated work that should continue while you report back; control it with `action`/`status`/`interrupt`/`cancel`/`resume` and `runId`.",
 			"When a background agent finishes you receive an automatic `agent_completion` message with runId, status, summary, result preview, outputPaths, and sessionPaths. Do NOT poll with `agent action=status/detail` while waiting — work on other things, sleep with goal_wait, or hand back to the user. Read sessionPaths or outputPaths on demand if you need the full transcript.",
 			"The agent's final message is returned as the tool result; it is not shown to the user — relay what matters in your own words.",
