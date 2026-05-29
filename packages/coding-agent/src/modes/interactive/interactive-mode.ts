@@ -3990,10 +3990,27 @@ export class InteractiveMode {
 				await this.session.prompt(message.text);
 			}
 
-			// Send first prompt (starts streaming)
-			const promptPromise = this.session.prompt(firstPrompt.text).catch((error) => {
-				restoreQueue(error);
-			});
+			// Send first prompt (starts streaming). If the agent is already busy
+			// (compaction tail, agent_end listener phase, or a TOCTOU race), prompt()
+			// throws "Agent is already processing" — route the message into the
+			// steer/follow-up queue instead of failing the whole flush.
+			let promptPromise: Promise<void> = Promise.resolve();
+			if (this.session.isStreaming) {
+				if (firstPrompt.mode === "followUp") {
+					await this.session.followUp(firstPrompt.text);
+				} else {
+					await this.session.steer(firstPrompt.text);
+				}
+			} else {
+				promptPromise = this.session.prompt(firstPrompt.text).catch((error) => {
+					if (error instanceof Error && /already processing( a prompt)?/.test(error.message)) {
+						return firstPrompt.mode === "followUp"
+							? this.session.followUp(firstPrompt.text)
+							: this.session.steer(firstPrompt.text);
+					}
+					restoreQueue(error);
+				});
+			}
 
 			// Queue remaining messages
 			for (const message of rest) {
