@@ -569,7 +569,25 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: options?.maxRetries ?? 0,
 			};
-			let response = await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
+			let response: Awaited<ReturnType<ReturnType<typeof client.messages.create>["asResponse"]>>;
+			try {
+				response = await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
+			} catch (error) {
+				// Graceful self-heal for the signed-thinking-block round-trip 400.
+				// Anthropic rejects a request when a thinking/redacted_thinking block
+				// in the latest assistant message does not byte-match what it signed
+				// (drifted signature from a crashed/paused turn, post-compaction
+				// replay, or content mutation). With no recovery this poisons every
+				// subsequent request and wedges the session. Retry ONCE with all
+				// thinking blocks stripped from history: Anthropic only validates
+				// REPLAYED thinking blocks, so a request carrying none always passes,
+				// and fresh thinking is still generated for the new turn. This is the
+				// same drop the cross-model path in transformMessages already applies.
+				// (#thinking-roundtrip)
+				if (!isLatestThinkingModifiedError(error)) throw error;
+				params = { ...params, messages: stripThinkingFromMessageParams(params.messages) };
+				response = await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
+			}
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			stream.push({ type: "start", partial: output });
 
@@ -1185,6 +1203,34 @@ function buildParams(
 // Normalize tool call IDs to match Anthropic's required pattern and length
 function normalizeToolCallId(id: string): string {
 	return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+}
+
+// Detect the specific 400 raised when a thinking/redacted_thinking block in the
+// latest assistant message does not match the signature Anthropic issued.
+function isLatestThinkingModifiedError(error: unknown): boolean {
+	const status = (error as { status?: number })?.status;
+	if (status !== undefined && status !== 400) return false;
+	const text =
+		error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error ?? "");
+	return /thinking|redacted_thinking/i.test(text) && /latest assistant message/i.test(text);
+}
+
+// Drop every thinking/redacted_thinking block from assistant message params so a
+// session poisoned by a drifted signature can recover. Anthropic only validates
+// replayed thinking blocks; sending none always passes. Messages left with no
+// content are dropped (Anthropic rejects empty content arrays).
+function stripThinkingFromMessageParams(messages: MessageParam[]): MessageParam[] {
+	const result: MessageParam[] = [];
+	for (const message of messages) {
+		if (message.role !== "assistant" || typeof message.content === "string") {
+			result.push(message);
+			continue;
+		}
+		const content = message.content.filter((b) => b.type !== "thinking" && b.type !== "redacted_thinking");
+		if (content.length === 0) continue;
+		result.push({ ...message, content });
+	}
+	return result;
 }
 
 function convertMessages(
