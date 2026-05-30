@@ -219,6 +219,16 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	shouldStopAfterTurn?: (context: ShouldStopAfterTurnContext) => boolean | Promise<boolean>;
 
 	/**
+	 * Hard cap on the number of assistant turns this run may take. A "turn" is one
+	 * assistant message plus its tool executions. When the count reaches `maxTurns`,
+	 * the loop emits `agent_end` and exits before starting another LLM call — even if
+	 * the model still wants to call tools. Mirrors Claude Code's `query({ maxTurns })`
+	 * safety bound; use it to stop runaway agentic forks (e.g. background extractors).
+	 * Undefined or <= 0 means unbounded.
+	 */
+	maxTurns?: number;
+
+	/**
 	 * Called after `turn_end` and before the loop decides whether another provider request should start.
 	 * Return replacement context/model/thinking state to affect the next turn in this run.
 	 * Return undefined to keep using the current context/config.

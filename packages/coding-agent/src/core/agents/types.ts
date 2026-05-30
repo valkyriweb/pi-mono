@@ -68,6 +68,12 @@ export interface AgentTaskConfig {
 	 */
 	maxOutputTokens?: number;
 	/**
+	 * Hard cap on the child's assistant turns. When reached, the child loop stops
+	 * before another LLM call — a safety bound for runaway agentic forks (mirrors
+	 * Claude Code's `query({ maxTurns })`). Undefined = unbounded.
+	 */
+	maxTurns?: number;
+	/**
 	 * Hand-built system prompt that fully replaces the auto-built one for this
 	 * child run. When set, tools/agent-append/project-context/skills/date/cwd are
 	 * NOT auto-injected — the caller owns every byte of the prefix.

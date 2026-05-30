@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `maxTurns` on `AgentLoopConfig` and the `Agent` engine (`AgentOptions.maxTurns` + public `Agent.maxTurns`, threaded through `createLoopConfig`). When set, `runLoop` counts completed assistant turns and emits `agent_end` then returns before starting another LLM call once the count reaches `maxTurns` — a deterministic hard cap for runaway agentic runs (mirrors Claude Code's `query({ maxTurns })`). Undefined or `<= 0` = unbounded. Covered by `test/agent-loop.test.ts` ("should stop after maxTurns assistant turns even if the model keeps calling tools").
+
 ### Changed
 
 - Re-export `./harness/progressive-disclosure.ts` from the package entrypoint so harness consumers can import progressive-disclosure helpers directly.

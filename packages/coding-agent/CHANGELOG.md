@@ -4,6 +4,10 @@
 
 ### Added
 
+- `maxTurns` plumbed through the child-agent path: `AgentTaskConfig.maxTurns` (`core/agents/types.ts`) is set on the child engine `Agent` in `runChild` (`core/agents/executor.ts`) before driving, exposed on `ForkAgentOptions.maxTurns` (`core/extensions/types.ts`) for `ctx.forkAgent({ maxTurns })`, and mapped through `engine.fork` (`core/agents/engine.ts`). Gives extensions a hard turn cap for runaway agentic forks (e.g. background memory extractors), mirroring Claude Code's `query({ maxTurns })`. The built-in `agent` tool schema is intentionally unchanged to keep `tools[]` cache-stable. Backed by `packages/agent` loop enforcement + `test/suite/extensions/fork-agent.test.ts`.
+
+### Added
+
 - Background bash jobs now flow through the unified task registry (`core/tasks`) as `local_bash` tasks, alongside `local_agent` runs. One `LocalBashTask` adapter maps a `BashBgJob` onto the shared `TaskSnapshot`/`Task` surface (snapshot + kill), and `listTasks()`/`subscribeTasks()`/`getTaskSnapshot()` now span both flavors — a single seam over every long-running thing, resolvable by id alone. No model-facing tool change (cache-neutral); this is the internal foundation for unified `TaskOutput`/`TaskStop` (Claude Code `task_id` parity).
 - Added unified background-task tools `TaskOutput` / `TaskStop` / `TaskList` (`core/tools/background-tasks.ts`) over the task-registry seam — Claude Code `task_id` parity. One id space across background bash jobs and background agent runs: `TaskOutput` reads any task's output (bash → status header + bounded log slice via the preserved `renderBashBgOutput`, with `mode`/`maxLines`/`block`/`timeout`; agent → final result), `TaskStop` stops any task (`shell_id` accepted as a deprecated alias), `TaskList` enumerates everything. The `Task` seam gained an optional `output` capability, implemented by both adapters. Definitions are exported but not yet registered, so this commit is cache-neutral; registration (retiring `BashOutput`/`KillShell`) lands with the profile wiring.
 

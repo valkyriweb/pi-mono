@@ -1064,6 +1064,60 @@ describe("agentLoop with AgentMessage", () => {
 		]);
 	});
 
+	it("should stop after maxTurns assistant turns even if the model keeps calling tools", async () => {
+		const toolSchema = Type.Object({ value: Type.String() });
+		const executed: string[] = [];
+		const tool: AgentTool<typeof toolSchema, { value: string }> = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo tool",
+			parameters: toolSchema,
+			async execute(_toolCallId, params) {
+				executed.push(params.value);
+				return {
+					content: [{ type: "text", text: `echoed: ${params.value}` }],
+					details: { value: params.value },
+				};
+			},
+		};
+
+		const context: AgentContext = { systemPrompt: "", messages: [], tools: [tool] };
+		// maxTurns=2: the loop must stop after 2 assistant turns even though the
+		// stream below ALWAYS returns a tool call (an unbounded loop without the cap).
+		const config: AgentLoopConfig = {
+			model: createModel(),
+			convertToLlm: identityConverter,
+			maxTurns: 2,
+		};
+
+		let llmCalls = 0;
+		const stream = agentLoop([createUserMessage("loop forever")], context, config, undefined, () => {
+			llmCalls++;
+			const mockStream = new MockAssistantStream();
+			const callId = `tool-${llmCalls}`;
+			queueMicrotask(() => {
+				const message = createAssistantMessage(
+					[{ type: "toolCall", id: callId, name: "echo", arguments: { value: `v${llmCalls}` } }],
+					"toolUse",
+				);
+				mockStream.push({ type: "done", reason: "toolUse", message });
+			});
+			return mockStream;
+		});
+
+		const events: AgentEvent[] = [];
+		for await (const event of stream) {
+			events.push(event);
+		}
+		await stream.result();
+
+		// Exactly maxTurns LLM calls / tool executions, then a graceful agent_end.
+		expect(llmCalls).toBe(2);
+		expect(executed).toEqual(["v1", "v2"]);
+		expect(events.filter((event) => event.type === "turn_end")).toHaveLength(2);
+		expect(events[events.length - 1]?.type).toBe("agent_end");
+	});
+
 	it("should stop after a tool batch when every tool result sets terminate=true", async () => {
 		const toolSchema = Type.Object({ value: Type.String() });
 		const tool: AgentTool<typeof toolSchema, { value: string }> = {

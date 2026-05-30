@@ -114,7 +114,11 @@ export function createAgentEngine(options: AgentEngineOptions): AgentEngine {
 					background: true,
 					tasks: [
 						{
-							agent: "general",
+							// Route through a named agent definition when the caller asks
+							// (e.g. "explore"); the executor resolves its tools/model/prompt
+							// from the same registry the built-in agent tool uses. Defaults
+							// to "general" to preserve prior forkAgent behaviour.
+							agent: opts.agentType ?? "general",
 							task: opts.prompt,
 							description: opts.description,
 							// Default "fork" preserves prior behaviour (inherit parent prefix).
@@ -123,6 +127,8 @@ export function createAgentEngine(options: AgentEngineOptions): AgentEngine {
 							tools: opts.allowedTools,
 							model: opts.model,
 							maxOutputTokens: opts.maxOutputTokens,
+							// Hard turn cap for the child loop (e.g. bounded extractor forks).
+							maxTurns: opts.maxTurns,
 							// When provided, fully replaces the auto-built child prompt — caller
 							// owns every byte for byte-stable cross-session/cross-cwd cache reuse.
 							systemPrompt: opts.systemPrompt,

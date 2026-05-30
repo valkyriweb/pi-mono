@@ -163,6 +163,8 @@ async function runLoop(
 	let currentContext = initialContext;
 	let config = initialConfig;
 	let firstTurn = true;
+	// Counts completed assistant turns across the whole run for the maxTurns cap.
+	let turnsCompleted = 0;
 	// Check for steering messages at start (user may have typed while waiting)
 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
 
@@ -226,6 +228,14 @@ async function runLoop(
 			}
 
 			await emit({ type: "turn_end", message, toolResults });
+
+			// Hard turn cap (e.g. background extractor forks). Stop before starting
+			// another LLM call even if the model still wants to call tools.
+			turnsCompleted += 1;
+			if (config.maxTurns !== undefined && config.maxTurns > 0 && turnsCompleted >= config.maxTurns) {
+				await emit({ type: "agent_end", messages: newMessages });
+				return;
+			}
 
 			const nextTurnContext = {
 				message,

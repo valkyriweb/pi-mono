@@ -483,6 +483,12 @@ export interface ForkAgentOptions {
 	 */
 	maxOutputTokens?: number;
 	/**
+	 * Hard cap on the forked agent's assistant turns. When reached, the child loop
+	 * stops before another LLM call — a safety bound for runaway agentic forks
+	 * (mirrors Claude Code's `query({ maxTurns })`). Undefined = unbounded.
+	 */
+	maxTurns?: number;
+	/**
 	 * Arbitrary metadata forwarded verbatim to the forked child's
 	 * `SessionStartEvent.forkMetadata`. Lets the launching extension correlate a
 	 * fork with per-call state (e.g. a structured-output schema id) so it can
@@ -497,6 +503,16 @@ export interface ForkAgentOptions {
 	 * the child's resource discovery, tools and writes are scoped to that dir.
 	 */
 	cwd?: string;
+	/**
+	 * Route the fork through a named agent definition (e.g. `"explore"`,
+	 * `"reviewer"`, `"plan"`) — the same registry the built-in `agent` tool uses.
+	 * When set, the child inherits that agent's tools/denyTools, model, thinking
+	 * level, and (for `cacheProfile: "stable"` agents with `context: "none"`) its
+	 * stable system-prompt append, exactly as if launched via the agent tool.
+	 * Explicit `allowedTools`/`model`/`systemPrompt` still override the
+	 * definition. Omit (or `"general"`) for the default general-purpose child.
+	 */
+	agentType?: string;
 }
 
 /** Result of `ctx.forkAgent()`. */

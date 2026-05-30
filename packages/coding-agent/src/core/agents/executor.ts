@@ -704,6 +704,12 @@ async function runChild(options: RunChildOptions): Promise<AgentRunDetails> {
 		session.overrideBaseSystemPrompt(buildAgentSystemAppend(agent));
 	}
 
+	// Hard turn cap for this child run (e.g. bounded extractor forks). Set on the
+	// engine Agent before driving — the loop reads it via createLoopConfig.
+	if (options.task.maxTurns !== undefined && options.task.maxTurns > 0) {
+		session.agent.maxTurns = options.task.maxTurns;
+	}
+
 	details.loadedSkills = childServices.resourceLoader.getSkills().skills.map((skill) => skill.name);
 
 	return driveChildSession(session, {
