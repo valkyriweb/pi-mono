@@ -26,7 +26,7 @@
 		"test": "vitest --run",
 		"test:harness": "vitest --run --config vitest.harness.config.ts",
 		"coverage:harness": "vitest --run --config vitest.harness.config.ts --coverage",
-		"prepublishOnly": "npm run clean && npm run build"
+		"prepublishOnly": "npm run build"
 	},
 	"dependencies": {
 		"@valkyriweb/pi-ai": "0.78.0",

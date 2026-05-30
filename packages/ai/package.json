@@ -64,7 +64,7 @@
 		"generate-image-models": "node scripts/generate-image-models.ts",
 		"build": "npm run generate-models && npm run generate-image-models && tsgo -p tsconfig.build.json",
 		"test": "vitest --run",
-		"prepublishOnly": "npm run clean && npm run build"
+		"prepublishOnly": "npm run build"
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "0.91.1",
