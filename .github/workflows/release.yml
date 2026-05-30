@@ -60,22 +60,13 @@ jobs:
           path: pi-mono-fork
           fetch-depth: 0
 
-      - name: Checkout my-pi gates
-        uses: actions/checkout@v4
-        with:
-          repository: valkyriweb/my-pi
-          path: my-pi
-          fetch-depth: 0
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           registry-url: 'https://npm.pkg.github.com'
           cache: npm
-          cache-dependency-path: |
-            pi-mono-fork/package-lock.json
-            my-pi/package-lock.json
+          cache-dependency-path: pi-mono-fork/package-lock.json
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep && sudo ln -s $(which fdfind) /usr/local/bin/fd
@@ -84,13 +75,13 @@ jobs:
         working-directory: pi-mono-fork
         run: npm ci --ignore-scripts
 
-      - name: Install my-pi dependencies
-        working-directory: my-pi
-        run: npm ci
+      - name: Build packages
+        working-directory: pi-mono-fork
+        run: npm --prefix packages/tui run build && npm --prefix packages/ai run build && npm --prefix packages/agent run build && npm --prefix packages/coding-agent run build
 
       - name: Release gate
         working-directory: pi-mono-fork
-        run: npm run test:build-gate
+        run: npm run test:system-prompt && npm run test:cache-stability && npm run test:e2e
 
       - name: Fork canonical check
         working-directory: pi-mono-fork

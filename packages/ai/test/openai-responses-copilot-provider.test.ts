@@ -3,7 +3,7 @@ import { getModel } from "../src/models.ts";
 import { streamOpenAIResponses } from "../src/providers/openai-responses.ts";
 import type { Model } from "../src/types.ts";
 
-type CapturedHeaders = Headers | string[][] | Record<string, string | readonly string[]> | undefined;
+type CapturedHeaders = RequestInit["headers"];
 
 function getHeader(headers: CapturedHeaders, name: string): string | null {
 	if (!headers) return null;
@@ -16,7 +16,8 @@ function getHeader(headers: CapturedHeaders, name: string): string | null {
 	}
 
 	for (const [key, value] of Object.entries(headers)) {
-		if (key.toLowerCase() === lowerName) return typeof value === "string" ? value : value.join(", ");
+		if (key.toLowerCase() !== lowerName || value === undefined) continue;
+		return value;
 	}
 	return null;
 }
