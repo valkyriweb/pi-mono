@@ -33,6 +33,7 @@ describe("extension hooks API", () => {
 		removeHook(hookName);
 		removeFilter("provider:beforeRequest", "test-provider-filter");
 		removeFilter("systemPrompt:build", "test-system-prompt-filter");
+		removeFilter("systemPrompt:build", "test-extension-config");
 		removeFilter("message:end", "test-message-filter");
 		removeAction(load, "test-replaced-load-action");
 		removeAction(load, "test-replacement-load-action");
@@ -115,6 +116,28 @@ describe("extension hooks API", () => {
 		expect(getActions(load).map((action) => action.id)).toEqual(
 			expect.arrayContaining(["agents", "bashBgJobs", "deferredTools"]),
 		);
+	});
+
+	it("lets extensions read their namespace config from the runtime", async () => {
+		const result = await createTestExtensionsResult(
+			[
+				(pi) => {
+					pi.hooks.addFilter<string>("systemPrompt:build", "test-extension-config", (prompt) => {
+						const cfg = pi.getExtensionConfig<{ suffix?: string }>("test-extension");
+						return `${prompt}${cfg?.suffix ?? ""}`;
+					});
+				},
+			],
+			tempDir,
+		);
+		result.runtime.extensionConfig = {
+			"test-extension": { suffix: " configured" },
+		};
+		const runner = createRunner(result);
+
+		const promptResult = await runner.emitBeforeAgentStart("hello", undefined, "base", systemPromptOptions());
+
+		expect(promptResult?.systemPrompt).toBe("base configured");
 	});
 
 	it("applies filters at provider, system prompt, and message-end seams after compatible events", async () => {

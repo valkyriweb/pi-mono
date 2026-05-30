@@ -1524,6 +1524,15 @@ export interface ExtensionAPI {
 	/** Get the value of a registered CLI flag. */
 	getFlag(name: string): boolean | string | undefined;
 
+	/**
+	 * Read this extension's tuning slice from `settings.json` `extensionConfig{}`
+	 * (merged global ← project). `namespace` is the extension's key (e.g. its
+	 * directory/package name). Returns `undefined` when the namespace is absent.
+	 * The L3 layer of config: precedence L1 source default < L2 membership < L3
+	 * this < L4 env/flag override (apply the env fallback yourself in-extension).
+	 */
+	getExtensionConfig<T = Record<string, unknown>>(namespace: string): T | undefined;
+
 	// =========================================================================
 	// Message Rendering
 	// =========================================================================
@@ -2059,6 +2068,13 @@ export type SetLabelHandler = (entryId: string, label: string | undefined) => vo
  */
 export interface ExtensionRuntimeState {
 	flagValues: Map<string, boolean | string>;
+	/**
+	 * Per-extension tuning from `settings.json` `extensionConfig{}`, merged
+	 * global ← project. Keyed by extension namespace. Populated after extensions
+	 * load (resource-loader), mirroring how `flagValues` is filled post-load, so
+	 * extensions read it at handler/init time via `pi.getExtensionConfig(ns)`.
+	 */
+	extensionConfig: Record<string, unknown>;
 	/** Provider registrations queued during extension loading, processed when runner binds */
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; extensionPath: string }>;
 	/** Throws when this extension instance is stale after runtime replacement. */

@@ -182,6 +182,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		getThinkingLevel: notInitialized,
 		setThinkingLevel: notInitialized,
 		flagValues: new Map(),
+		extensionConfig: {},
 		pendingProviderRegistrations: [],
 		suppressNewToolActivation: false,
 		assertActive,
@@ -439,6 +440,13 @@ function createExtensionAPI(
 			runtime.assertActive();
 			if (!extension.flags.has(name)) return undefined;
 			return runtime.flagValues.get(name);
+		},
+
+		// Config access - reads the namespace slice from settings.json
+		// extensionConfig{} carried on the runtime (L3 tuning layer).
+		getExtensionConfig<T = Record<string, unknown>>(namespace: string): T | undefined {
+			runtime.assertActive();
+			return runtime.extensionConfig[namespace] as T | undefined;
 		},
 
 		// Action methods - delegate to shared runtime

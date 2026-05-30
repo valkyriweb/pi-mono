@@ -479,6 +479,11 @@ export class DefaultResourceLoader implements ResourceLoader {
 			: this.mergeExtensionRequests([...cliEnabledExtensionRequests, ...enabledExtensionRequests]);
 
 		const extensionsResult = await loadExtensions(extensionRequests, this.cwd, this.eventBus);
+		// Carry per-extension tuning (settings.json extensionConfig{}, merged
+		// global ← project) on the runtime before inline/hook factories run, so
+		// `pi.getExtensionConfig(ns)` reads it at handler/init time. Mirrors the
+		// post-load population of `flagValues`.
+		extensionsResult.runtime.extensionConfig = this.settingsManager.getExtensionConfig();
 		const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
 		extensionsResult.extensions.push(...inlineExtensions.extensions);
 		extensionsResult.errors.push(...inlineExtensions.errors);
