@@ -17,7 +17,7 @@ function getHeader(headers: CapturedHeaders, name: string): string | null {
 
 	for (const [key, value] of Object.entries(headers)) {
 		if (key.toLowerCase() !== lowerName || value === undefined) continue;
-		return typeof value === "string" ? value : value.join(", ");
+		return typeof value === "string" ? value : Array.from(value).join(", ");
 	}
 	return null;
 }
