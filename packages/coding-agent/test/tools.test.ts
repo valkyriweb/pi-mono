@@ -46,6 +46,20 @@ describe("capitalized built-in tool aliases", () => {
 	});
 });
 
+describe("built-in tool execution modes", () => {
+	it("marks read-only tools parallel and side-effecting tools sequential", () => {
+		const tools = createAllToolDefinitions(process.cwd());
+
+		for (const name of ["read", "grep", "find", "ls", "bash_output", "BashOutput", "agent", "Agent", "Task"]) {
+			expect(tools[name as keyof typeof tools].executionMode).toBe("parallel");
+		}
+
+		for (const name of ["bash", "Bash", "edit", "write", "bash_kill", "KillShell"]) {
+			expect(tools[name as keyof typeof tools].executionMode).toBe("sequential");
+		}
+	});
+});
+
 // Helper to extract text from content blocks
 function getTextOutput(result: any): string {
 	return (

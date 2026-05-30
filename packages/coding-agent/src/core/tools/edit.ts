@@ -369,6 +369,7 @@ export function createEditToolDefinition(
 			"Keep edits[].oldText as small as possible while still being unique in the file. Prefer the shortest stable surrounding lines over large copied blocks.",
 			"If edit reports that oldText was not found, read the target region and retry with exact current text; do not repeat the same oldText.",
 		],
+		executionMode: "sequential",
 		parameters: editSchema,
 		renderShell: "self",
 		prepareArguments: prepareEditArguments,

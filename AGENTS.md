@@ -149,7 +149,9 @@ tmux kill-session -t pi-test
 
 ## Changelog
 
-Fork-only changes go in root `FORK-CHANGELOG.md`. Keep `packages/*/CHANGELOG.md` reserved for upstream release notes or changes intended for upstream, which reduces merge conflicts when syncing `upstream/main`.
+Before pushing package code changes, update the matching `packages/*/CHANGELOG.md` under `## [Unreleased]`. The repo's `npm run check` enforces this via `check:changelog`. Workflow-only, docs-only, tests-only, and lockfile-only changes do not need package changelog entries.
+
+Fork-wide operational changes that do not belong to a package changelog can also go in root `FORK-CHANGELOG.md`, but package code changes should include package changelog entries so releases ship usable notes.
 
 For native-agent A/B testing, the installed `pi-subagents` extension manager command is locally aliased from `/agents` to `/subagents` so native `/agents` remains reachable. This patch lives in `~/.pi/agent/git/github.com/nicobailon/pi-subagents/src/slash/slash-commands.ts` and may need reapplying after `pi update`.
 

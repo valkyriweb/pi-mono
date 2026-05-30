@@ -1198,6 +1198,7 @@ export function createBashToolDefinition(
 		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${BASH_MAX_OUTPUT_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Avoid running \`grep\`, \`rg\`, \`find\`, or \`ls\` standalone in Bash — use the native tools instead. Pipeline filters on command output (e.g. \`kubectl ... | grep Ready\`, \`ps ... | grep -v\`) are fine; the native tools only apply to files on disk. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.\n\nTUI-only mode: pass tui_only:true to stream output live to the TUI but return only an exit/size summary to context. Use for monitoring loops (reboot waits, log tails, progress meters) where the streaming output is for human eyes and would burn tokens in context. The full output is still saved to a temp file when it would have been truncated. Incompatible with run_in_background.`,
 		promptSnippet:
 			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
+		executionMode: "sequential",
 		promptGuidelines: [
 			"Use run_in_background:true for any command likely to exceed ~30s when you don't need the output immediately (builds, installers, kubectl rollouts, long test suites, dev servers).",
 			"Do NOT poll a background bash job with sleep loops. Call bash_output(bgId) when you need its current state, or use monitor_start instead if you want to be woken on every output batch.",
@@ -1541,6 +1542,7 @@ export function createBashOutputToolDefinition(options?: {
 			"Read accumulated stdout/stderr from a backgrounded bash job (started via bash with run_in_background:true). Returns a bounded slice of the log plus job status. Does not block or wait \u2014 just shows current state. Use this when you need to peek at progress or grab results after the job has completed. For live streaming with wake-on-output behavior, use monitor_start instead.",
 		promptSnippet: "Read the log of a backgrounded bash job by bgId",
 		alwaysLoad: options?.alwaysLoad,
+		executionMode: "parallel",
 		parameters: bashOutputSchema,
 		async execute(_id, { bgId, mode, maxLines }) {
 			const job = jobs.get(bgId);
@@ -1611,6 +1613,7 @@ export function createBashKillToolDefinition(options?: {
 			"Stop a backgrounded bash job (started via bash with run_in_background:true). Sends SIGTERM to the whole process tree; the job moves to status=killed. Idempotent \u2014 calling on an already-finished job is safe and just reports state.",
 		promptSnippet: "Stop a backgrounded bash job by bgId",
 		alwaysLoad: options?.alwaysLoad,
+		executionMode: "sequential",
 		parameters: bashKillSchema,
 		async execute(_id, { bgId }) {
 			const job = jobs.get(bgId);

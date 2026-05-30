@@ -127,6 +127,12 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		addGuideline("Use Read/Edit/Write for files instead of shelling out to view or modify file contents.");
 	}
 
+	if (hasRead || hasGrep || hasFind || hasLs) {
+		addGuideline(
+			"Parallelize independent read-only tool calls: when you need several files, listings, searches, or bounded reads that do not depend on each other, emit multiple tool calls in a single assistant message rather than one per turn.",
+		);
+	}
+
 	if (hasBash) {
 		addGuideline(
 			"Run bash commands from the current working directory unless the command truly needs another directory. Avoid `cd <cwd> && ...`; for another directory, prefer command-native flags like `git -C <dir>` or `npm --prefix <dir>` when available.",

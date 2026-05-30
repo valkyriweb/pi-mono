@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Built-in read-only and file-edit tools now declare parallel execution where safe, and the system prompt documents that independent tool calls should run concurrently.
 - Subagent tool allow-lists now match by capability (case- and provider-prefix-insensitive) instead of exact name, so built-in agents (explore/plan/reviewer/worker/general/decompose) resolve their tools when a profile registers aliased tool names (e.g. `Read`/`Grep`/`Bash`). Previously the intersection could be empty, leaving subagents with zero tools.
 
 ## [0.78.0] - 2026-05-29

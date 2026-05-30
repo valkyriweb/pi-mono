@@ -160,6 +160,19 @@ describe("buildSystemPrompt", () => {
 			);
 		});
 
+		test("steers independent read-only work into parallel tool calls", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: ["read", "grep", "find", "ls"],
+				contextFiles: [],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).toContain(
+				"Parallelize independent read-only tool calls: when you need several files, listings, searches, or bounded reads that do not depend on each other, emit multiple tool calls in a single assistant message rather than one per turn.",
+			);
+		});
+
 		test("appends promptGuidelines to default guidelines", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: ["read", "dynamic_tool"],

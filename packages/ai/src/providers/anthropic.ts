@@ -1197,6 +1197,11 @@ function buildParams(
 		} else {
 			params.tool_choice = options.toolChoice;
 		}
+	} else if (context.tools?.length && (model.provider === "anthropic" || model.provider === "claude-bridge")) {
+		params.tool_choice = {
+			type: "auto",
+			disable_parallel_tool_use: false,
+		} as MessageCreateParamsStreaming["tool_choice"];
 	}
 
 	return params;

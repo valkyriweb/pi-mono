@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Anthropic and OpenAI Responses requests now advertise parallel tool-call support when the selected tools can safely run concurrently.
 - `streamAnthropic` now recovers from the Anthropic 400 "thinking/redacted_thinking blocks in the latest assistant message cannot be modified" by retrying once with all thinking blocks stripped from history (Anthropic only validates replayed thinking; fresh thinking is still generated). Previously this permanently wedged sessions across continue/new-prompt/compaction. Happy path untouched (cache-safe).
 
 ## [0.78.0] - 2026-05-29
