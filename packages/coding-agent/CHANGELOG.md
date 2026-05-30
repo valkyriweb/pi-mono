@@ -5,26 +5,47 @@
 ### Added
 
 - `maxTurns` plumbed through the child-agent path: `AgentTaskConfig.maxTurns` (`core/agents/types.ts`) is set on the child engine `Agent` in `runChild` (`core/agents/executor.ts`) before driving, exposed on `ForkAgentOptions.maxTurns` (`core/extensions/types.ts`) for `ctx.forkAgent({ maxTurns })`, and mapped through `engine.fork` (`core/agents/engine.ts`). Gives extensions a hard turn cap for runaway agentic forks (e.g. background memory extractors), mirroring Claude Code's `query({ maxTurns })`. The built-in `agent` tool schema is intentionally unchanged to keep `tools[]` cache-stable. Backed by `packages/agent` loop enforcement + `test/suite/extensions/fork-agent.test.ts`.
-
-### Added
-
 - Background bash jobs now flow through the unified task registry (`core/tasks`) as `local_bash` tasks, alongside `local_agent` runs. One `LocalBashTask` adapter maps a `BashBgJob` onto the shared `TaskSnapshot`/`Task` surface (snapshot + kill), and `listTasks()`/`subscribeTasks()`/`getTaskSnapshot()` now span both flavors — a single seam over every long-running thing, resolvable by id alone. No model-facing tool change (cache-neutral); this is the internal foundation for unified `TaskOutput`/`TaskStop` (Claude Code `task_id` parity).
 - Added unified background-task tools `TaskOutput` / `TaskStop` / `TaskList` (`core/tools/background-tasks.ts`) over the task-registry seam — Claude Code `task_id` parity. One id space across background bash jobs and background agent runs: `TaskOutput` reads any task's output (bash → status header + bounded log slice via the preserved `renderBashBgOutput`, with `mode`/`maxLines`/`block`/`timeout`; agent → final result), `TaskStop` stops any task (`shell_id` accepted as a deprecated alias), `TaskList` enumerates everything. The `Task` seam gained an optional `output` capability, implemented by both adapters. Definitions are exported but not yet registered, so this commit is cache-neutral; registration (retiring `BashOutput`/`KillShell`) lands with the profile wiring.
+- The `agent`/`Agent`/`Task` tool accepts a per-task `cwd` to root a child session in another directory, with `~`/relative-path expansion and existence validation before spawn.
 
 ### Fixed
 
 - Subagent tool allow-lists now match by capability (case- and provider-prefix-insensitive) instead of exact name, so built-in agents (explore/plan/reviewer/worker/general/decompose) resolve their tools when a profile registers aliased tool names (e.g. `Read`/`Grep`/`Bash`). Previously the intersection could be empty, leaving subagents with zero tools.
 
+## [0.78.0] - 2026-05-29
+
+### New Features
+
+- **Named startup sessions** - `--name` / `-n` sets the session display name before startup across interactive, print, JSON, and RPC modes. See [Naming Sessions](docs/sessions.md#naming-sessions) and [Session Options](docs/usage.md#session-options).
+- **Clickable file tool paths** - built-in file tool titles render OSC 8 `file://` hyperlinks when the terminal supports them, including supported tmux clients.
+
 ### Added
 
-- Exported `convertToPng` for extension authors.
-- The `agent`/`Agent`/`Task` tool accepts a per-task `cwd` to root a child session in another directory, with `~`/relative-path expansion and existence validation before spawn.
+- Exported `convertToPng` for extension authors ([#5167](https://github.com/earendil-works/pi-mono/pull/5167) by [@xl0](https://github.com/xl0)).
+- Exported `parseArgs` and type `Args` for extension authors ([#5202](https://github.com/earendil-works/pi-mono/pull/5202) by [@xl0](https://github.com/xl0)).
+- Added `--name` / `-n` to set the session display name at startup ([#5153](https://github.com/earendil-works/pi-mono/issues/5153)).
+- Added a resume command hint when exiting interactive sessions ([#5176](https://github.com/earendil-works/pi-mono/pull/5176) by [@yzhg1983](https://github.com/yzhg1983)).
+- Added OSC 8 `file://` hyperlinks to file paths shown in built-in file tool titles ([#5189](https://github.com/earendil-works/pi-mono/pull/5189) by [@mpazik](https://github.com/mpazik)).
+- Added custom Amazon Bedrock request header support inherited from `@earendil-works/pi-ai` ([#5178](https://github.com/earendil-works/pi-mono/pull/5178) by [@stephanmck](https://github.com/stephanmck)).
+
+### Fixed
+
+- Clarified the WezTerm/WSL IME hardware cursor docs to state that cursor visibility remains opt-in ([#5200](https://github.com/earendil-works/pi-mono/issues/5200)).
+- Fixed the GitLab Duo custom provider example to use adaptive thinking for Claude models, expose xhigh thinking, and include newer verified model IDs ([#5201](https://github.com/earendil-works/pi-mono/issues/5201)).
+- Fixed Bun release archive creation to install and copy the matching `@mariozechner/clipboard` base package and native sidecars ([#5184](https://github.com/earendil-works/pi-mono/issues/5184)).
+- Fixed early interactive input typed before the prompt loop starts so it is buffered instead of dropped ([#5195](https://github.com/earendil-works/pi-mono/pull/5195) by [@yzhg1983](https://github.com/yzhg1983)).
+- Fixed OpenRouter Moonshot Kimi K2.6 requests to use `system` instead of unsupported `developer` messages ([#5159](https://github.com/earendil-works/pi-mono/issues/5159)).
+- Fixed OpenCode Go Kimi K2.6 thinking requests to send `thinking` objects instead of invalid string values, and fixed OpenCode Zen Grok Build thinking requests to omit unsupported `reasoning_effort` ([#5169](https://github.com/earendil-works/pi-mono/issues/5169)).
+- Fixed OpenAI Codex Responses SSE streams to abort response body reads after terminal events.
+- Fixed OpenCode Kimi K2.6 generated metadata to use Anthropic-style thinking metadata instead of invalid reasoning-effort parameters.
+- Fixed OSC 8 hyperlinks to pass through tmux when the client supports them ([#5189](https://github.com/earendil-works/pi-mono/pull/5189) by [@mpazik](https://github.com/mpazik)).
+- Fixed ANSI text wrapping to avoid stack overflows on very long wrapped lines ([#5185](https://github.com/earendil-works/pi-mono/issues/5185)).
 
 ## [0.77.0] - 2026-05-28
 
 ### New Features
 
-- **Startup session naming** - `--name` / `-n` sets the session display name at startup for interactive, print, JSON, and RPC modes.
 - **Claude Opus 4.8 support** - Adds Anthropic Claude Opus 4.8 metadata and updates Opus adaptive-thinking coverage.
 - **Selective tool disablement** - `--exclude-tools` / `-xt` disables specific built-in, extension, or custom tools while leaving the rest available. See [Tool Options](docs/usage.md#tool-options).
 - **Headless Codex subscription login** - `/login` can use device-code auth for ChatGPT Plus/Pro Codex subscriptions. See [Subscriptions](docs/providers.md#subscriptions) and [OpenAI Codex](docs/providers.md#openai-codex).
@@ -32,7 +53,6 @@
 
 ### Added
 
-- Added `--name` / `-n` to set the session display name at startup ([#5153](https://github.com/earendil-works/pi/issues/5153)).
 - Added `--exclude-tools` / `-xt` to disable specific built-in, extension, or custom tools while leaving the rest available ([#5109](https://github.com/earendil-works/pi/issues/5109)).
 - Added OpenAI Codex subscription device-code login as a selectable headless alternative while keeping browser login as the default ([#4911](https://github.com/earendil-works/pi/pull/4911) by [@vegarsti](https://github.com/vegarsti)).
 - Added `streamingBehavior` to extension input events so extensions can distinguish idle prompts from mid-stream steers and queued follow-ups ([#5107](https://github.com/earendil-works/pi/pull/5107) by [@DanielThomas](https://github.com/DanielThomas)).

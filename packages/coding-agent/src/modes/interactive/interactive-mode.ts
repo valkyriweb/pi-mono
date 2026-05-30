@@ -294,6 +294,7 @@ export class InteractiveMode {
 	private version: string;
 	private isInitialized = false;
 	private onInputCallback?: (text: string) => void;
+	private pendingUserInputs: string[] = [];
 	private loadingAnimation: Loader | undefined = undefined;
 	private workingMessage: string | undefined = undefined;
 	private workingVisible = true;
@@ -2838,6 +2839,8 @@ export class InteractiveMode {
 
 			if (this.onInputCallback) {
 				this.onInputCallback(text);
+			} else {
+				this.pendingUserInputs.push(text);
 			}
 			this.editor.addToHistory?.(text);
 		};
@@ -3420,6 +3423,11 @@ export class InteractiveMode {
 	}
 
 	async getUserInput(): Promise<string> {
+		const queuedInput = this.pendingUserInputs.shift();
+		if (queuedInput !== undefined) {
+			return queuedInput;
+		}
+
 		return new Promise((resolve) => {
 			this.onInputCallback = (text: string) => {
 				this.onInputCallback = undefined;
@@ -3491,7 +3499,7 @@ export class InteractiveMode {
 
 		const resumeCommand = formatResumeCommand(this.sessionManager);
 		if (resumeCommand) {
-			process.stdout.write(`  ${chalk.dim("To resume this session:")} ${resumeCommand}\n`);
+			process.stdout.write(`${chalk.dim("To resume this session:")} ${resumeCommand}\n`);
 		}
 
 		process.exit(0);

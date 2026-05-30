@@ -10,7 +10,6 @@ import type {
 	ChatCompletionSystemMessageParam,
 	ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions.js";
-import { getEnvApiKey } from "../env-api-keys.ts";
 import { calculateCost, clampThinkingLevel } from "../models.ts";
 import type {
 	AssistantMessage,
@@ -137,7 +136,10 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 		};
 
 		try {
-			const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
+			const apiKey = options?.apiKey;
+			if (!apiKey) {
+				throw new Error(`No API key for provider: ${model.provider}`);
+			}
 			const compat = getCompat(model);
 			const cacheRetention = resolveCacheRetention(options?.cacheRetention);
 			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
@@ -429,7 +431,7 @@ export const streamSimpleOpenAICompletions: StreamFunction<"openai-completions",
 	context: Context,
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
-	const apiKey = options?.apiKey || getEnvApiKey(model.provider);
+	const apiKey = options?.apiKey;
 	if (!apiKey) {
 		throw new Error(`No API key for provider: ${model.provider}`);
 	}
@@ -450,20 +452,11 @@ export const streamSimpleOpenAICompletions: StreamFunction<"openai-completions",
 function createClient(
 	model: Model<"openai-completions">,
 	context: Context,
-	apiKey?: string,
+	apiKey: string,
 	optionsHeaders?: Record<string, string>,
 	sessionId?: string,
 	compat: ResolvedOpenAICompletionsCompat = getCompat(model),
 ) {
-	if (!apiKey) {
-		if (!process.env.OPENAI_API_KEY) {
-			throw new Error(
-				"OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass it as an argument.",
-			);
-		}
-		apiKey = process.env.OPENAI_API_KEY;
-	}
-
 	const headers = { ...model.headers };
 	if (model.provider === "github-copilot") {
 		const hasImages = hasCopilotVisionInput(context.messages);
@@ -573,7 +566,7 @@ function buildParams(
 		};
 	} else if (compat.thinkingFormat === "deepseek" && model.reasoning) {
 		(params as any).thinking = { type: options?.reasoningEffort ? "enabled" : "disabled" };
-		if (options?.reasoningEffort) {
+		if (options?.reasoningEffort && compat.supportsReasoningEffort) {
 			(params as any).reasoning_effort =
 				model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 		}

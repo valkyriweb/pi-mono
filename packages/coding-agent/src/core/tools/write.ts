@@ -4,11 +4,11 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "fs/promises";
 import { dirname } from "path";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
-import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.ts";
+import { getLanguageFromPath, highlightCode, type Theme } from "../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import { resolveToCwd } from "./path-utils.ts";
-import { invalidArgText, normalizeDisplayText, replaceTabs, shortenPath, str } from "./render-utils.ts";
+import { normalizeDisplayText, renderToolPath, replaceTabs, str } from "./render-utils.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 
 const writeSchema = Type.Object({
@@ -133,15 +133,15 @@ function trimTrailingEmptyLines(lines: string[]): string[] {
 function formatWriteCall(
 	args: { path?: string; file_path?: string; content?: string } | undefined,
 	options: ToolRenderResultOptions,
-	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
+	theme: Theme,
 	cache: WriteHighlightCache | undefined,
 	label: string,
+	cwd: string,
 ): string {
 	const rawPath = str(args?.file_path ?? args?.path);
 	const fileContent = str(args?.content);
-	const path = rawPath !== null ? shortenPath(rawPath) : null;
-	const invalidArg = invalidArgText(theme);
-	let text = `${theme.fg("toolTitle", theme.bold(label))} ${path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...")}`;
+	const pathDisplay = renderToolPath(rawPath, theme, cwd);
+	let text = `${theme.fg("toolTitle", theme.bold(label))} ${pathDisplay}`;
 
 	if (fileContent === null) {
 		text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;
@@ -166,7 +166,7 @@ function formatWriteCall(
 
 function formatWriteResult(
 	result: { content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>; isError?: boolean },
-	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
+	theme: Theme,
 ): string | undefined {
 	if (!result.isError) {
 		return undefined;
@@ -249,6 +249,7 @@ export function createWriteToolDefinition(
 					theme,
 					component.cache,
 					label,
+					context.cwd,
 				),
 			);
 			return component;

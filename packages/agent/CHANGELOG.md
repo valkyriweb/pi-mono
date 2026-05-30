@@ -10,6 +10,8 @@
 
 - Re-export `./harness/progressive-disclosure.ts` from the package entrypoint so harness consumers can import progressive-disclosure helpers directly.
 
+## [0.78.0] - 2026-05-29
+
 ## [0.77.0] - 2026-05-28
 
 ### Breaking Changes

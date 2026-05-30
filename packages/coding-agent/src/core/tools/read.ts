@@ -13,7 +13,7 @@ import { detectSupportedImageMimeTypeFromFile } from "../../utils/mime.ts";
 import { formatPathRelativeToCwdOrAbsolute } from "../../utils/paths.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
 import { resolveReadPathAsync, resolveToCwd } from "./path-utils.ts";
-import { getTextOutput, invalidArgText, replaceTabs, shortenPath, str } from "./render-utils.ts";
+import { getTextOutput, renderToolPath, replaceTabs, str } from "./render-utils.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateHead } from "./truncate.ts";
 
@@ -73,11 +73,8 @@ function formatReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): st
 	return theme.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
 }
 
-function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme, label: string): string {
-	const rawPath = str(args?.file_path ?? args?.path);
-	const path = rawPath !== null ? shortenPath(rawPath) : null;
-	const invalidArg = invalidArgText(theme);
-	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
+function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme, label: string, cwd: string): string {
+	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
 	return `${theme.fg("toolTitle", theme.bold(label))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
 }
 
@@ -351,7 +348,7 @@ export function createReadToolDefinition(
 			text.setText(
 				classification
 					? formatCompactReadCall(classification, args, theme, label)
-					: formatReadCall(args, theme, label),
+					: formatReadCall(args, theme, label, context.cwd),
 			);
 			return text;
 		},

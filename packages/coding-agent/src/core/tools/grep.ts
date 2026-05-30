@@ -6,7 +6,7 @@ import { spawn } from "child_process";
 import path from "path";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
-import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.ts";
+import { getLanguageFromPath, highlightCode, type Theme } from "../../modes/interactive/theme/theme.ts";
 import { ensureTool, getOptionalSearchToolPath, toolDisplayName } from "../../utils/tools-manager.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
 import { resolveToCwd } from "./path-utils.ts";
@@ -289,7 +289,7 @@ function colorGrepLine(line: string, theme: typeof import("../../modes/interacti
 
 function formatGrepCall(
 	args: { pattern: string; path?: string; glob?: string; limit?: number } | undefined,
-	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
+	theme: Theme,
 	label: string,
 ): string {
 	const pattern = str(args?.pattern);
@@ -314,7 +314,7 @@ function formatGrepResult(
 		details?: GrepToolDetails;
 	},
 	options: ToolRenderResultOptions,
-	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
+	theme: Theme,
 	showImages: boolean,
 ): string {
 	const output = getTextOutput(result, showImages).trim();
