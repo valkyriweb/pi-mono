@@ -1,0 +1,11 @@
+{
+	"$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+	"changelog": ["@changesets/changelog-github", { "repo": "valkyriweb/pi-mono" }],
+	"commit": false,
+	"fixed": [["@valkyriweb/pi-ai", "@valkyriweb/pi-agent-core", "@valkyriweb/pi-tui", "@valkyriweb/pi-coding-agent"]],
+	"linked": [],
+	"access": "restricted",
+	"baseBranch": "main",
+	"updateInternalDependencies": "patch",
+	"ignore": []
+}
