@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Package metadata now publishes this fork as `@valkyriweb/pi-ai@0.78.0-luke.0` via GitHub Packages.
+
 ### Changed
 
 - Regenerated model metadata (cost/capability refresh) in `models.generated.ts`.

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Package metadata now publishes this fork as `@valkyriweb/pi-tui@0.78.0-luke.0` via GitHub Packages.
+
 ## [0.78.0] - 2026-05-29
 
 ### Fixed

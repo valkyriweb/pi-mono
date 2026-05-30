@@ -4,6 +4,7 @@
 
 ### Added
 
+- Package metadata now publishes this fork as `@valkyriweb/pi-agent-core@0.78.0-luke.0` via GitHub Packages.
 - `maxTurns` on `AgentLoopConfig` and the `Agent` engine (`AgentOptions.maxTurns` + public `Agent.maxTurns`, threaded through `createLoopConfig`). When set, `runLoop` counts completed assistant turns and emits `agent_end` then returns before starting another LLM call once the count reaches `maxTurns` — a deterministic hard cap for runaway agentic runs (mirrors Claude Code's `query({ maxTurns })`). Undefined or `<= 0` = unbounded. Covered by `test/agent-loop.test.ts` ("should stop after maxTurns assistant turns even if the model keeps calling tools").
 
 ### Changed
