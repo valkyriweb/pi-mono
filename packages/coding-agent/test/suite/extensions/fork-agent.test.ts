@@ -90,6 +90,7 @@ function forkExtensionFactory(
 		forkEveryTurn?: boolean;
 		metadata?: Record<string, unknown>;
 		cwd?: string;
+		agentType?: string;
 	} = {},
 ) {
 	const handles: AgentHandle[] = [];
@@ -104,6 +105,7 @@ function forkExtensionFactory(
 					description: "fork-agent test",
 					...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
 					...(options.context ? { context: options.context } : {}),
+					...(options.agentType ? { agentType: options.agentType } : {}),
 					...(options.metadata ? { metadata: options.metadata } : {}),
 					...(options.cwd ? { cwd: options.cwd } : {}),
 					...(controller ? { signal: controller.signal } : {}),
@@ -151,6 +153,30 @@ describe("ctx.forkAgent", () => {
 		// Both parent and child made LLM calls; the recording factory captured them.
 		expect(record.contexts.length).toBe(2);
 		expect(record.contexts.some(isChildContext)).toBe(true);
+	});
+
+	it("routes forkAgent({ agentType }) through the named agent definition", async () => {
+		const captured = newCaptured();
+		const record: ContextRecord = { contexts: [] };
+		// context:"none" + a stable-profile agent (explore) => the executor applies
+		// the agent's own stable system append instead of an inherited/auto prompt.
+		const { factory } = forkExtensionFactory(captured, { agentType: "explore", context: "none" });
+		const harness = await createHarness({ extensionFactories: [factory] });
+		harnesses.push(harness);
+		makeAgentServices(harness);
+		harness.setResponses([recordingFactory(record, "msg"), recordingFactory(record, "msg")]);
+
+		await harness.session.prompt("kick off");
+
+		expect(captured.error).toBeUndefined();
+		const details = await captured.handle!.wait();
+		expect(details.status).toBe("completed");
+		const child = record.contexts.find(isChildContext);
+		expect(child).toBeDefined();
+		// Proves agentType reached the executor's agent resolver: the explore
+		// definition's stable child-agent append ("Agent: explore") is in the
+		// child's system prompt, not the default general child prompt.
+		expect(child?.systemPrompt).toContain("Agent: explore");
 	});
 
 	it("forwards forkAgent({ metadata }) through the fork path without breaking the child run", async () => {
