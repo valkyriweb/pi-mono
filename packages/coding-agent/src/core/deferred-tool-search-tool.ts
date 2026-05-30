@@ -1,5 +1,5 @@
-import type { Api, Model } from "@earendil-works/pi-ai";
-import { Text } from "@earendil-works/pi-tui";
+import type { Api, Model } from "@valkyriweb/pi-ai";
+import { Text } from "@valkyriweb/pi-tui";
 import { Type } from "typebox";
 import { keyHint } from "../modes/interactive/components/keybinding-hints.ts";
 import {

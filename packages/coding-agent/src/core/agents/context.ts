@@ -1,5 +1,5 @@
-import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Api, Model, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { AgentMessage, ThinkingLevel } from "@valkyriweb/pi-agent-core";
+import type { Api, Model, ToolResultMessage } from "@valkyriweb/pi-ai";
 import type { DefaultResourceLoaderOptions } from "../resource-loader.ts";
 import { buildSessionContext, type ReadonlySessionManager } from "../session-manager.ts";
 import type { AgentDefinition, AgentTaskConfig, ContextMode, ResolvedContextPolicy } from "./types.ts";

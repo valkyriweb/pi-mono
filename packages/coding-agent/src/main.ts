@@ -6,8 +6,8 @@
  */
 
 import { createInterface } from "node:readline";
-import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
-import { ProcessTerminal, setKeybindings, TUI } from "@earendil-works/pi-tui";
+import { type ImageContent, modelsAreEqual } from "@valkyriweb/pi-ai";
+import { ProcessTerminal, setKeybindings, TUI } from "@valkyriweb/pi-tui";
 import chalk from "chalk";
 import { runAgentViewCommand } from "./cli/agent-view-command.ts";
 import { type Args, type Mode, parseArgs, printHelp } from "./cli/args.ts";

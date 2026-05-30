@@ -1,8 +1,8 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Context } from "@earendil-works/pi-ai";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import type { Context } from "@valkyriweb/pi-ai";
+import { fauxAssistantMessage } from "@valkyriweb/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { clearAgentRecentRunsForTests } from "../../../src/core/agents/status.ts";
 import { deleteExtensionProcessServiceForTests } from "../../../src/core/extensions/loader.ts";

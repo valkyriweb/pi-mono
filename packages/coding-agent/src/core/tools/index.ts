@@ -103,7 +103,7 @@ export {
 	type WriteToolOptions,
 } from "./write.ts";
 
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "@valkyriweb/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
 import {
 	type AgentToolOptions,

@@ -10,7 +10,7 @@ import type {
 	Tool,
 	ToolReferenceContent,
 	ToolResultMessage,
-} from "@earendil-works/pi-ai";
+} from "@valkyriweb/pi-ai";
 import type { Static, TSchema } from "typebox";
 
 /**
@@ -302,7 +302,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
  * Note: "xhigh" and "adaptive" are only supported by selected model families.
  * - "adaptive" is Claude-4.6+ / Sonnet-4.6 only: model self-regulates thinking budget per turn.
  * - "xhigh" is reserved for native xhigh-effort models (Opus 4.7, GPT-5, etc.).
- * Use model thinking-level metadata from @earendil-works/pi-ai to detect support for a concrete model.
+ * Use model thinking-level metadata from @valkyriweb/pi-ai to detect support for a concrete model.
  */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "adaptive";
 

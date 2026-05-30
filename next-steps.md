@@ -355,7 +355,7 @@
  # Or find the pi-autoresearch package                                                                         
  find ~/.pi/agent/git -name "SKILL.md" -path "*autoresearch*" 2>/dev/null | head -5 (timeout 300s)             
                                                                                                                
- /Users/luke/.pi/agent/git/github.com/davebcn87/pi-autoresearch/node_modules/@earendil-works/pi-coding-agent/e 
+ /Users/luke/.pi/agent/git/github.com/davebcn87/pi-autoresearch/node_modules/@valkyriweb/pi-coding-agent/e 
  xamples/extensions/dynamic-resources/SKILL.md                                                                 
  /Users/luke/.pi/agent/git/github.com/davebcn87/pi-autoresearch/skills/autoresearch-hooks/SKILL.md             
  /Users/luke/.pi/agent/git/github.com/davebcn87/pi-autoresearch/skills/autoresearch-finalize/SKILL.md          

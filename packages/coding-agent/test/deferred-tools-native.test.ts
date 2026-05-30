@@ -13,7 +13,7 @@
  *   - Active-list mutation only happens on the fallback path (`cacheMayBust` true)
  *   - Native path returns `referenceBlocks` and `activateToolNames: []` (no mutation)
  */
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@valkyriweb/pi-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import {

@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@valkyriweb/pi-agent-core";
+import type { Api, Model } from "@valkyriweb/pi-ai";
 import type { AgentHandle, ForkAgentOptions, ForkAgentResult } from "../extensions/types.ts";
 import type { ReadonlySessionManager } from "../session-manager.ts";
 import type { AgentToolInput } from "../tools/agent.ts";

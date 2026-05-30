@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Model } from "@valkyriweb/pi-ai";
 
 /**
  * Stable prompt-cache affinity shared by normal turns and cache heartbeats.

@@ -1,4 +1,4 @@
-import type { Api, Model, ToolReferenceContent } from "@earendil-works/pi-ai";
+import type { Api, Model, ToolReferenceContent } from "@valkyriweb/pi-ai";
 import { type DeferredToolCapabilities, getDeferredToolCapabilities } from "./deferred-tool-capabilities.ts";
 import type { ToolDefinition } from "./extensions/types.ts";
 

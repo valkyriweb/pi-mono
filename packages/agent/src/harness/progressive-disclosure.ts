@@ -1,4 +1,4 @@
-import type { ToolReferenceContent } from "@earendil-works/pi-ai";
+import type { ToolReferenceContent } from "@valkyriweb/pi-ai";
 import { type TSchema, Type } from "typebox";
 import type { AgentTool } from "../types.ts";
 import type { Skill } from "./types.ts";

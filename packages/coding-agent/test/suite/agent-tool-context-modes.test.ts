@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Context, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { type Context, fauxAssistantMessage } from "@valkyriweb/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildAgentSystemAppend } from "../../src/core/agents/context.ts";
 import { getBuiltinAgentDefinitions } from "../../src/core/agents/definitions.ts";

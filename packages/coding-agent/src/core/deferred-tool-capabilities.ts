@@ -1,4 +1,4 @@
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@valkyriweb/pi-ai";
 
 export interface DeferredToolCapabilities {
 	nativeDeferredTools: boolean;

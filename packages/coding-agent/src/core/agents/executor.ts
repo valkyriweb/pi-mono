@@ -1,8 +1,8 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Api, AssistantMessage, Model, TextContent, Usage } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@valkyriweb/pi-agent-core";
+import type { Api, AssistantMessage, Model, TextContent, Usage } from "@valkyriweb/pi-ai";
 import type { AgentSession } from "../agent-session.ts";
 import { createAgentSessionFromServices, createAgentSessionServices } from "../agent-session-services.ts";
 import type { AuthStorage } from "../auth-storage.ts";

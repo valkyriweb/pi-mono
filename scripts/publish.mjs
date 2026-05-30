@@ -5,10 +5,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const packages = [
-	{ directory: "packages/ai", name: "@earendil-works/pi-ai" },
-	{ directory: "packages/agent", name: "@earendil-works/pi-agent-core" },
-	{ directory: "packages/tui", name: "@earendil-works/pi-tui" },
-	{ directory: "packages/coding-agent", name: "@earendil-works/pi-coding-agent" },
+	{ directory: "packages/ai", name: "@valkyriweb/pi-ai" },
+	{ directory: "packages/agent", name: "@valkyriweb/pi-agent-core" },
+	{ directory: "packages/tui", name: "@valkyriweb/pi-tui" },
+	{ directory: "packages/coding-agent", name: "@valkyriweb/pi-coding-agent" },
 ];
 
 const dryRun = process.argv.includes("--dry-run");
@@ -110,6 +110,6 @@ for (const pkg of packages) {
 		continue;
 	}
 
-	run("npm", ["publish", "--access", "public", "--provenance", "--ignore-scripts"], { cwd: pkg.directory });
+	run("npm", ["publish", "--access", "restricted", "--provenance", "--ignore-scripts"], { cwd: pkg.directory });
 	console.log();
 }

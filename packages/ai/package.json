@@ -1,6 +1,6 @@
 {
-	"name": "@earendil-works/pi-ai",
-	"version": "0.78.0",
+	"name": "@valkyriweb/pi-ai",
+	"version": "0.78.0-luke.0",
 	"description": "Unified LLM API with automatic model discovery and provider configuration",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -102,5 +102,9 @@
 		"@types/node": "24.12.4",
 		"canvas": "3.2.3",
 		"vitest": "3.2.4"
+	},
+	"publishConfig": {
+		"registry": "https://npm.pkg.github.com",
+		"access": "restricted"
 	}
 }

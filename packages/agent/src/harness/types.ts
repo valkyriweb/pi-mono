@@ -5,7 +5,7 @@ import type {
 	TextContent,
 	ToolReferenceContent,
 	Transport,
-} from "@earendil-works/pi-ai";
+} from "@valkyriweb/pi-ai";
 import type { AgentEvent, AgentMessage, AgentTool, QueueMode, ThinkingLevel } from "../index.ts";
 import type { Session } from "./session/session.ts";
 

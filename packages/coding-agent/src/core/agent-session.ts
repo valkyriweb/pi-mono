@@ -16,14 +16,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 
-import type {
-	Agent,
-	AgentEvent,
-	AgentMessage,
-	AgentState,
-	AgentTool,
-	ThinkingLevel,
-} from "@earendil-works/pi-agent-core";
+import type { Agent, AgentEvent, AgentMessage, AgentState, AgentTool, ThinkingLevel } from "@valkyriweb/pi-agent-core";
 import type {
 	AssistantMessage,
 	Context,
@@ -32,7 +25,7 @@ import type {
 	Model,
 	TextContent,
 	ToolReferenceContent,
-} from "@earendil-works/pi-ai";
+} from "@valkyriweb/pi-ai";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
@@ -42,7 +35,7 @@ import {
 	resetApiProviders,
 	SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
 	streamSimple,
-} from "@earendil-works/pi-ai";
+} from "@valkyriweb/pi-ai";
 import { theme } from "../modes/interactive/theme/theme.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
 

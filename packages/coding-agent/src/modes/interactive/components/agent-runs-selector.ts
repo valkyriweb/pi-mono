@@ -1,4 +1,4 @@
-import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, getKeybindings, Spacer, Text } from "@valkyriweb/pi-tui";
 import { type AgentRecentRun, formatAgentDurationMs } from "../../../core/agents/status.ts";
 import type { AgentToolStatus } from "../../../core/agents/types.ts";
 import { theme } from "../theme/theme.ts";

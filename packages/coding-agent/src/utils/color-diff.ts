@@ -3,13 +3,13 @@
  *
  * Adapted from Claude Code's native-ts/color-diff/index.ts (MIT licence).
  * Key changes vs the original:
- *  - stringWidth  → visibleWidth from @earendil-works/pi-tui
+ *  - stringWidth  → visibleWidth from @valkyriweb/pi-tui
  *  - logError     → console.error (one-shot guard kept)
  *  - Removed React/ink imports (pure ANSI string output only)
  */
 
 import { basename, extname } from "node:path";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@valkyriweb/pi-tui";
 import { diffArrays } from "diff";
 import hljs from "highlight.js/lib/index.js";
 
