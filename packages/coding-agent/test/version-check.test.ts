@@ -31,6 +31,8 @@ describe("version checks", () => {
 		expect(comparePackageVersions("0.70.4", "0.70.5")).toBeLessThan(0);
 		expect(isNewerPackageVersion("0.70.5", "0.70.5")).toBe(false);
 		expect(isNewerPackageVersion("0.70.6", "0.70.5")).toBe(true);
+		expect(isNewerPackageVersion("0.78.0", "0.78.0-luke.0")).toBe(false);
+		expect(isNewerPackageVersion("0.78.1", "0.78.0-luke.0")).toBe(true);
 	});
 
 	it("returns only newer versions", async () => {

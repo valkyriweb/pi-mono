@@ -46,6 +46,18 @@ export function comparePackageVersions(leftVersion: string, rightVersion: string
 }
 
 export function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {
+	const candidate = parsePackageVersion(candidateVersion);
+	const current = parsePackageVersion(currentVersion);
+	if (candidate && current) {
+		const sameBase =
+			candidate.major === current.major && candidate.minor === current.minor && candidate.patch === current.patch;
+		const currentIsForkPrerelease =
+			current.prerelease?.startsWith("luke.") || current.prerelease?.startsWith("valkyriweb.");
+		if (sameBase && currentIsForkPrerelease && !candidate.prerelease) {
+			return false;
+		}
+	}
+
 	const comparison = comparePackageVersions(candidateVersion, currentVersion);
 	if (comparison !== undefined) {
 		return comparison > 0;
