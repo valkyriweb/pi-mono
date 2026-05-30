@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ""
+      ANTHROPIC_OAUTH_TOKEN: ""
+      OPENAI_API_KEY: ""
+      GEMINI_API_KEY: ""
+      GROQ_API_KEY: ""
+      CEREBRAS_API_KEY: ""
+      XAI_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      ZAI_API_KEY: ""
+      MISTRAL_API_KEY: ""
+      MINIMAX_API_KEY: ""
+      MINIMAX_CN_API_KEY: ""
+      KIMI_API_KEY: ""
+      AI_GATEWAY_API_KEY: ""
+      OPENCODE_API_KEY: ""
+      COPILOT_GITHUB_TOKEN: ""
+      HF_TOKEN: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      GOOGLE_CLOUD_PROJECT: ""
+      GCLOUD_PROJECT: ""
+      GOOGLE_CLOUD_LOCATION: ""
+      AWS_PROFILE: ""
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_SESSION_TOKEN: ""
+      AWS_REGION: ""
+      AWS_DEFAULT_REGION: ""
+      AWS_BEARER_TOKEN_BEDROCK: ""
+      AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: ""
+      AWS_CONTAINER_CREDENTIALS_FULL_URI: ""
+      AWS_WEB_IDENTITY_TOKEN_FILE: ""
+      AZURE_OPENAI_API_KEY: ""
+      AZURE_OPENAI_BASE_URL: ""
+      AZURE_OPENAI_RESOURCE_NAME: ""
+      PI_NO_LOCAL_LLM: "1"
+    steps:
+      - name: Checkout pi-mono fork
+        uses: actions/checkout@v4
+        with:
+          path: pi-mono-fork
+          fetch-depth: 0
+
+      - name: Checkout my-pi gates
+        uses: actions/checkout@v4
+        with:
+          repository: valkyriweb/my-pi
+          path: my-pi
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          cache: npm
+          cache-dependency-path: |
+            pi-mono-fork/package-lock.json
+            my-pi/package-lock.json
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep && sudo ln -s $(which fdfind) /usr/local/bin/fd
+
+      - name: Install pi-mono dependencies
+        working-directory: pi-mono-fork
+        run: npm ci --ignore-scripts
+
+      - name: Install my-pi dependencies
+        working-directory: my-pi
+        run: npm ci
+
+      - name: Release gate
+        working-directory: pi-mono-fork
+        run: npm run test:build-gate
+
+      - name: Fork canonical check
+        working-directory: pi-mono-fork
+        run: npm run check
+
+      - name: Version or publish packages
+        uses: changesets/action@v1
+        with:
+          cwd: pi-mono-fork
+          version: npm run version-packages
+          publish: npm run publish:changesets
+          commit: "chore(release): version fork packages"
+          title: "chore(release): version fork packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

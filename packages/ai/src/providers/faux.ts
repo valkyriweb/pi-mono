@@ -116,6 +116,7 @@ export interface RegisterFauxProviderOptions {
 export interface FauxProviderRegistration {
 	api: string;
 	models: [Model<string>, ...Model<string>[]];
+	streamSimple: StreamFunction<string, SimpleStreamOptions>;
 	getModel(): Model<string>;
 	getModel(modelId: string): Model<string> | undefined;
 	state: { callCount: number };
@@ -492,6 +493,7 @@ export function registerFauxProvider(options: RegisterFauxProviderOptions = {}):
 	return {
 		api,
 		models,
+		streamSimple,
 		getModel,
 		state,
 		setResponses(responses) {

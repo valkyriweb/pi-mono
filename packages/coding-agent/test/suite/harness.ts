@@ -118,6 +118,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 			baseUrl: model.baseUrl,
 			apiKey: "faux-key",
 			api: fauxProvider.api,
+			streamSimple: fauxProvider.streamSimple,
 			models: fauxProvider.models.map((registeredModel) => ({
 				id: registeredModel.id,
 				name: registeredModel.name,

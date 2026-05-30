@@ -28,7 +28,7 @@
 		"test:build-gate": "npm run test:system-prompt && npm run test:cache-stability && npm run test:e2e && npm run test:my-pi-extensions",
 		"test:cache-stability": "npm --prefix packages/ai run test -- test/anthropic-defer-loading.test.ts test/anthropic-tool-serialization-stable.test.ts test/transform-messages-copilot-openai-to-anthropic.test.ts test/openai-codex-defer-loading.test.ts && npm --prefix packages/coding-agent run test -- test/extensions-hook-api.test.ts test/suite/regressions/cache-break-builtin-preservation.test.ts test/suite/regressions/deferred-tool-activation-refresh.test.ts",
 		"test:e2e": "npm --prefix packages/coding-agent run test -- test/suite",
-		"test:my-pi-extensions": "npm --prefix ../my-pi run test:extension-gate",
+		"test:my-pi-extensions": "npm --prefix ../my-pi run test:extension-gate:ci",
 		"test:system-prompt": "npm --prefix packages/ai run test -- test/anthropic-system-prompt-boundary.test.ts && npm --prefix packages/coding-agent run test -- test/system-prompt.test.ts test/suite/agent-tool-context-modes.test.ts test/suite/extensions/fork-agent.test.ts",
 		"version:patch": "npm version patch -ws --no-git-tag-version && node scripts/sync-versions.js && npm install --package-lock-only --ignore-scripts",
 		"version:minor": "npm version minor -ws --no-git-tag-version && node scripts/sync-versions.js && npm install --package-lock-only --ignore-scripts",
@@ -49,7 +49,7 @@
 		"@biomejs/biome": "2.3.5",
 		"@changesets/changelog-github": "0.7.0",
 		"@changesets/cli": "2.31.0",
-		"@types/node": "22.19.19",
+		"@types/node": "24.10.1",
 		"@typescript/native-preview": "7.0.0-dev.20260120.1",
 		"esbuild": "0.28.0",
 		"husky": "9.1.7",
@@ -58,7 +58,7 @@
 		"typescript": "5.9.3"
 	},
 	"engines": {
-		"node": ">=22.19.0"
+		"node": ">=24.14.0"
 	},
 	"version": "0.0.3",
 	"overrides": {

@@ -18,6 +18,9 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: [
+			{ find: /^@valkyriweb\/pi-ai$/, replacement: aiSrcIndex },
+			{ find: /^@valkyriweb\/pi-ai\/oauth$/, replacement: aiSrcOAuth },
+			{ find: /^@valkyriweb\/pi-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@earendil-works\/pi-ai$/, replacement: aiSrcIndex },
 			{ find: /^@earendil-works\/pi-ai\/oauth$/, replacement: aiSrcOAuth },
 			{ find: /^@earendil-works\/pi-agent-core$/, replacement: agentSrcIndex },
