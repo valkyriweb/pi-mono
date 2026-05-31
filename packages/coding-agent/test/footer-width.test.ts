@@ -25,10 +25,12 @@ function createSession(options: {
 	reasoning?: boolean;
 	thinkingLevel?: string;
 	usage?: AssistantUsage;
+	entries?: unknown[];
 }): AgentSession {
 	const usage = options.usage;
 	const entries =
-		usage === undefined
+		options.entries ??
+		(usage === undefined
 			? []
 			: [
 					{
@@ -38,7 +40,7 @@ function createSession(options: {
 							usage,
 						},
 					},
-				];
+				]);
 
 	const session = {
 		state: {
@@ -147,6 +149,49 @@ describe("FooterComponent width handling", () => {
 		for (const line of lines) {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
+	});
+
+	it("resets token and cache totals after the latest compaction entry", () => {
+		const footer = new FooterComponent(
+			createSession({
+				sessionName: "",
+				entries: [
+					{
+						id: "before",
+						type: "message",
+						message: {
+							role: "assistant",
+							usage: { input: 100_000, output: 1, cacheRead: 300_000, cacheWrite: 100_000, cost: { total: 9 } },
+						},
+					},
+					{
+						id: "compact",
+						type: "compaction",
+						timestamp: "2026-05-31T08:00:00.000Z",
+						summary: "summary",
+						firstKeptEntryId: "after",
+						tokensBefore: 100_000,
+					},
+					{
+						id: "after",
+						type: "message",
+						message: {
+							role: "assistant",
+							usage: { input: 2_000, output: 1, cacheRead: 8_000, cacheWrite: 2_000, cost: { total: 1 } },
+						},
+					},
+				],
+			}),
+			createFooterData(1),
+		);
+
+		const rendered = footer.render(140).join("\n");
+
+		expect(rendered).toContain("↑2.0k");
+		expect(rendered).toContain("R8.0k");
+		expect(rendered).toContain("W2.0k");
+		expect(rendered).toContain("cache 67%");
+		expect(rendered).not.toContain("↑102k");
 	});
 
 	it("shows active background agent runs in the footer", () => {

@@ -2,6 +2,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { type Component, truncateToWidth, visibleWidth } from "@valkyriweb/pi-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
+import { getLatestCompactionEntry } from "../../../core/session-manager.ts";
 import { theme } from "../theme/theme.ts";
 
 /**
@@ -128,8 +129,11 @@ export class FooterComponent implements Component {
 				break;
 			}
 		}
+		const latestCompaction = getLatestCompactionEntry(entries);
 		const cacheKey = [
 			entries.length,
+			latestCompaction?.id ?? "",
+			latestCompaction?.timestamp ?? "",
 			lastUsage?.input ?? 0,
 			lastUsage?.output ?? 0,
 			lastUsage?.cacheRead ?? 0,
@@ -150,7 +154,9 @@ export class FooterComponent implements Component {
 			assistantTurns: 0,
 		};
 
-		for (const entry of entries) {
+		const startIndex =
+			latestCompaction === null ? 0 : entries.findIndex((entry) => entry.id === latestCompaction.id) + 1;
+		for (const entry of entries.slice(startIndex)) {
 			if (entry.type === "message" && entry.message.role === "assistant") {
 				totals.totalInput += entry.message.usage.input;
 				totals.totalOutput += entry.message.usage.output;
