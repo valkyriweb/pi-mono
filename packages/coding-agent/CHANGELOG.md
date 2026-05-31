@@ -25,6 +25,7 @@
 
 - Built-in read-only and file-edit tools now declare parallel execution where safe, and the system prompt documents that independent tool calls should run concurrently.
 - Subagent tool allow-lists now match by capability (case- and provider-prefix-insensitive) instead of exact name, so built-in agents (explore/plan/reviewer/worker/general/decompose) resolve their tools when a profile registers aliased tool names (e.g. `Read`/`Grep`/`Bash`). Previously the intersection could be empty, leaving subagents with zero tools.
+- Fixed opening and listing very large JSONL session files by reading session entries line-by-line instead of materializing the full file as one string ([#5231](https://github.com/earendil-works/pi/issues/5231)).
 
 ## [0.78.0] - 2026-05-29
 
