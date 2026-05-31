@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.78.1
+
+### Patch Changes
+
+- Refresh the fork runtime with upstream large-session streaming support, footer usage compaction fixes, and regenerated model metadata.
+
+- Updated dependencies []:
+  - @valkyriweb/pi-agent-core@0.78.1
+  - @valkyriweb/pi-ai@0.78.1
+  - @valkyriweb/pi-tui@0.78.1
+
 ## 0.78.0
 
 ### Patch Changes

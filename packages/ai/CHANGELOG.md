@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.78.1
+
+### Patch Changes
+
+- Refresh the fork runtime with upstream large-session streaming support, footer usage compaction fixes, and regenerated model metadata.
+
 ## 0.78.0
 
 ### Patch Changes
