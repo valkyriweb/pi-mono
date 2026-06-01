@@ -1279,6 +1279,41 @@ export class ExtensionRunner {
 		return result?.systemPrompt ?? systemPrompt;
 	}
 
+	/**
+	 * Apply only the `systemPrompt:build` filters (no before_agent_start
+	 * handlers) to a freshly rebuilt prompt.
+	 *
+	 * CACHE CRITICAL: the session rebuilds its base system prompt synchronously
+	 * when the active tool/skill set changes (`_rebuildSystemPrompt`), and that
+	 * raw build skips the filter chain. Without re-running these filters before
+	 * the next request, cache-stabilising transforms (time-context's `Current
+	 * date:` strip, cache-base-prompt's dynamic-boundary relocation) are lost on
+	 * every tool change, mutating the cached prefix and bursting the prompt
+	 * cache. This is the filter-only counterpart to `_runBeforeAgentStart` and
+	 * deliberately does NOT run handlers (no `setActiveTools` re-entrancy).
+	 */
+	async applySystemPromptBuildFilters(
+		systemPrompt: string,
+		systemPromptOptions: BuildSystemPromptOptions,
+	): Promise<string> {
+		if (this.staleMessage) return systemPrompt;
+		try {
+			return await applyFilters("systemPrompt:build", systemPrompt, systemPromptOptions, {
+				prompt: "",
+				images: undefined,
+				preview: true,
+			});
+		} catch (err) {
+			this.emitError({
+				extensionPath: "<hook-filter:systemPrompt:build>",
+				event: "systemPrompt:build",
+				error: err instanceof Error ? err.message : String(err),
+				stack: err instanceof Error ? err.stack : undefined,
+			});
+			return systemPrompt;
+		}
+	}
+
 	private async _runBeforeAgentStart(
 		prompt: string,
 		images: ImageContent[] | undefined,

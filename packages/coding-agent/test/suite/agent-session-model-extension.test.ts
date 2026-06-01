@@ -4,6 +4,7 @@ import type { AgentTool, ThinkingLevel } from "@valkyriweb/pi-agent-core";
 import { fauxAssistantMessage, fauxToolCall, type Model } from "@valkyriweb/pi-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
+import { addFilter } from "../../src/core/extensions/extension-hooks.ts";
 import type { ExtensionAPI } from "../../src/index.ts";
 import { createHarness, getAssistantTexts, type Harness } from "./harness.ts";
 
@@ -343,6 +344,57 @@ describe("AgentSession model and extension characterization", () => {
 		expect(
 			harness.session.messages.some((message) => message.role === "custom" && message.customType === "before-start"),
 		).toBe(true);
+	});
+
+	it("re-applies systemPrompt:build filters after a mid-turn tool change (cache stability)", async () => {
+		// Regression: _rebuildSystemPrompt (fired by setActiveTools / skill
+		// discovery) returns an UNFILTERED buildSystemPrompt output, so any
+		// systemPrompt:build filter (time-context's `Current date:` strip,
+		// cache-base-prompt's boundary relocation) is dropped on a mid-turn tool
+		// change, mutating the cached prefix and bursting the prompt cache. This
+		// idempotent filter rewrites the real `Current working directory:` line that
+		// buildSystemPrompt emits; a before_agent_start handler forces a rebuild every
+		// turn (setActiveTools is not idempotent). The bug only surfaces from turn 2
+		// on, when the already-filtered prompt is fed back in and systemPromptModified
+		// is false, so the clobbered unfiltered rebuild would otherwise ship.
+		const dispose = addFilter<string>("systemPrompt:build", "test.rewrite-cwd-line", (sp) =>
+			typeof sp === "string" ? sp.replace("Current working directory:", "CWD:") : sp,
+		);
+		// Captured session ref: the handler must clobber the base prompt DURING the
+		// before_agent_start window (after this turn's filter pass), which is the only
+		// point the bug manifests. setActiveToolsByName is not idempotent and rebuilds
+		// the prompt unfiltered on every call.
+		const ref: { session?: Harness["session"] } = {};
+		try {
+			const harness = await createHarness({
+				extensionFactories: [
+					(pi) => {
+						pi.on("before_agent_start", async () => {
+							ref.session?.setActiveToolsByName(ref.session.getActiveToolNames());
+						});
+					},
+				],
+			});
+			ref.session = harness.session;
+			harnesses.push(harness);
+			const sentSystemPrompts: string[] = [];
+			const capture = (context: { systemPrompt?: string }) => {
+				sentSystemPrompts.push(context.systemPrompt ?? "");
+				return fauxAssistantMessage("done");
+			};
+			harness.setResponses([capture, capture]);
+
+			await harness.session.prompt("first");
+			await harness.session.prompt("second");
+
+			// Turn 2: input is already filtered → systemPromptModified is false → the
+			// send path must re-filter the clobbered rebuild so the filter still applies.
+			expect(sentSystemPrompts.length).toBe(2);
+			expect(sentSystemPrompts[1]).toContain("CWD:");
+			expect(sentSystemPrompts[1]).not.toContain("Current working directory:");
+		} finally {
+			dispose();
+		}
 	});
 
 	it("bindExtensions emits session_start and reload emits session_shutdown then session_start", async () => {

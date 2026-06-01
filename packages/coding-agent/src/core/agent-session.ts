@@ -483,6 +483,11 @@ export class AgentSession {
 	// When true, before_agent_start extension handlers must not overwrite agent.state.systemPrompt.
 	// Set by overrideBaseSystemPrompt() for fork children inheriting the parent's frozen prompt.
 	private _systemPromptFrozen = false;
+	// Set when a synchronous `_rebuildSystemPrompt` (tool/skill change) replaces
+	// the base prompt with an UNFILTERED build. `_runAgentPrompt` re-applies the
+	// `systemPrompt:build` filters before sending so cache-stabilising transforms
+	// (date strip, base-boundary relocation) are not lost — see _rebuildSystemPrompt.
+	private _systemPromptNeedsRefilter = false;
 	private _source: InputSource = "interactive";
 
 	constructor(config: AgentSessionConfig) {
@@ -1295,9 +1300,11 @@ export class AgentSession {
 		}
 		this.agent.state.tools = tools;
 
-		// Rebuild base system prompt with new tool set
+		// Rebuild base system prompt with new tool set. The rebuild is UNFILTERED
+		// (skips systemPrompt:build); mark for re-filtering before the next send.
 		this._baseSystemPrompt = this._rebuildSystemPrompt(validToolNames);
 		this.agent.state.systemPrompt = this._baseSystemPrompt;
+		this._systemPromptNeedsRefilter = true;
 	}
 
 	/** Whether compaction or branch summarization is currently running */
@@ -1414,12 +1421,42 @@ export class AgentSession {
 		return buildSystemPrompt(this._baseSystemPromptOptions);
 	}
 
+	/**
+	 * Re-apply the `systemPrompt:build` filters to the base prompt when a
+	 * mid-turn tool/skill change rebuilt it unfiltered.
+	 *
+	 * CACHE CRITICAL: `_rebuildSystemPrompt` returns a raw `buildSystemPrompt`
+	 * output that skips the filter chain (filters only run in
+	 * `_runBeforeAgentStart`). Sending that raw prompt drops cache-stabilising
+	 * transforms (time-context date strip, cache-base-prompt boundary
+	 * relocation), mutating the cached prefix and bursting the prompt cache on
+	 * every tool change. Re-apply the filters to the CURRENT base prompt — the
+	 * same input `_runBeforeAgentStart` filters each turn, minus the handler
+	 * pass. Filters are idempotent (no-op when already applied), so a clobbered
+	 * unfiltered prompt is healed while handler-appended content and the current
+	 * tool snippets baked into `_baseSystemPrompt` are preserved. Runs at the
+	 * single send chokepoint (`_runAgentPrompt`); no-op unless a rebuild occurred.
+	 */
+	private async _refilterSystemPromptIfNeeded(): Promise<void> {
+		if (!this._systemPromptNeedsRefilter) return;
+		this._systemPromptNeedsRefilter = false;
+		if (this._systemPromptFrozen || !this._baseSystemPromptOptions) return;
+		const filtered = await this._extensionRunner.applySystemPromptBuildFilters(
+			this._baseSystemPrompt,
+			this._baseSystemPromptOptions,
+		);
+		if (filtered === this._baseSystemPrompt) return;
+		this._baseSystemPrompt = filtered;
+		this.agent.state.systemPrompt = filtered;
+	}
+
 	// =========================================================================
 	// Prompting
 	// =========================================================================
 
 	private async _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void> {
 		try {
+			await this._refilterSystemPromptIfNeeded();
 			const heartbeatTarget = this._findLastAssistantMessage()?.timestamp;
 			this._sessionHeartbeatTargetTimestamp = heartbeatTarget;
 			this._noteCacheHeartbeatActivity();
@@ -2719,6 +2756,7 @@ export class AgentSession {
 		this._resourceLoader.extendResources(extensionPaths);
 		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
 		this.agent.state.systemPrompt = this._baseSystemPrompt;
+		this._systemPromptNeedsRefilter = true;
 	}
 
 	private buildExtensionResourcePaths(entries: Array<{ path: string; extensionPath: string }>): Array<{
