@@ -817,6 +817,51 @@ describe("openai-completions tool_choice", () => {
 		expect(writeCall).not.toHaveProperty("partialArgs");
 	});
 
+	it("uses system messages for OpenRouter reasoning model instructions", async () => {
+		const model = getModel("openrouter", "deepseek/deepseek-v4-pro")!;
+		let payload: unknown;
+
+		await streamSimple(
+			model,
+			{
+				systemPrompt: "Follow instructions.",
+				messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],
+			},
+			{
+				apiKey: "test",
+				onPayload: (params: unknown) => {
+					payload = params;
+				},
+			},
+		).result();
+
+		const params = payload as { messages?: Array<{ role?: string }> };
+		expect(params.messages?.[0]?.role).toBe("system");
+	});
+
+	it("keeps developer messages for OpenAI reasoning model instructions", async () => {
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-5.5")!;
+		const model = { ...baseModel, api: "openai-completions" } as const;
+		let payload: unknown;
+
+		await streamSimple(
+			model,
+			{
+				systemPrompt: "Follow instructions.",
+				messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],
+			},
+			{
+				apiKey: "test",
+				onPayload: (params: unknown) => {
+					payload = params;
+				},
+			},
+		).result();
+
+		const params = payload as { messages?: Array<{ role?: string }> };
+		expect(params.messages?.[0]?.role).toBe("developer");
+	});
+
 	it("stores Xiaomi MiMo reasoning replay compat in built-in metadata", () => {
 		const providers = ["xiaomi", "xiaomi-token-plan-cn", "xiaomi-token-plan-ams", "xiaomi-token-plan-sgp"] as const;
 

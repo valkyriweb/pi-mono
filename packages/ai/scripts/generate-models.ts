@@ -191,6 +191,11 @@ function isAnthropicAdaptiveThinkingModel(modelId: string): boolean {
 	);
 }
 
+function isAnthropicTemperatureUnsupportedModel(modelId: string): boolean {
+	const id = modelId.toLowerCase();
+	return id.includes("opus-4-7") || id.includes("opus-4.7") || id.includes("opus-4-8") || id.includes("opus-4.8");
+}
+
 function mergeAnthropicMessagesCompat(model: Model<Api>, compat: AnthropicMessagesCompat): void {
 	model.compat = { ...(model.compat as AnthropicMessagesCompat | undefined), ...compat };
 }
@@ -227,6 +232,9 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 	if (supportsOpenAiXhigh(model.id)) {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	}
+	if (model.provider === "openai" && model.id === "gpt-5.5") {
+		mergeThinkingLevelMap(model, { minimal: null });
+	}
 	if (model.id.endsWith("gpt-5.5-pro")) {
 		mergeThinkingLevelMap(model, { off: null, minimal: null, low: null });
 	}
@@ -246,6 +254,9 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 	}
 	if (model.api === "anthropic-messages" && isAnthropicAdaptiveThinkingModel(model.id)) {
 		mergeAnthropicMessagesCompat(model, { forceAdaptiveThinking: true });
+	}
+	if (model.api === "anthropic-messages" && isAnthropicTemperatureUnsupportedModel(model.id)) {
+		mergeAnthropicMessagesCompat(model, { supportsTemperature: false });
 	}
 	if (model.api === "openai-completions" && model.id.includes("deepseek-v4")) {
 		mergeThinkingLevelMap(

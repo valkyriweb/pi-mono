@@ -210,6 +210,7 @@ function getAnthropicCompat(
 		sendSessionAffinityHeaders:
 			model.compat?.sendSessionAffinityHeaders ?? !!(isFireworks || isCloudflareAiGatewayAnthropic),
 		supportsCacheControlOnTools: model.compat?.supportsCacheControlOnTools ?? !isFireworks,
+		supportsTemperature: model.compat?.supportsTemperature ?? true,
 		allowEmptySignature: model.compat?.allowEmptySignature ?? false,
 	};
 }
@@ -1134,13 +1135,12 @@ function buildParams(
 		params.system = splitSystemPromptForCache(context.systemPrompt, cacheControl);
 	}
 
-	// Temperature is incompatible with extended thinking (adaptive or budget-based).
-	if (options?.temperature !== undefined && !options?.thinkingEnabled) {
+	// Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
+	if (options?.temperature !== undefined && !options?.thinkingEnabled && compat.supportsTemperature) {
 		params.temperature = options.temperature;
 	}
 
 	if (context.tools && context.tools.length > 0) {
-		const compat = getAnthropicCompat(model);
 		// Claude Code never puts cache_control on tools — only on system prompt
 		// blocks and messages. Passing cacheControl here caused a conflict with
 		// defer_loading tools (the API rejects both on the same tool definition).
