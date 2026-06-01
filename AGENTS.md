@@ -47,6 +47,8 @@ Read local docs before changing the matching surface:
 
 ## PR Review Gate
 
+**Gate (run order):** `codex-review` → `code-craft-pr` → `matt-pocock/improve-codebase-architecture` → `docs-freshness-pr` (wire through `pr-pipeline-orchestrator`); resolve all Tier 1/2 findings and file Tier 3 as GitHub issues. This gate is the `.github/pull_request_template.md` checklist (mirrored in `my-pi`).
+
 Flag P1 in local review when:
 
 - Custom behavior is implemented in core without evidence that extension/package APIs are insufficient.
