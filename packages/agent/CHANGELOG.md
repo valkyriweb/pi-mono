@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.78.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @valkyriweb/pi-ai@0.78.2
+
 ## 0.78.1
 
 ### Patch Changes
