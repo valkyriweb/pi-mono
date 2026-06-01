@@ -2,6 +2,10 @@
 
 ## 0.78.2
 
+### Patch Changes
+
+- Point the `total-tokens` OpenRouter test at `google/gemini-2.5-flash`. OpenRouter removed all `gemini-2.0` model ids, so the build-time-regenerated registry no longer contains `google/gemini-2.0-flash-001` and the `tsgo --noEmit` gate failed.
+
 ## 0.78.1
 
 ### Patch Changes
