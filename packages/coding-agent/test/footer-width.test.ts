@@ -26,6 +26,7 @@ function createSession(options: {
 	thinkingLevel?: string;
 	usage?: AssistantUsage;
 	entries?: unknown[];
+	branchEntries?: unknown[];
 }): AgentSession {
 	const usage = options.usage;
 	const entries =
@@ -54,6 +55,7 @@ function createSession(options: {
 		},
 		sessionManager: {
 			getEntries: () => entries,
+			getBranch: () => options.branchEntries ?? entries,
 			getSessionName: () => options.sessionName,
 			getCwd: () => "/tmp/project",
 		},
@@ -161,7 +163,13 @@ describe("FooterComponent width handling", () => {
 						type: "message",
 						message: {
 							role: "assistant",
-							usage: { input: 100_000, output: 1, cacheRead: 300_000, cacheWrite: 100_000, cost: { total: 9 } },
+							usage: {
+								input: 100_000,
+								output: 1,
+								cacheRead: 300_000,
+								cacheWrite: 100_000,
+								cost: { total: 9 },
+							},
 						},
 					},
 					{
@@ -177,7 +185,13 @@ describe("FooterComponent width handling", () => {
 						type: "message",
 						message: {
 							role: "assistant",
-							usage: { input: 2_000, output: 1, cacheRead: 8_000, cacheWrite: 2_000, cost: { total: 1 } },
+							usage: {
+								input: 2_000,
+								output: 1,
+								cacheRead: 8_000,
+								cacheWrite: 2_000,
+								cost: { total: 1 },
+							},
 						},
 					},
 				],
@@ -194,8 +208,94 @@ describe("FooterComponent width handling", () => {
 		expect(rendered).not.toContain("↑102k");
 	});
 
+	it("computes token and cache totals from the active branch only", () => {
+		const shared = {
+			id: "shared",
+			type: "message",
+			message: {
+				role: "assistant",
+				usage: {
+					input: 1_000,
+					output: 1,
+					cacheRead: 9_000,
+					cacheWrite: 0,
+					cost: { total: 1 },
+				},
+			},
+		};
+		const abandoned = {
+			id: "abandoned",
+			type: "message",
+			message: {
+				role: "assistant",
+				usage: {
+					input: 100_000,
+					output: 1,
+					cacheRead: 0,
+					cacheWrite: 100_000,
+					cost: { total: 9 },
+				},
+			},
+		};
+		const active = {
+			id: "active",
+			type: "message",
+			message: {
+				role: "assistant",
+				usage: {
+					input: 2_000,
+					output: 1,
+					cacheRead: 8_000,
+					cacheWrite: 0,
+					cost: { total: 1 },
+				},
+			},
+		};
+		const footer = new FooterComponent(
+			createSession({
+				sessionName: "",
+				entries: [shared, abandoned, active],
+				branchEntries: [shared, active],
+			}),
+			createFooterData(1),
+		);
+
+		const rendered = footer.render(140).join("\n");
+
+		expect(rendered).toContain("↑3.0k");
+		expect(rendered).toContain("R17k");
+		expect(rendered).toContain("cache 85%");
+		expect(rendered).not.toContain("↑103k");
+		expect(rendered).not.toContain("W100k");
+	});
+
+	it("uses provider-normalized cache fields for OpenAI/Codex read-only cache reports", () => {
+		const footer = new FooterComponent(
+			createSession({
+				sessionName: "",
+				provider: "openai-codex",
+				usage: {
+					input: 34_000,
+					output: 1,
+					cacheRead: 33_000,
+					cacheWrite: 0,
+					cost: { total: 1 },
+				},
+			}),
+			createFooterData(1),
+		);
+
+		const rendered = footer.render(140).join("\n");
+
+		expect(rendered).toContain("↑34k");
+		expect(rendered).toContain("R33k");
+		expect(rendered).toContain("cache 49%");
+	});
+
 	it("shows active background agent runs in the footer", () => {
-		startAgentRecentRun("single", [{ agent: "worker", task: "Sleep" }], { background: true });
+		startAgentRecentRun("single", [{ agent: "worker", task: "Sleep" }], {
+			background: true,
+		});
 		const footer = new FooterComponent(createSession({ sessionName: "" }), createFooterData(1));
 		const rendered = footer.render(100).join("\n");
 

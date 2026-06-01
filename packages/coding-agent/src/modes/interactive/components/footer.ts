@@ -110,17 +110,35 @@ export class FooterComponent implements Component {
 			.filter(({ spec }) => spec.visible?.() ?? true)
 			.sort((a, b) => (a.spec.order ?? 0) - (b.spec.order ?? 0))
 			.map(({ id, spec }) =>
-				sanitizeStatusText(spec.render({ width, theme, selected: id === this.selectedExtensionFooterId })),
+				sanitizeStatusText(
+					spec.render({
+						width,
+						theme,
+						selected: id === this.selectedExtensionFooterId,
+					}),
+				),
 			)
 			.filter((part) => part.length > 0);
 		if (parts.length === 0) return undefined;
 		return truncateToWidth(theme.fg("dim", parts.join(" · ")), width, theme.fg("dim", "..."));
 	}
 
+	private getUsageEntries() {
+		return typeof this.session.sessionManager.getBranch === "function"
+			? this.session.sessionManager.getBranch()
+			: this.session.sessionManager.getEntries();
+	}
+
 	private getUsageTotals(): UsageTotals {
-		const entries = this.session.sessionManager.getEntries();
+		const entries = this.getUsageEntries();
 		let lastUsage:
-			| { input: number; output: number; cacheRead: number; cacheWrite: number; cost: { total: number } }
+			| {
+					input: number;
+					output: number;
+					cacheRead: number;
+					cacheWrite: number;
+					cost: { total: number };
+			  }
 			| undefined;
 		for (let i = entries.length - 1; i >= 0; i--) {
 			const entry = entries[i];
@@ -132,6 +150,7 @@ export class FooterComponent implements Component {
 		const latestCompaction = getLatestCompactionEntry(entries);
 		const cacheKey = [
 			entries.length,
+			entries.at(-1)?.id ?? "",
 			latestCompaction?.id ?? "",
 			latestCompaction?.timestamp ?? "",
 			lastUsage?.input ?? 0,
@@ -212,6 +231,11 @@ export class FooterComponent implements Component {
 		if (totalOutput) leftParts.push(theme.fg("dim", `↓${formatTokens(totalOutput)}`));
 		if (totalCacheRead) leftParts.push(theme.fg("dim", `R${formatTokens(totalCacheRead)}`));
 		if (totalCacheWrite) leftParts.push(theme.fg("dim", `W${formatTokens(totalCacheWrite)}`));
+		// Provider usage is normalized into non-cached input, cache reads, and
+		// cache writes. Claude-style providers report both read/write; OpenAI/Codex
+		// reports cached input as cacheRead and normally has no cacheWrite. In both
+		// cases the comparable hit-rate denominator is the cacheable prompt work the
+		// provider reported for the active branch only.
 		const cacheDenom = totalInput + totalCacheRead + totalCacheWrite;
 		if (cacheDenom > 0 && (totalCacheRead || totalCacheWrite)) {
 			const hitPct = (totalCacheRead / cacheDenom) * 100;
@@ -274,7 +298,7 @@ export class FooterComponent implements Component {
 		// Prepend provider if multiple providers and there's room
 		const minPadding = 2;
 		if (this.footerData.getAvailableProviderCount() > 1 && state.model) {
-			const withProvider = theme.fg("dim", `(${state.model!.provider}) `) + rightSide;
+			const withProvider = theme.fg("dim", `(${state.model.provider}) `) + rightSide;
 			if (statsLeftWidth + minPadding + visibleWidth(withProvider) <= width) {
 				rightSide = withProvider;
 			}

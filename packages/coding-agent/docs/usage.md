@@ -15,6 +15,21 @@ The interface has four main areas:
 
 The editor can be replaced temporarily by built-in UI such as `/settings` or by custom extension UI.
 
+### Footer cache hit rate
+
+The footer's `cache N%` value is computed from the current session tree's **active branch** after the latest compaction:
+
+```text
+cacheRead / (input + cacheRead + cacheWrite)
+```
+
+Provider usage is normalized before display:
+
+- `claude-bridge` / Anthropic-style providers can report both `cacheRead` and `cacheWrite`; writes are included in the denominator because they are cacheable prompt work that missed and had to be created.
+- `openai-codex` / OpenAI Responses-style providers report cached input as `cacheRead` and normally report `cacheWrite = 0`; `input` is already non-cached input, so `cacheRead / (input + cacheRead)` is the comparable provider-reported cache hit rate.
+
+The footer intentionally ignores abandoned branches from `/tree` or `/fork` navigation. Session-wide diagnostics such as `pi-cache-stats` may show both active-branch and full-tree totals.
+
 ### Editor Features
 
 | Feature | How |
