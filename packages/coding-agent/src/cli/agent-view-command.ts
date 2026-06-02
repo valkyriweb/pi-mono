@@ -68,7 +68,15 @@ async function importAgentViewModule(specifier: string): Promise<AgentViewModule
 		const mod = (await jiti.import(specifier)) as Partial<AgentViewModule> & { default?: Partial<AgentViewModule> };
 		const candidate = mod.runAgentViewCli ? mod : mod.default;
 		return typeof candidate?.runAgentViewCli === "function" ? (candidate as AgentViewModule) : undefined;
-	} catch {
+	} catch (error) {
+		const code = (error as { code?: string } | null)?.code;
+		if (code !== "MODULE_NOT_FOUND" && code !== "ERR_MODULE_NOT_FOUND") {
+			console.error(
+				chalk.yellow(
+					`Warning: agent-view module "${specifier}" failed to load: ${error instanceof Error ? error.message : String(error)}`,
+				),
+			);
+		}
 		return undefined;
 	}
 }

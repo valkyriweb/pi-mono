@@ -5,6 +5,7 @@
 ### Fixed
 
 - Replaced a negated-OR null guard with optional chaining (`!adapter?.kill`) in `core/tools/background-tasks.ts`. Behavior-preserving.
+- Surface agent-view module load failures instead of silently reporting the package as not installed.
 
 ## 0.78.2
 
