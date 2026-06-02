@@ -175,6 +175,8 @@ Attribution:
 
 ## Releasing
 
+> Full human runbook: [`docs/RELEASING.md`](docs/RELEASING.md). The steps below are the agent-facing copy; keep both in sync.
+
 **Lockstep versioning**: all packages share one version; every release updates all together. `patch` = fixes + additions, `minor` = breaking changes. No major releases.
 
 1. **Update CHANGELOGs**: ask the user whether they ran the `/cl` prompt on the latest commit on `main`. If not, they must run `/cl` first to audit and update each package's `[Unreleased]` section before releasing.
