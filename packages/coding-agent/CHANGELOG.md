@@ -9,6 +9,7 @@
 ### Fixed
 
 - Agent tool call and collapsed result rendering now show provider/model and thinking metadata.
+- Agent tool call labels inherit the parent session's live model and thinking level via a new engine `snapshot()`, so forked agent calls render the active provider/model/thinking instead of stale defaults.
 - Stubbed `sessionLiveness` in the #5080 shutdown ordering regression test so its mock matches `shutdown()` now calling `this.sessionLiveness.stop()`.
 - Reset the footer assistant turn count after compaction by rendering it from the same post-compaction transcript window as token/cache totals.
 - Replaced a negated-OR null guard with optional chaining (`!adapter?.kill`) in `core/tools/background-tasks.ts`. Behavior-preserving.
