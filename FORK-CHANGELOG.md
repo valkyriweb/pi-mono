@@ -4,6 +4,10 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ## [Unreleased]
 
+### Changed
+
+- Clarified the exact-semver regex intent with a comment in `scripts/check-pinned-deps.mjs` (canary for the ported agentic-review pipeline). No behavior change.
+
 ### Fixed
 
 - **Changelog guard: package-level test-only changes no longer wrongly require a CHANGELOG.** `requiredChangelog()` in `scripts/check-changelog-updated.mjs` returned the package `CHANGELOG.md` for any `packages/<pkg>/` path before consulting `isIgnored()` (which already covers test-only paths via `isTestOnly()`), so a change touching only `packages/<pkg>/test/**` failed the guard, contradicting the script's own "tests-only ... are ignored" message and the AGENTS changelog rules. Now `isIgnored(path)` is checked first (returns no requirement), then package/fork resolution. Verified with crafted diffs: a package test-only change passes, a package src change without its CHANGELOG still fails.
