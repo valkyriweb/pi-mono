@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const dependencySections = ["dependencies", "devDependencies", "optionalDependencies"];
+// Pinned deps must be exact (no `^`/`~`/ranges) so fork builds are reproducible.
 // Matches an exact semver (no range operators): MAJOR.MINOR.PATCH with optional
 // -prerelease and +build metadata. Anything with ^, ~, *, ranges, or tags fails.
 const exactVersionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;

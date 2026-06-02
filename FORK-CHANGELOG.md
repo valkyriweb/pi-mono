@@ -6,6 +6,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Changed
 
+- Documented why pinned deps must be exact in `scripts/check-pinned-deps.mjs` (canary verifying the agentic-review pipeline auth via `GH_PACKAGES_TOKEN`). No behavior change.
 - Clarified the exact-semver regex intent with a comment in `scripts/check-pinned-deps.mjs` (canary for the ported agentic-review pipeline). No behavior change.
 
 ### Fixed
