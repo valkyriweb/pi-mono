@@ -466,6 +466,34 @@ describe("Agent", () => {
 		expect(responseCount).toBe(2);
 	});
 
+	it("continue() is a no-op when the transcript ends on assistant with empty queues", async () => {
+		// Regression: AgentSession._runAgentPrompt and the post-compaction resume
+		// path both call agent.continue() inside a post-run loop guarded by
+		// hasQueuedMessages(). When the queued work was already drained between the
+		// probe and this call (e.g. pi-goal continuation messages delivered via
+		// sendMessage(triggerTurn)), continue() used to throw
+		// "Cannot continue from message role: assistant". That throw was swallowed
+		// to runtime-errors.log and stalled goal auto-continuation. It must now be a
+		// graceful no-op so the caller's loop exits cleanly.
+		const agent = new Agent({
+			streamFn: () => {
+				throw new Error("streamFn should not run for an empty continue()");
+			},
+		});
+
+		agent.state.messages = [
+			{
+				role: "user",
+				content: [{ type: "text", text: "Initial" }],
+				timestamp: Date.now() - 10,
+			},
+			createAssistantMessage("Initial response"),
+		];
+
+		await expect(agent.continue()).resolves.toBeUndefined();
+		expect(agent.state.messages[agent.state.messages.length - 1].role).toBe("assistant");
+	});
+
 	it("forwards sessionId to streamFn options", async () => {
 		let receivedSessionId: string | undefined;
 		const agent = new Agent({
