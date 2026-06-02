@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@valkyriweb/pi-ai";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { pickModel } from "./helpers/models.ts";
 
 describe("AgentSession dynamic tool registration", () => {
 	let tempDir: string;
@@ -57,7 +57,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -121,7 +121,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 		});
@@ -166,7 +166,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 		});
@@ -197,7 +197,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -257,7 +257,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -304,7 +304,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -356,7 +356,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -395,7 +395,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -437,7 +437,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			model: pickModel("anthropic"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,

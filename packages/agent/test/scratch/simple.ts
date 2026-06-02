@@ -1,6 +1,5 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@valkyriweb/pi-ai";
 import { NodeExecutionEnv } from "../../src/harness/env/nodejs.ts";
 import { InMemorySessionStorage } from "../../src/harness/session/memory-storage.ts";
 import {
@@ -12,6 +11,7 @@ import {
 	Session,
 	type Skill,
 } from "../../src/index.ts";
+import { pickModel } from "../helpers/models.ts";
 
 type Source = { type: "project" | "user" | "path"; dir: string };
 type SourcedSkill = Skill & { source: Source };
@@ -39,7 +39,7 @@ const session = new Session(new InMemorySessionStorage());
 const agent = new AgentHarness({
 	env,
 	session,
-	model: getModel("openai", "gpt-5.5"),
+	model: pickModel("openai"),
 	thinkingLevel: "low",
 	systemPrompt: ({ env, resources }) =>
 		[

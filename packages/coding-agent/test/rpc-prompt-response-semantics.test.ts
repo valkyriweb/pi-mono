@@ -2,13 +2,7 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent } from "@valkyriweb/pi-agent-core";
-import {
-	type AssistantMessage,
-	type AssistantMessageEvent,
-	EventStream,
-	getModel,
-	type Model,
-} from "@valkyriweb/pi-ai";
+import { type AssistantMessage, type AssistantMessageEvent, EventStream, type Model } from "@valkyriweb/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import type { AgentSessionRuntime } from "../src/core/agent-session-runtime.ts";
@@ -17,6 +11,7 @@ import { ModelRegistry } from "../src/core/model-registry.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { runRpcMode } from "../src/modes/rpc/rpc-mode.ts";
+import { pickModel } from "./helpers/models.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
 const rpcIo = vi.hoisted(() => ({
@@ -102,7 +97,7 @@ function createRuntimeHost(options: { withAuth: boolean; responseDelayMs: number
 	const tempDir = join(tmpdir(), `pi-rpc-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	mkdirSync(tempDir, { recursive: true });
 
-	const model = options.model ?? getModel("anthropic", "claude-sonnet-4-5");
+	const model = options.model ?? pickModel("anthropic");
 	if (!model) {
 		throw new Error("Test model not found");
 	}

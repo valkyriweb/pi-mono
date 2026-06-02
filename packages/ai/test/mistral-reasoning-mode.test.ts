@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { getModel } from "../src/models.ts";
 import { streamSimple } from "../src/stream.ts";
 import type { Context, Model, SimpleStreamOptions } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
 interface MistralPayload {
 	promptMode?: "reasoning";
@@ -44,35 +44,50 @@ async function capturePayload(
 
 describe("Mistral reasoning mode selection", () => {
 	it("uses reasoning_effort for Mistral Small 4", async () => {
-		const payload = await capturePayload(getModel("mistral", "mistral-small-2603"), { reasoning: "medium" });
+		const payload = await capturePayload(
+			pickModel("mistral", (m) => m.id === "mistral-small-2603"),
+			{
+				reasoning: "medium",
+			},
+		);
 
 		expect(payload.reasoningEffort).toBe("high");
 		expect(payload.promptMode).toBeUndefined();
 	});
 
 	it("omits reasoning controls for Mistral Small 4 when thinking is off", async () => {
-		const payload = await capturePayload(getModel("mistral", "mistral-small-2603"));
+		const payload = await capturePayload(pickModel("mistral", (m) => m.id === "mistral-small-2603"));
 
 		expect(payload.reasoningEffort).toBeUndefined();
 		expect(payload.promptMode).toBeUndefined();
 	});
 
 	it("uses prompt_mode for Magistral reasoning models", async () => {
-		const payload = await capturePayload(getModel("mistral", "magistral-medium-latest"), { reasoning: "medium" });
+		const payload = await capturePayload(
+			pickModel("mistral", (m) => m.id === "magistral-medium-latest"),
+			{
+				reasoning: "medium",
+			},
+		);
 
 		expect(payload.promptMode).toBe("reasoning");
 		expect(payload.reasoningEffort).toBeUndefined();
 	});
 
 	it("uses reasoning_effort for Mistral Medium 3.5", async () => {
-		const payload = await capturePayload(getModel("mistral", "mistral-medium-3.5"), { reasoning: "medium" });
+		const payload = await capturePayload(
+			pickModel("mistral", (m) => m.id === "mistral-medium-3.5"),
+			{
+				reasoning: "medium",
+			},
+		);
 
 		expect(payload.reasoningEffort).toBe("high");
 		expect(payload.promptMode).toBeUndefined();
 	});
 
 	it("omits reasoning controls for Mistral Medium 3.5 when thinking is off", async () => {
-		const payload = await capturePayload(getModel("mistral", "mistral-medium-3.5"));
+		const payload = await capturePayload(pickModel("mistral", (m) => m.id === "mistral-medium-3.5"));
 
 		expect(payload.reasoningEffort).toBeUndefined();
 		expect(payload.promptMode).toBeUndefined();

@@ -2,13 +2,14 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent } from "@valkyriweb/pi-agent-core";
-import { type AssistantMessage, getModel } from "@valkyriweb/pi-ai";
+import type { AssistantMessage } from "@valkyriweb/pi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { pickModel } from "./helpers/models.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
 vi.mock("../src/core/compaction/index.js", () => ({
@@ -63,7 +64,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 		mkdirSync(tempDir, { recursive: true });
 		vi.useFakeTimers();
 
-		const model = getModel("anthropic", "claude-sonnet-4-5")!;
+		const model = pickModel("anthropic");
 		const agent = new Agent({
 			initialState: {
 				model,

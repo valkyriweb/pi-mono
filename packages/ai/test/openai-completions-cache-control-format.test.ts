@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getModel } from "../src/models.ts";
 import { streamOpenAICompletions } from "../src/providers/openai-completions.ts";
 import type { Model } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
 interface CacheControl {
 	type: "ephemeral";
@@ -153,7 +153,7 @@ describe("openai-completions cacheControlFormat", () => {
 	});
 
 	it("preserves Anthropic-style cache markers for OpenRouter Anthropic models", async () => {
-		const model = getModel("openrouter", "anthropic/claude-sonnet-4");
+		const model = pickModel("openrouter", (m) => m.id.startsWith("anthropic/"));
 		const params = await capturePayload(model);
 		expectAnthropicCacheMarkers(params);
 	});
