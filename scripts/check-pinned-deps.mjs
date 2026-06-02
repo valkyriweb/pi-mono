@@ -63,3 +63,5 @@ if (failures.length > 0) {
 	for (const failure of failures) console.error(`  ${failure}`);
 	process.exit(1);
 }
+
+// canary(green): verify agentic-review after GH_PACKAGES_TOKEN no-expiry swap (2026-06-02T22:17:47Z)
