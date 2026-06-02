@@ -86,10 +86,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # GitHub Packages read auth for @valkyriweb/*. Try the built-in token first;
-      # if user-owned restricted packages reject it, swap to a classic read:packages
-      # PAT secret here (e.g. ${{ secrets.GH_PACKAGES_TOKEN }}).
-      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # GitHub Packages read auth for @valkyriweb/*. GITHUB_TOKEN cannot read
+      # user-owned restricted packages (E403), so use a classic read:packages PAT.
+      NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4

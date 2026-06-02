@@ -14,7 +14,6 @@ import {
 	visibleWidth,
 } from "@valkyriweb/pi-tui";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
-import { listActiveSessionPaths } from "../../../core/session-liveness.ts";
 import type { SessionInfo, SessionListProgress } from "../../../core/session-manager.ts";
 import { canonicalizePath as _canonicalizePath } from "../../../utils/paths.ts";
 import { theme } from "../theme/theme.ts";
@@ -283,10 +282,6 @@ class SessionList implements Component, Focusable {
 	private showPath = false;
 	private confirmingDeletePath: string | null = null;
 	private currentSessionCanonicalPath?: string;
-	/** Resolver for which session paths are open in another live pi process. */
-	private getActiveSessionPaths: (paths: string[]) => Set<string>;
-	/** Canonicalized session paths currently open in another live pi process. */
-	private activeSessionPaths = new Set<string>();
 	public onSelect?: (sessionPath: string) => void;
 	public onCancel?: () => void;
 	public onExit: () => void = () => {};
@@ -317,7 +312,6 @@ class SessionList implements Component, Focusable {
 		nameFilter: NameFilter,
 		keybindings: KeybindingsManager,
 		currentSessionFilePath?: string,
-		getActiveSessionPaths: (paths: string[]) => Set<string> = listActiveSessionPaths,
 	) {
 		this.allSessions = sessions;
 		this.filteredSessions = [];
@@ -327,8 +321,6 @@ class SessionList implements Component, Focusable {
 		this.nameFilter = nameFilter;
 		this.keybindings = keybindings;
 		this.currentSessionCanonicalPath = canonicalizePath(currentSessionFilePath);
-		this.getActiveSessionPaths = getActiveSessionPaths;
-		this.refreshActiveSessions();
 		this.filterSessions("");
 
 		// Handle Enter in search input - select current item
@@ -355,21 +347,7 @@ class SessionList implements Component, Focusable {
 	setSessions(sessions: SessionInfo[], showCwd: boolean): void {
 		this.allSessions = sessions;
 		this.showCwd = showCwd;
-		this.refreshActiveSessions();
 		this.filterSessions(this.searchInput.getValue());
-	}
-
-	/** Recompute which listed sessions are open in another live pi process. */
-	private refreshActiveSessions(): void {
-		try {
-			this.activeSessionPaths = this.getActiveSessionPaths(this.allSessions.map((s) => s.path));
-		} catch {
-			this.activeSessionPaths = new Set();
-		}
-	}
-
-	private isActiveSessionPath(path: string): boolean {
-		return this.activeSessionPaths.has(canonicalizePath(path) ?? path);
 	}
 
 	private filterSessions(query: string): void {
@@ -460,9 +438,6 @@ class SessionList implements Component, Focusable {
 			const isSelected = i === this.selectedIndex;
 			const isConfirmingDelete = session.path === this.confirmingDeletePath;
 			const isCurrent = this.isCurrentSessionPath(session.path);
-			// A session open in another live pi process. The current session is never
-			// flagged as foreign-active even though it has its own liveness marker.
-			const isActiveElsewhere = !isCurrent && this.isActiveSessionPath(session.path);
 
 			// Build tree prefix
 			const prefix = this.buildTreePrefix(node);
@@ -489,31 +464,26 @@ class SessionList implements Component, Focusable {
 			// Calculate available width for message
 			const prefixWidth = visibleWidth(prefix);
 			const rightWidth = visibleWidth(rightPart) + 2; // +2 for spacing
-			const badgeWidth = isActiveElsewhere ? 2 : 0; // "● " live badge
-			const availableForMsg = width - 2 - prefixWidth - rightWidth - badgeWidth; // -2 for cursor
+			const availableForMsg = width - 2 - prefixWidth - rightWidth; // -2 for cursor
 
 			const truncatedMsg = truncateToWidth(normalizedMessage, Math.max(10, availableForMsg), "…");
 
 			// Style message
-			let messageColor: "error" | "warning" | "accent" | "success" | null = null;
+			let messageColor: "error" | "warning" | "accent" | null = null;
 			if (isConfirmingDelete) {
 				messageColor = "error";
 			} else if (isCurrent) {
 				messageColor = "accent";
-			} else if (isActiveElsewhere) {
-				messageColor = "success";
 			} else if (hasName) {
 				messageColor = "warning";
 			}
-			// Live badge for sessions open in another pi process.
-			const badge = isActiveElsewhere ? theme.fg("success", "● ") : "";
 			let styledMsg = messageColor ? theme.fg(messageColor, truncatedMsg) : truncatedMsg;
 			if (isSelected) {
 				styledMsg = theme.bold(styledMsg);
 			}
 
 			// Build line
-			const leftPart = cursor + theme.fg("dim", prefix) + badge + styledMsg;
+			const leftPart = cursor + theme.fg("dim", prefix) + styledMsg;
 			const leftWidth = visibleWidth(leftPart);
 			const spacing = Math.max(1, width - leftWidth - visibleWidth(rightPart));
 			const styledRight = theme.fg(isConfirmingDelete ? "error" : "dim", rightPart);

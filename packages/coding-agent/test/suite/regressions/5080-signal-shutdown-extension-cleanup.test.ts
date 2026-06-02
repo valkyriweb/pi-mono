@@ -21,7 +21,6 @@ type ShutdownThis = {
 	unregisterSignalHandlers: () => void;
 	runtimeHost: { dispose: () => Promise<void> };
 	ui: { terminal: { drainInput: (ms: number) => Promise<void> } };
-	sessionLiveness: { stop: () => void };
 	stop: () => void;
 	sessionManager: SessionManager;
 };
@@ -82,7 +81,6 @@ function createContext(order: string[], sessionManager = createSessionManager())
 				}),
 			},
 		},
-		sessionLiveness: { stop: vi.fn() },
 		stop: vi.fn(() => {
 			order.push("stop");
 		}),
