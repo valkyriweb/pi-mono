@@ -263,6 +263,7 @@ export class FooterComponent implements Component {
 			const costStr = `$${totalCost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
 			leftParts.push(theme.fg("dim", costStr));
 		}
+		if (assistantTurns) leftParts.push(theme.fg("dim", `t${assistantTurns}`));
 
 		// Context % — each piece coloured independently (no outer dim wrapper)
 		const autoIndicator = this.autoCompactEnabled ? " (auto)" : "";
