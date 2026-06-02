@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Agent tool call and collapsed result rendering now show provider/model and thinking metadata.
 - Replaced a negated-OR null guard with optional chaining (`!adapter?.kill`) in `core/tools/background-tasks.ts`. Behavior-preserving.
 
 ## 0.78.2
