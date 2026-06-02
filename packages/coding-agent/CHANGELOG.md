@@ -5,6 +5,7 @@
 ### Fixed
 
 - Agent tool call and collapsed result rendering now show provider/model and thinking metadata.
+- Reset the footer assistant turn count after compaction by rendering it from the same post-compaction transcript window as token/cache totals.
 - Replaced a negated-OR null guard with optional chaining (`!adapter?.kill`) in `core/tools/background-tasks.ts`. Behavior-preserving.
 
 ## 0.78.2
