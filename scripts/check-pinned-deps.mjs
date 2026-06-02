@@ -63,3 +63,5 @@ if (failures.length > 0) {
 	for (const failure of failures) console.error(`  ${failure}`);
 	process.exit(1);
 }
+
+// canary: re-trigger after GH_PACKAGES_TOKEN auth fix (2026-06-02T22:01:19Z)
