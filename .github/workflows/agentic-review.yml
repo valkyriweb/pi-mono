@@ -1,0 +1,228 @@
+name: Agentic PR Review
+
+# Runs the three-stage agentic review (rusty-review correctness + code-craft-pr
+# craft/architecture + docs-freshness) on code PRs and posts ONE native GitHub
+# review (inline P0/P1 comments + summary), failing the check on any P0.
+#
+# This is the pi-mono (fork) port of my-pi's reviewer. Differences from my-pi:
+#   - pi-mono builds the `pi` binary in place (no "checkout pi fork" + symlink).
+#   - The reviewer profile + scripts come from GitHub Packages
+#     (@valkyriweb/my-pi-actions provides the actions profile incl. the Workflow
+#     tool; @valkyriweb/agentic-review provides the pipeline scripts) instead of
+#     cloning my-pi.
+#
+# SECURITY — this uses `pull_request_target`, so it runs with repo secrets and a
+# writable token, and (in the review job) checks out PR HEAD code. That is unsafe
+# for untrusted contributors. Mitigation: the `review` job runs ONLY when the PR
+# author has collaborator write+ access (the `authorized` gate). Forks from
+# non-collaborators never reach it. Collaborator fork PRs run in advisory mode
+# (no commits/issues — we can't push to a fork head branch anyway).
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write       # push autofix commits to same-repo PR branches
+  pull-requests: write  # post the review + inline comments
+  issues: write         # code-craft-pr files Tier-3 issues
+  packages: read        # @valkyriweb/* from GitHub Packages
+
+concurrency:
+  group: agentic-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.scope.outputs.should_run }}
+      advisory_only: ${{ steps.scope.outputs.advisory_only }}
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - name: Authorize author (collaborator write+)
+        id: auth
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const author = context.payload.pull_request.user.login;
+            if (author.endsWith('[bot]')) { core.setOutput('authorized', 'false'); return; }
+            let perm = null;
+            try {
+              const r = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner, repo: context.repo.repo, username: author,
+              });
+              perm = r.data.permission;
+            } catch { /* not a collaborator */ }
+            core.setOutput('authorized', ['admin', 'maintain', 'write'].includes(perm) ? 'true' : 'false');
+
+      - name: Decide scope (code changed? fork? labelled?)
+        id: scope
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            // Fork PRs degrade to advisory: a base-repo token can't push to a fork head.
+            core.setOutput('advisory_only', pr.head.repo.full_name !== pr.base.repo.full_name ? 'true' : 'false');
+            // CANARY GUARD (temporary): only run on PRs explicitly labelled `agentic-review`.
+            // Remove this block to enable the gate on every code PR once the fork
+            // canary is proven (mirrors how my-pi was rolled out).
+            const labels = (pr.labels || []).map((l) => l.name);
+            if (!labels.includes('agentic-review')) { core.setOutput('should_run', 'false'); return; }
+            // Skip the changesets "Version Packages" branch.
+            if (pr.head.ref === 'changeset-release/main') { core.setOutput('should_run', 'false'); return; }
+            // Skip docs-only / version-bump PRs.
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number,
+            });
+            const isDocOrMeta = (p) =>
+              p.endsWith('.md') || p.startsWith('docs/') || p.startsWith('.changeset/') || p.endsWith('CHANGELOG.md');
+            const code = files.filter((f) => !isDocOrMeta(f.filename));
+            core.setOutput('should_run', code.length > 0 ? 'true' : 'false');
+
+  review:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true' && needs.gate.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # GitHub Packages read auth for @valkyriweb/*. Try the built-in token first;
+      # if user-owned restricted packages reject it, swap to a classic read:packages
+      # PAT secret here (e.g. ${{ secrets.GH_PACKAGES_TOKEN }}).
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build pi packages
+        run: |
+          npm --prefix packages/tui run build
+          npm --prefix packages/ai run build
+          npm --prefix packages/agent run build
+          npm --prefix packages/coding-agent run build
+      # rusty-review --engine pi execs `pi` by name; CI only built the fork as a
+      # node entrypoint. Expose a `pi` shim on PATH so the Correctness stage runs
+      # the real engine instead of degrading to a manual diff review.
+      - name: Put pi on PATH (rusty-review --engine pi shim)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          cat > "$HOME/.local/bin/pi" <<EOF
+          #!/usr/bin/env bash
+          exec node "$GITHUB_WORKSPACE/packages/coding-agent/dist/cli.js" "\$@"
+          EOF
+          chmod +x "$HOME/.local/bin/pi"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Configure GitHub Packages auth
+        run: |
+          printf '@valkyriweb:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' > "$HOME/.npmrc"
+
+      - name: Install agentic-review pipeline (GitHub Packages)
+        run: npm install --prefix "$RUNNER_TEMP/ar" @valkyriweb/agentic-review@0.1.0
+
+      # Skills (private) + bridge (private) — need a PAT with repo read.
+      - name: Checkout skills (agent-scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: valkyriweb/agent-scripts
+          path: agent-scripts
+          token: ${{ secrets.GH_CLONE_TOKEN }}
+      - name: Checkout claude-bridge
+        uses: actions/checkout@v4
+        with:
+          repository: valkyriweb/pi-claude-bridge
+          path: pi-claude-bridge
+          token: ${{ secrets.GH_CLONE_TOKEN }}
+
+      - name: Stage pi agent config (bridge provider + actions profile + skills)
+        run: |
+          mkdir -p "$HOME/.pi/agent"
+          cp "$RUNNER_TEMP/ar/node_modules/@valkyriweb/agentic-review/ci-models.json" "$HOME/.pi/agent/models.json"
+          cat > "$HOME/.pi/agent/settings.json" <<EOF
+          {
+            "defaultProvider": "claude-bridge",
+            "defaultModel": "claude-opus-4-8",
+            "enabledModels": ["claude-bridge/*"],
+            "packages": ["npm:@valkyriweb/my-pi-actions@0.1.5"]
+          }
+          EOF
+          ln -sfn "$GITHUB_WORKSPACE/agent-scripts/skills" "$HOME/.pi/agent/skills"
+          # Fetch the actions profile (provides the harness extensions + the
+          # Workflow tool the reviewer drives). pi-workflow comes from this profile,
+          # not from @valkyriweb/agentic-review.
+          pi install npm:@valkyriweb/my-pi-actions@0.1.5
+
+      - name: Start claude-bridge sidecar
+        run: |
+          cd pi-claude-bridge
+          # The bridge repo intentionally has no committed lockfile (gitignored),
+          # so `npm ci` (which requires one) fails — use `npm install`.
+          npm install
+          printf '_BRIDGE_OAUTH_TOKEN=%s\n' '${{ secrets._BRIDGE_OAUTH_TOKEN }}' > .env
+          nohup npm start > /tmp/bridge.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9100/health >/dev/null; then echo "bridge up"; exit 0; fi
+            sleep 1
+          done
+          echo "bridge failed to start"; cat /tmp/bridge.log; exit 1
+
+      - name: Configure git identity (autofix commits)
+        run: |
+          git config user.name "rusty-review[bot]"
+          git config user.email "rusty-review@users.noreply.github.com"
+
+      - name: Run agentic review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          ADVISORY: ${{ needs.gate.outputs.advisory_only }}
+        run: |
+          mkdir -p /tmp/agentic-review
+          AR="$RUNNER_TEMP/ar/node_modules/@valkyriweb/agentic-review"
+          ARGS=$(jq -nc \
+            --argjson pr "$PR_NUMBER" \
+            --arg base "origin/$BASE_REF" \
+            --arg root "$GITHUB_WORKSPACE" \
+            --arg rusty "$GITHUB_WORKSPACE/agent-scripts/skills/rusty-review/scripts/rusty-review" \
+            --arg poster "$AR/post-review.mjs" \
+            --argjson advisory "$([ "$ADVISORY" = "true" ] && echo true || echo false)" \
+            '{pr:$pr, base:$base, repoRoot:$root, rustyReviewBin:$rusty, posterScript:$poster, advisoryOnly:$advisory, blockPriority:0}')
+          echo "workflow args: $ARGS"
+          # Bound the run: the poster writes result.json before pi's final turn,
+          # and pi -p has been seen to linger after printing, so a timeout can't
+          # lose the gate result — the Enforce step reads result.json regardless.
+          timeout 1500 node packages/coding-agent/dist/cli.js -p \
+            "Use the Workflow tool to run the workflow at scriptPath \"$AR/pr-review-gate.mjs\" with args $ARGS . Output ONLY the workflow's returned JSON." \
+            2>&1 | tee /tmp/agentic-review/pi.log || true
+
+      - name: Push autofix commits (same-repo only)
+        if: needs.gate.outputs.advisory_only == 'false'
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          if [ -n "$(git log "origin/$BASE_REF..HEAD" --oneline 2>/dev/null)" ]; then
+            git push origin "HEAD:$HEAD_REF" || echo "nothing to push / push rejected"
+          fi
+
+      - name: Enforce gate (fail on P0)
+        run: |
+          RESULT=/tmp/agentic-review/result.json
+          if [ ! -f "$RESULT" ]; then
+            echo "::error::no review result produced — see pi.log"; tail -50 /tmp/agentic-review/pi.log || true; exit 1
+          fi
+          cat "$RESULT"
+          if [ "$(jq -r '.blocking' "$RESULT")" = "true" ]; then
+            echo "::error::BLOCKING findings: $(jq -r '.blockingReasons | join("; ")' "$RESULT")"
+            exit 1
+          fi
+          echo "no blocking findings"
