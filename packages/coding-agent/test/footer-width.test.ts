@@ -205,7 +205,9 @@ describe("FooterComponent width handling", () => {
 		expect(rendered).toContain("R8.0k");
 		expect(rendered).toContain("W2.0k");
 		expect(rendered).toContain("cache 67%");
+		expect(rendered).toContain("t1");
 		expect(rendered).not.toContain("↑102k");
+		expect(rendered).not.toContain("t2");
 	});
 
 	it("computes token and cache totals from the active branch only", () => {
