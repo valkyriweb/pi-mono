@@ -1,6 +1,7 @@
-import { type AssistantMessage, type AssistantMessageEvent, EventStream, getModel } from "@valkyriweb/pi-ai";
+import { type AssistantMessage, type AssistantMessageEvent, EventStream } from "@valkyriweb/pi-ai";
 import { describe, expect, it } from "vitest";
 import { Agent } from "../src/index.ts";
+import { pickModel } from "./helpers/models.ts";
 
 // Mock stream that mimics AssistantMessageEventStream
 class MockAssistantStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
@@ -64,7 +65,7 @@ describe("Agent", () => {
 	});
 
 	it("should create an agent instance with custom initial state", () => {
-		const customModel = getModel("openai", "gpt-4o-mini");
+		const customModel = pickModel("openai");
 		const agent = new Agent({
 			initialState: {
 				systemPrompt: "You are a helpful assistant.",
@@ -250,7 +251,7 @@ describe("Agent", () => {
 		expect(agent.state.systemPrompt).toBe("Custom prompt");
 
 		// Test setModel
-		const newModel = getModel("google", "gemini-2.5-flash");
+		const newModel = pickModel("google");
 		agent.state.model = newModel;
 		expect(agent.state.model).toBe(newModel);
 
@@ -464,6 +465,34 @@ describe("Agent", () => {
 		const recentMessages = agent.state.messages.slice(-4);
 		expect(recentMessages.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
 		expect(responseCount).toBe(2);
+	});
+
+	it("continue() is a no-op when the transcript ends on assistant with empty queues", async () => {
+		// Regression: AgentSession._runAgentPrompt and the post-compaction resume
+		// path both call agent.continue() inside a post-run loop guarded by
+		// hasQueuedMessages(). When the queued work was already drained between the
+		// probe and this call (e.g. pi-goal continuation messages delivered via
+		// sendMessage(triggerTurn)), continue() used to throw
+		// "Cannot continue from message role: assistant". That throw was swallowed
+		// to runtime-errors.log and stalled goal auto-continuation. It must now be a
+		// graceful no-op so the caller's loop exits cleanly.
+		const agent = new Agent({
+			streamFn: () => {
+				throw new Error("streamFn should not run for an empty continue()");
+			},
+		});
+
+		agent.state.messages = [
+			{
+				role: "user",
+				content: [{ type: "text", text: "Initial" }],
+				timestamp: Date.now() - 10,
+			},
+			createAssistantMessage("Initial response"),
+		];
+
+		await expect(agent.continue()).resolves.toBeUndefined();
+		expect(agent.state.messages[agent.state.messages.length - 1].role).toBe("assistant");
 	});
 
 	it("forwards sessionId to streamFn options", async () => {

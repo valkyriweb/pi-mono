@@ -378,7 +378,16 @@ export class Agent {
 				return;
 			}
 
-			throw new Error("Cannot continue from message role: assistant");
+			// Nothing to continue from: the transcript ends on an assistant message
+			// and both queues are empty. Callers reach here from post-run loops
+			// (AgentSession._runAgentPrompt and the post-compaction resume) that
+			// gate on hasQueuedMessages(), but the queued work can be drained between
+			// that probe and this call (e.g. pi-goal continuation messages delivered
+			// via sendMessage({ triggerTurn: true })). Throwing here crashed the
+			// runtime; the error was swallowed to runtime-errors.log and stalled goal
+			// auto-continuation. Treat it as a benign no-op instead: the turn already
+			// ran, and the caller's loop exits once _lastAssistantMessage is consumed.
+			return;
 		}
 
 		await this.runContinuation();
