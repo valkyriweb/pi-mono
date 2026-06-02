@@ -306,6 +306,28 @@ function formatRunStats(run: AgentRunDetails): string {
 		.join(" · ");
 }
 
+function formatModelLabel(model: { provider: string; id: string } | Model<Api> | undefined): string | undefined {
+	return model ? `${model.provider}/${model.id}` : undefined;
+}
+
+function formatCallModelLabel(reference: string | undefined, parentModel: Model<Api> | undefined): string | undefined {
+	if (!reference || reference === "inherit") return formatModelLabel(parentModel);
+	return reference;
+}
+
+function formatCompactAgentMetadata(parts: { model?: string; thinking?: ThinkingLevel }[]): string {
+	const models = [...new Set(parts.map((part) => part.model).filter((model): model is string => Boolean(model)))];
+	const thinkingLevels = [
+		...new Set(parts.map((part) => part.thinking ?? "off").filter((level): level is ThinkingLevel => Boolean(level))),
+	];
+	return [
+		models.length > 0 ? `model ${models.join(", ")}` : undefined,
+		thinkingLevels.length > 0 ? `thinking ${thinkingLevels.join(", ")}` : undefined,
+	]
+		.filter((part): part is string => Boolean(part))
+		.join(" · ");
+}
+
 function previewText(text: string, maxLength = 120): string {
 	const compact = text.replace(/\s+/g, " ").trim();
 	return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
@@ -341,7 +363,8 @@ function summarizeRuns(runs: AgentRunDetails[]): string {
 				.join(" · ");
 			const refSuffix = refs ? ` · ${refs}` : "";
 			const status = run.status === "running" ? "running" : run.status;
-			return `${branch} ${label} · ${status} · ${formatRunStats(run)}${refSuffix}\n${indent}⎿  ${formatToolActivity(run)}`;
+			const metadata = formatCompactAgentMetadata([{ model: formatModelLabel(run.model), thinking: run.thinking }]);
+			return `${branch} ${label} · ${status}${metadata ? ` · ${metadata}` : ""} · ${formatRunStats(run)}${refSuffix}\n${indent}⎿  ${formatToolActivity(run)}`;
 		})
 		.join("\n");
 }
@@ -349,7 +372,7 @@ function summarizeRuns(runs: AgentRunDetails[]): string {
 function formatExpandedRun(run: AgentRunDetails, index: number): string {
 	const lines = [
 		`${index + 1}. ${run.agent}: ${run.status}`,
-		`   model: ${run.model ? `${run.model.provider}/${run.model.id}` : "inherit"} · thinking: ${run.thinking ?? "off"}`,
+		`   model: ${formatModelLabel(run.model) ?? "inherit"} · thinking: ${run.thinking ?? "off"}`,
 		`   tools: ${run.toolCallCount} · messages: ${run.messageCount} · duration: ${formatAgentDurationMs(run.durationMs)}${formatUsage(run) ? ` · ${formatUsage(run)}` : ""}`,
 	];
 	if (run.currentToolName)
@@ -591,8 +614,16 @@ export function createAgentToolDefinition(
 					detail = `${normalizedArgs.action}${normalizedArgs.runId ? `: ${normalizedArgs.runId}` : ""}`;
 				} else {
 					const mode = normalizeAgentToolMode(normalizedArgs);
+					const parentModel = options?.getParentModel?.();
+					const parentThinking = options?.getParentThinkingLevel?.() ?? "off";
 					const names = mode.tasks.map((task) => task.agent).join(", ");
-					detail = `${mode.mode}${normalizedArgs.background ? " background" : ""}: ${names}`;
+					const metadata = formatCompactAgentMetadata(
+						mode.tasks.map((task) => ({
+							model: formatCallModelLabel(task.model ?? normalizedArgs.model, parentModel),
+							thinking: task.thinking ?? normalizedArgs.thinking ?? parentThinking,
+						})),
+					);
+					detail = `${mode.mode}${normalizedArgs.background ? " background" : ""}: ${names}${metadata ? ` · ${metadata}` : ""}`;
 				}
 			} catch (e) {
 				detail = e instanceof Error ? e.message : "invalid mode";
