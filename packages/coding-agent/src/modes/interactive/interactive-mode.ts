@@ -93,7 +93,6 @@ import { DefaultPackageManager } from "../../core/package-manager.ts";
 import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "../../core/provider-display-names.ts";
 import type { ResourceDiagnostic } from "../../core/resource-loader.ts";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.ts";
-import { SessionLiveness } from "../../core/session-liveness.ts";
 import { type SessionContext, SessionManager } from "../../core/session-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
@@ -627,11 +626,6 @@ export class InteractiveMode {
 		if (this.isInitialized) return;
 
 		this.registerSignalHandlers();
-
-		// Advertise which session file this process has open so other pi instances'
-		// resume pickers can show it as active. Path is read lazily each heartbeat,
-		// covering lazily-created and switched sessions.
-		this.sessionLiveness.start(() => this.sessionManager.getSessionFile());
 
 		// Load changelog (only show new entries, skip for resumed sessions)
 		this.changelogMarkdown = this.getChangelogForDisplay();
@@ -3473,13 +3467,11 @@ export class InteractiveMode {
 	 * repaint the final frame while the process is exiting.
 	 */
 	private isShuttingDown = false;
-	private sessionLiveness = new SessionLiveness();
 
 	private async shutdown(options?: { fromSignal?: boolean }): Promise<void> {
 		if (this.isShuttingDown) return;
 		this.isShuttingDown = true;
 		this.unregisterSignalHandlers();
-		this.sessionLiveness.stop();
 
 		if (options?.fromSignal) {
 			// Signal-triggered shutdown (SIGTERM/SIGHUP). Emit extension cleanup
@@ -3516,7 +3508,6 @@ export class InteractiveMode {
 	private emergencyTerminalExit(): never {
 		this.isShuttingDown = true;
 		this.unregisterSignalHandlers();
-		this.sessionLiveness.stop();
 		killTrackedDetachedChildren();
 		// The terminal is gone. Do not run normal shutdown because TUI and
 		// extension cleanup can write restore sequences and re-trigger EIO.
@@ -4865,9 +4856,6 @@ export class InteractiveMode {
 				return result;
 			}
 			this.renderCurrentSessionState();
-			// Move the liveness marker to the newly opened session immediately rather
-			// than waiting for the next heartbeat tick.
-			this.sessionLiveness.sync();
 			this.showStatus("Resumed session");
 			return result;
 		} catch (error: unknown) {
@@ -4885,7 +4873,6 @@ export class InteractiveMode {
 					return result;
 				}
 				this.renderCurrentSessionState();
-				this.sessionLiveness.sync();
 				this.showStatus("Resumed session in current cwd");
 				return result;
 			}

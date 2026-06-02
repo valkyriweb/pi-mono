@@ -2,14 +2,9 @@
 
 ## [Unreleased]
 
-### Added
-
-- Session picker badges sessions that are open in another live pi process, backed by a `session-liveness` probe.
-
 ### Fixed
 
 - Agent tool call and collapsed result rendering now show provider/model and thinking metadata.
-- Stubbed `sessionLiveness` in the #5080 shutdown ordering regression test so its mock matches `shutdown()` now calling `this.sessionLiveness.stop()`.
 - Reset the footer assistant turn count after compaction by rendering it from the same post-compaction transcript window as token/cache totals.
 - Replaced a negated-OR null guard with optional chaining (`!adapter?.kill`) in `core/tools/background-tasks.ts`. Behavior-preserving.
 - Surface agent-view module load failures instead of silently reporting the package as not installed.
