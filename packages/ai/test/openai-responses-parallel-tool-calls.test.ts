@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getModel } from "../src/models.ts";
 import { streamSimple } from "../src/stream.ts";
 import type { Tool } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
 const mockState = vi.hoisted(() => ({
 	lastParams: undefined as unknown,
@@ -49,7 +49,7 @@ describe("openai responses parallel tool calls", () => {
 	});
 
 	it("enables parallel_tool_calls when tools are present", async () => {
-		const model = getModel("openai", "gpt-4o-mini")!;
+		const model = pickModel("openai");
 		const tools: Tool[] = [
 			{
 				name: "ping",
@@ -73,7 +73,7 @@ describe("openai responses parallel tool calls", () => {
 	});
 
 	it("omits parallel_tool_calls when no tools are present", async () => {
-		const model = getModel("openai", "gpt-4o-mini")!;
+		const model = pickModel("openai");
 
 		await streamSimple(
 			model,

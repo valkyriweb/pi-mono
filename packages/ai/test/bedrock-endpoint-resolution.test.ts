@@ -44,9 +44,9 @@ vi.mock("@aws-sdk/client-bedrock-runtime", () => {
 	};
 });
 
-import { getModel } from "../src/models.ts";
 import { streamBedrock } from "../src/providers/amazon-bedrock.ts";
 import type { Context, Model } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
 const context: Context = {
 	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
@@ -91,14 +91,14 @@ async function captureClientConfig(model: Model<"bedrock-converse-stream">): Pro
 
 describe("bedrock endpoint resolution", () => {
 	it("assigns eu-central-1 runtime URLs to built-in EU inference profiles", () => {
-		const model = getModel("amazon-bedrock", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0");
+		const model = pickModel("amazon-bedrock", (m) => m.id.startsWith("eu."));
 
 		expect(model.baseUrl).toBe("https://bedrock-runtime.eu-central-1.amazonaws.com");
 	});
 
 	it("does not pin standard AWS endpoints when AWS_REGION is configured", async () => {
 		process.env.AWS_REGION = "us-east-2";
-		const model = getModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
+		const model = pickModel("amazon-bedrock", (m) => m.id.startsWith("us."));
 
 		const config = await captureClientConfig(model);
 
@@ -107,7 +107,7 @@ describe("bedrock endpoint resolution", () => {
 	});
 
 	it("derives region from a built-in EU endpoint when no region or profile is configured", async () => {
-		const model = getModel("amazon-bedrock", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0");
+		const model = pickModel("amazon-bedrock", (m) => m.id.startsWith("eu."));
 
 		const config = await captureClientConfig(model);
 
@@ -117,7 +117,7 @@ describe("bedrock endpoint resolution", () => {
 
 	it("still passes custom Bedrock endpoints through to the SDK client", async () => {
 		process.env.AWS_REGION = "us-west-2";
-		const baseModel = getModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
+		const baseModel = pickModel("amazon-bedrock", (m) => m.id.startsWith("us."));
 		const model: Model<"bedrock-converse-stream"> = {
 			...baseModel,
 			baseUrl: "https://bedrock-vpc.example.com",

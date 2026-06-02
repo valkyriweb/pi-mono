@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { getModel } from "../src/models.ts";
 import { streamAnthropic } from "../src/providers/anthropic.ts";
 import type { Tool } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
 function sse(event: string, data: unknown): string {
 	return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -35,7 +35,7 @@ function createAnthropicResponse(): Response {
 
 describe("anthropic parallel tool use", () => {
 	it("explicitly leaves parallel tool use enabled for Anthropic-compatible Pi paths", async () => {
-		const baseModel = getModel("anthropic", "claude-sonnet-4-6")!;
+		const baseModel = pickModel("anthropic");
 		const model = { ...baseModel, provider: "claude-bridge" as const };
 		const tools: Tool[] = [
 			{
@@ -73,7 +73,7 @@ describe("anthropic parallel tool use", () => {
 	});
 
 	it("preserves explicit toolChoice overrides", async () => {
-		const baseModel = getModel("anthropic", "claude-sonnet-4-6")!;
+		const baseModel = pickModel("anthropic");
 		const model = { ...baseModel, provider: "claude-bridge" as const };
 		const tools: Tool[] = [
 			{

@@ -45,11 +45,11 @@ vi.mock("@google/genai", () => {
 	};
 });
 
-import { getModel } from "../src/models.ts";
 import { streamGoogleVertex } from "../src/providers/google-vertex.ts";
 import type { Context, Model } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
-const model = getModel("google-vertex", "gemini-3-flash-preview");
+const model = pickModel("google-vertex");
 const context: Context = {
 	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
 };

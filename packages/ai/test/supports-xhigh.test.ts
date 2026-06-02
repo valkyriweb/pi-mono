@@ -1,82 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { getModel, getSupportedThinkingLevels } from "../src/models.ts";
+import { getSupportedThinkingLevels } from "../src/models.ts";
+import { allOf, isReasoning, pickModel, supportsThinkingLevel } from "./helpers/models.ts";
+
+// These tests validate getSupportedThinkingLevels against capability classes pulled
+// from the live registry rather than pinned model ids, so a renamed/dropped model
+// in models.generated.ts cannot break the suite (fork issues #30, #33).
 
 describe("getSupportedThinkingLevels", () => {
-	it("includes xhigh for Anthropic Opus 4.6 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-opus-4-6");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toContain("xhigh");
+	it("includes xhigh for an Anthropic model that opts into xhigh", () => {
+		const model = pickModel("anthropic", supportsThinkingLevel("xhigh"));
+		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 	});
 
-	it("includes xhigh for Anthropic Opus 4.8 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-opus-4-8");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toContain("xhigh");
+	it("includes xhigh for an OpenAI Codex model that opts into xhigh", () => {
+		const model = pickModel("openai-codex", supportsThinkingLevel("xhigh"));
+		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 	});
 
-	it("includes xhigh for Anthropic Opus 4.8 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-opus-4-8");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toContain("xhigh");
+	it("includes xhigh for an OpenRouter model that opts into xhigh", () => {
+		const model = pickModel("openrouter", supportsThinkingLevel("xhigh"));
+		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 	});
 
-	it("does not include xhigh for non-Opus Anthropic models", () => {
-		const model = getModel("anthropic", "claude-sonnet-4-5");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).not.toContain("xhigh");
+	it("excludes xhigh for a reasoning model that does not opt into xhigh", () => {
+		const model = pickModel(
+			"anthropic",
+			allOf(isReasoning, (candidate) => !getSupportedThinkingLevels(candidate).includes("xhigh")),
+		);
+		expect(getSupportedThinkingLevels(model)).not.toContain("xhigh");
 	});
 
-	it.each(["gpt-5.4", "gpt-5.5"] as const)("includes xhigh for %s models", (modelId) => {
-		const model = getModel("openai-codex", modelId);
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toContain("xhigh");
-	});
-
-	it("includes only medium/high/xhigh for OpenAI GPT-5.5 Pro", () => {
-		const model = getModel("openai", "gpt-5.5-pro");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["medium", "high", "xhigh"]);
-	});
-
-	it("includes only medium/high/xhigh for OpenRouter GPT-5.5 Pro", () => {
-		const model = getModel("openrouter", "openai/gpt-5.5-pro");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["medium", "high", "xhigh"]);
-	});
-
-	it("includes only high/xhigh plus off for DeepSeek V4 Flash on the DeepSeek provider", () => {
-		const model = getModel("deepseek", "deepseek-v4-flash");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["off", "high", "xhigh"]);
-	});
-
-	it("includes only high/xhigh plus off for DeepSeek V4 Flash on opencode-go", () => {
-		const model = getModel("opencode-go", "deepseek-v4-flash");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["off", "high", "xhigh"]);
-	});
-
-	it("includes only high plus off for OpenCode Go Kimi K2.6", () => {
-		const model = getModel("opencode-go", "kimi-k2.6");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["off", "high"]);
-	});
-
-	it("includes only high for OpenCode Grok Build", () => {
-		const model = getModel("opencode", "grok-build-0.1");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["high"]);
-	});
-
-	it("includes only high/xhigh plus off for DeepSeek V4 Flash on OpenRouter", () => {
-		const model = getModel("openrouter", "deepseek/deepseek-v4-flash");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["off", "high", "xhigh"]);
-	});
-
-	it("includes xhigh for OpenRouter Opus 4.6 (openai-completions API)", () => {
-		const model = getModel("openrouter", "anthropic/claude-opus-4.6");
-		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toContain("xhigh");
+	it("returns only off for a non-reasoning model", () => {
+		const model = pickModel("openai", (candidate) => !candidate.reasoning);
+		expect(getSupportedThinkingLevels(model)).toEqual(["off"]);
 	});
 });

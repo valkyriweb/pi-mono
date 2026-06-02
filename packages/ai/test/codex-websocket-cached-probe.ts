@@ -10,7 +10,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Type } from "typebox";
 import { AuthStorage } from "../../coding-agent/src/core/auth-storage.ts";
-import { getModel } from "../src/models.ts";
 import {
 	closeOpenAICodexWebSocketSessions,
 	getOpenAICodexWebSocketDebugStats,
@@ -18,6 +17,7 @@ import {
 	streamOpenAICodexResponses,
 } from "../src/providers/openai-codex-responses.ts";
 import type { AssistantMessage, Context, Message, Model, Tool, ToolResultMessage, Transport } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
 type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -156,8 +156,7 @@ function percentile(values: number[], p: number): number {
 
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv.slice(2));
-	const model = getModel("openai-codex", "gpt-5.5") as Model<"openai-codex-responses"> | undefined;
-	if (!model) throw new Error("Model openai-codex/gpt-5.5 not found");
+	const model = pickModel("openai-codex") as Model<"openai-codex-responses">;
 	const modelWithMaxTokens = { ...model, maxTokens: args.maxTokens };
 	const authStorage = AuthStorage.create();
 	const apiKey = (await authStorage.getApiKey("openai-codex")) ?? (await authStorage.getApiKey("openai"));

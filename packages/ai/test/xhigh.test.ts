@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getModel } from "../src/models.ts";
 import { stream } from "../src/stream.ts";
 import type { Context, Model } from "../src/types.ts";
+import { allOf, isReasoning, pickModel, supportsThinkingLevel } from "./helpers/models.ts";
+
+const noXhigh = allOf(isReasoning, (model) => !supportsThinkingLevel("xhigh")(model));
 
 function makeContext(): Context {
 	return {
@@ -19,7 +21,7 @@ describe.skipIf(!process.env.OPENAI_API_KEY)("xhigh reasoning", () => {
 	describe("codex-max (supports xhigh)", () => {
 		// Note: codex models only support the responses API, not chat completions
 		it("should work with openai-responses", async () => {
-			const model = getModel("openai", "gpt-5.1-codex-max");
+			const model = pickModel("openai", supportsThinkingLevel("xhigh"));
 			const s = stream(model, makeContext(), { reasoningEffort: "xhigh" });
 			let hasThinking = false;
 
@@ -38,7 +40,7 @@ describe.skipIf(!process.env.OPENAI_API_KEY)("xhigh reasoning", () => {
 
 	describe("gpt-5-mini (does not support xhigh)", () => {
 		it("should error with openai-responses when using xhigh", async () => {
-			const model = getModel("openai", "gpt-5-mini");
+			const model = pickModel("openai", noXhigh);
 			const s = stream(model, makeContext(), { reasoningEffort: "xhigh" });
 
 			for await (const _ of s) {
@@ -51,7 +53,7 @@ describe.skipIf(!process.env.OPENAI_API_KEY)("xhigh reasoning", () => {
 		});
 
 		it("should error with openai-completions when using xhigh", async () => {
-			const { compat: _compat, ...baseModel } = getModel("openai", "gpt-5-mini");
+			const { compat: _compat, ...baseModel } = pickModel("openai", noXhigh);
 			void _compat;
 			const model: Model<"openai-completions"> = {
 				...baseModel,
