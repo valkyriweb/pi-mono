@@ -74,7 +74,10 @@ describe("ToolExecutionComponent parity", () => {
 			"tool-agent-1",
 			{ agent: "explore", task: "Find files" },
 			{},
-			createAgentToolDefinition(process.cwd()),
+			createAgentToolDefinition(process.cwd(), {
+				getParentModel: () => ({ provider: "claude-bridge", id: "claude-opus-4-8" }) as any,
+				getParentThinkingLevel: () => "high",
+			}),
 			createFakeTui(),
 			process.cwd(),
 		);
@@ -82,6 +85,8 @@ describe("ToolExecutionComponent parity", () => {
 		// Tool label is capitalized in the TUI ("Agent") while the underlying tool id stays lowercase.
 		expect(rendered).toContain("Agent");
 		expect(rendered).toContain("single: explore");
+		expect(rendered).toContain("model claude-bridge/claude-opus-4-8");
+		expect(rendered).toContain("thinking high");
 
 		component.updateResult(
 			{

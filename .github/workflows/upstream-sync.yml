@@ -113,10 +113,12 @@ jobs:
             # Reset to fork main and add an empty marker commit so GitHub can open a draft PR.
             git checkout -B "${BRANCH}" "origin/${FORK_BRANCH}"
             git commit --allow-empty -m "chore: mark upstream sync conflicts"
-            echo "draft=true" >> "$GITHUB_OUTPUT"
-            echo "conflicts<<EOF" >> "$GITHUB_OUTPUT"
-            echo "${CONFLICTS}" >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
+            {
+              echo "draft=true"
+              echo "conflicts<<EOF"
+              echo "${CONFLICTS}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
           fi
 
           git push origin "${BRANCH}" --force-with-lease

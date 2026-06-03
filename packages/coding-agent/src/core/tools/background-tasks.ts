@@ -129,7 +129,7 @@ export function createTaskStopToolDefinition(): ToolDefinition<typeof taskStopSc
 				return { content: [{ type: "text", text: "TaskStop requires task_id." }], details: undefined };
 			}
 			const adapter = findTaskAdapter(id);
-			if (!adapter || !adapter.kill) {
+			if (!adapter?.kill) {
 				return {
 					content: [{ type: "text", text: `No stoppable background task with task_id=${id}.` }],
 					details: undefined,

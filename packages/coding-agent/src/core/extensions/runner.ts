@@ -328,6 +328,7 @@ export class ExtensionRunner {
 		this.runtime.getToolDefinitions = actions.getToolDefinitions;
 		this.runtime.getCustomEntries = actions.getCustomEntries;
 		this.runtime.setActiveTools = actions.setActiveTools;
+		this.runtime.setDeferredOverrides = actions.setDeferredOverrides;
 		this.runtime.refreshTools = actions.refreshTools;
 		this.runtime.getCommands = actions.getCommands;
 		this.runtime.setModel = actions.setModel;

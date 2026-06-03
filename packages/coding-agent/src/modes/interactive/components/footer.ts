@@ -42,6 +42,14 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
 }
 
+interface UsageSnapshot {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: { total: number };
+}
+
 interface UsageTotals {
 	totalInput: number;
 	totalOutput: number;
@@ -49,6 +57,7 @@ interface UsageTotals {
 	totalCacheWrite: number;
 	totalCost: number;
 	assistantTurns: number;
+	lastUsage?: UsageSnapshot;
 }
 
 /**
@@ -69,6 +78,11 @@ export class FooterComponent implements Component {
 		assistantTurns: 0,
 	};
 	private selectedExtensionFooterId: string | undefined = undefined;
+	// Wall-clock anchor for the streaming work-bar. Set on the first render where
+	// the session is streaming, cleared the moment it stops. The streaming Loader
+	// (statusContainer) ticks requestRender every 80ms, so the elapsed timer and
+	// pulse below animate for free while a turn is in flight, and stay idle after.
+	private streamingStartedAt: number | undefined = undefined;
 
 	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
 		this.session = session;
@@ -131,15 +145,7 @@ export class FooterComponent implements Component {
 
 	private getUsageTotals(): UsageTotals {
 		const entries = this.getUsageEntries();
-		let lastUsage:
-			| {
-					input: number;
-					output: number;
-					cacheRead: number;
-					cacheWrite: number;
-					cost: { total: number };
-			  }
-			| undefined;
+		let lastUsage: UsageSnapshot | undefined;
 		for (let i = entries.length - 1; i >= 0; i--) {
 			const entry = entries[i];
 			if (entry?.type === "message" && entry.message.role === "assistant") {
@@ -171,6 +177,7 @@ export class FooterComponent implements Component {
 			totalCacheWrite: 0,
 			totalCost: 0,
 			assistantTurns: 0,
+			lastUsage,
 		};
 
 		const startIndex =
@@ -193,8 +200,24 @@ export class FooterComponent implements Component {
 
 	render(width: number): string[] {
 		const state = this.session.state;
-		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, assistantTurns } =
+		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, assistantTurns, lastUsage } =
 			this.getUsageTotals();
+
+		// Live work-bar: while a turn streams, the bottom statusline gets a pulsing
+		// dot + elapsed timer on the left and an "esc to interrupt" hint on the
+		// right — the Claude-Code-style liveness pi's footer otherwise lacks
+		// (pi's spinner lives above the editor, not here). Purely additive: nothing
+		// renders when idle.
+		const streaming = this.session.isStreaming === true;
+		if (streaming) {
+			this.streamingStartedAt ??= Date.now();
+		} else {
+			this.streamingStartedAt = undefined;
+		}
+		const elapsedMs = streaming && this.streamingStartedAt !== undefined ? Date.now() - this.streamingStartedAt : 0;
+		const elapsedSec = Math.floor(elapsedMs / 1000);
+		// Gentle ~0.6s pulse — alive without competing with the top spinner.
+		const pulse = Math.floor(elapsedMs / 600) % 2 === 0 ? "●" : "○";
 
 		const contextUsage = this.session.getContextUsage();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
@@ -227,19 +250,27 @@ export class FooterComponent implements Component {
 
 		// ── Line 2: token stats · context% ··············· model · thinking ───────
 		const leftParts: string[] = [];
+		if (streaming) leftParts.push(theme.fg("accent", `${pulse} ${elapsedSec}s`));
 		if (totalInput) leftParts.push(theme.fg("dim", `↑${formatTokens(totalInput)}`));
 		if (totalOutput) leftParts.push(theme.fg("dim", `↓${formatTokens(totalOutput)}`));
 		if (totalCacheRead) leftParts.push(theme.fg("dim", `R${formatTokens(totalCacheRead)}`));
 		if (totalCacheWrite) leftParts.push(theme.fg("dim", `W${formatTokens(totalCacheWrite)}`));
 		// Provider usage is normalized into non-cached input, cache reads, and
-		// cache writes. Claude-style providers report both read/write; OpenAI/Codex
-		// reports cached input as cacheRead and normally has no cacheWrite. In both
-		// cases the comparable hit-rate denominator is the cacheable prompt work the
-		// provider reported for the active branch only.
-		const cacheDenom = totalInput + totalCacheRead + totalCacheWrite;
-		if (cacheDenom > 0 && (totalCacheRead || totalCacheWrite)) {
-			const hitPct = (totalCacheRead / cacheDenom) * 100;
-			const label = `cache ${hitPct.toFixed(0)}%`;
+		// cache writes. Show cache warmth for the latest turn, not cumulative
+		// session totals: a two-turn Codex session has one cold turn + one warm turn,
+		// so cumulative math misleadingly displays 50% even when turn 2 is fully warm.
+		const latestCacheRead = lastUsage?.cacheRead ?? 0;
+		const latestCacheWrite = lastUsage?.cacheWrite ?? 0;
+		const latestInput = lastUsage?.input ?? 0;
+		const cacheDenom = latestInput + latestCacheRead + latestCacheWrite;
+		if (cacheDenom > 0) {
+			const hitPct = (latestCacheRead / cacheDenom) * 100;
+			const totalCacheDenom = totalInput + totalCacheRead + totalCacheWrite;
+			const avgPct = totalCacheDenom > 0 ? (totalCacheRead / totalCacheDenom) * 100 : undefined;
+			const label =
+				avgPct === undefined
+					? `cache ${hitPct.toFixed(0)}%`
+					: `cache ${hitPct.toFixed(0)}% avg ${avgPct.toFixed(0)}%`;
 			// Past the warmup window (≥10 assistant turns) the prefix should be
 			// steady-state cached. <90% means real drift; <80% means something is
 			// mutating the cached prefix every turn. Under 10 turns we keep the
@@ -289,7 +320,9 @@ export class FooterComponent implements Component {
 
 		// Right side: model (warm yellow) · thinking level (teal)
 		const modelName = state.model?.id || "no-model";
-		const rightParts: string[] = [theme.fg("syntaxFunction", modelName)];
+		const rightParts: string[] = [];
+		if (streaming) rightParts.push(theme.fg("dim", "esc to interrupt"));
+		rightParts.push(theme.fg("syntaxFunction", modelName));
 		if (state.model?.reasoning) {
 			const thinkingLevel = state.thinkingLevel || "off";
 			rightParts.push(thinkingLevel === "off" ? theme.fg("dim", "thinking off") : theme.fg("accent", thinkingLevel));

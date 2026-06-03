@@ -68,6 +68,7 @@ describe("pi-observability tracer (issue 09)", () => {
 		getToolDefinitions: () => [],
 		getCustomEntries: () => [],
 		setActiveTools: () => {},
+		setDeferredOverrides: () => {},
 		refreshTools: () => {},
 		getCommands: () => [],
 		setModel: async () => false,
