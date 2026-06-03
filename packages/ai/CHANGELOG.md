@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `buildBaseOptions` (shared by every provider's `streamSimple` entry) hand-enumerates which `SimpleStreamOptions` fields propagate into the provider request and was omitting `cacheAffinityKey`. The caller (coding-agent `streamFn`) computed and passed a stable affinity key, but it was dropped one hop before the provider, so Codex/OpenAI derived `prompt_cache_key` from `sessionId` instead of the prefix shape — defeating cross-session prompt-cache sharing. Now forwarded; same-prefix sessions share one `prompt_cache_key`.
+
 ## 0.78.2
 
 ### Patch Changes
