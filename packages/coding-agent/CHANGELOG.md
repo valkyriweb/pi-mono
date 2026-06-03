@@ -4,6 +4,7 @@
 
 ### Added
 
+- Footer streaming work-bar: while a turn streams, the bottom statusline shows a pulsing dot + elapsed timer (left) and an `esc to interrupt` hint (right). Purely additive — nothing renders when idle; animated by the existing 80ms streaming `Loader` tick.
 - Session picker badges sessions that are open in another live pi process, backed by a `session-liveness` probe.
 
 ### Fixed
