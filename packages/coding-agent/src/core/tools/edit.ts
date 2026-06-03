@@ -368,6 +368,7 @@ export function createEditToolDefinition(
 			"Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
 			"Keep edits[].oldText as small as possible while still being unique in the file. Prefer the shortest stable surrounding lines over large copied blocks.",
 			"If edit reports that oldText was not found, read the target region and retry with exact current text; do not repeat the same oldText.",
+			"After edit succeeds, do not re-read the file to confirm the change landed — edit returns an error if it failed. Re-read only when you need the updated content for a later change.",
 		],
 		executionMode: "sequential",
 		parameters: editSchema,
