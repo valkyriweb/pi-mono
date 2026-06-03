@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@valkyriweb/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { pickModel } from "./helpers/models.ts";
 
 describe("createAgentSession session manager defaults", () => {
 	let tempDir: string;
@@ -26,7 +26,7 @@ describe("createAgentSession session manager defaults", () => {
 	});
 
 	it("uses agentDir for the default persisted session path", async () => {
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = pickModel("anthropic");
 		expect(model).toBeTruthy();
 
 		const { session } = await createAgentSession({
@@ -47,7 +47,7 @@ describe("createAgentSession session manager defaults", () => {
 	});
 
 	it("keeps an explicit sessionManager override", async () => {
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = pickModel("anthropic");
 		expect(model).toBeTruthy();
 
 		const sessionManager = SessionManager.inMemory(cwd);
@@ -65,7 +65,7 @@ describe("createAgentSession session manager defaults", () => {
 	});
 
 	it("derives cwd from an explicit sessionManager when cwd is omitted", async () => {
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = pickModel("anthropic");
 		expect(model).toBeTruthy();
 
 		const sessionCwd = join(tempDir, "session-project");

@@ -16,7 +16,6 @@ import {
 	type AssistantMessage,
 	type AssistantMessageEventStream,
 	type Context,
-	getModel,
 	type Model,
 	type SimpleStreamOptions,
 	Type,
@@ -34,6 +33,7 @@ import type { ResourceLoader } from "../src/core/resource-loader.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { pickModel } from "./helpers/models.ts";
 
 type Transport = "sse" | "websocket" | "websocket-cached" | "auto";
 
@@ -286,10 +286,7 @@ async function main(): Promise<void> {
 	const authStorage = AuthStorage.create();
 	const modelRegistry = ModelRegistry.create(authStorage);
 
-	const model = getModel("openai-codex", "gpt-5.5");
-	if (!model) {
-		throw new Error("Model openai-codex/gpt-5.5 not found");
-	}
+	const model = pickModel("openai-codex");
 	const baseModel = { ...model, maxTokens: args.maxTokens };
 	const streamSimpleOpenAICodexResponsesForRegistry = (
 		registryModel: Model<Api>,

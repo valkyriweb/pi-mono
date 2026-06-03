@@ -40,10 +40,10 @@ function isIgnored(path) {
 }
 
 function requiredChangelog(path) {
+	if (isIgnored(path)) return undefined;
 	const packageMatch = /^packages\/([^/]+)\//.exec(path);
 	if (packageMatch) return `packages/${packageMatch[1]}/CHANGELOG.md`;
-	if (!isIgnored(path)) return "FORK-CHANGELOG.md";
-	return undefined;
+	return "FORK-CHANGELOG.md";
 }
 
 const files = changedFiles();

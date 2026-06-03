@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getModel } from "../src/models.ts";
 import { streamAzureOpenAIResponses } from "../src/providers/azure-openai-responses.ts";
 import type { Context } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
 interface CapturedAzureClientOptions {
 	apiKey: string;
@@ -83,7 +83,7 @@ afterEach(() => {
 
 async function captureClientBaseUrl(baseUrl: string): Promise<string> {
 	process.env.AZURE_OPENAI_BASE_URL = baseUrl;
-	const model = getModel("azure-openai-responses", "gpt-4o-mini");
+	const model = pickModel("azure-openai-responses");
 	await streamAzureOpenAIResponses(model, context, { apiKey: "test-api-key" }).result();
 	expect(azureMock.constructorCalls).toHaveLength(1);
 	return azureMock.constructorCalls[0].baseURL;
@@ -127,14 +127,14 @@ describe("azure-openai-responses base URL normalization", () => {
 
 	it("throws on invalid URLs", async () => {
 		process.env.AZURE_OPENAI_BASE_URL = "not-a-url";
-		const model = getModel("azure-openai-responses", "gpt-4o-mini");
+		const model = pickModel("azure-openai-responses");
 		const result = await streamAzureOpenAIResponses(model, context, { apiKey: "test-api-key" }).result();
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toContain("Invalid Azure OpenAI base URL");
 	});
 
 	it("clamps prompt_cache_key to OpenAI's 64-character limit", async () => {
-		const model = getModel("azure-openai-responses", "gpt-4o-mini");
+		const model = pickModel("azure-openai-responses");
 		await streamAzureOpenAIResponses(model, context, {
 			apiKey: "test-api-key",
 			azureBaseUrl: "https://my-resource.openai.azure.com",
@@ -146,7 +146,7 @@ describe("azure-openai-responses base URL normalization", () => {
 
 	it("builds correct default URL from AZURE_OPENAI_RESOURCE_NAME", async () => {
 		process.env.AZURE_OPENAI_RESOURCE_NAME = "my-resource";
-		const model = getModel("azure-openai-responses", "gpt-4o-mini");
+		const model = pickModel("azure-openai-responses");
 		await streamAzureOpenAIResponses(model, context, { apiKey: "test-api-key" }).result();
 		expect(azureMock.constructorCalls).toHaveLength(1);
 		expect(azureMock.constructorCalls[0].baseURL).toBe("https://my-resource.openai.azure.com/openai/v1");

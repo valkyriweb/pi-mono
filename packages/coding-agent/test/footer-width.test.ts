@@ -372,10 +372,7 @@ describe("FooterComponent width handling", () => {
 		const idle = new FooterComponent(createSession({ sessionName: "" }), createFooterData(1));
 		expect(idle.render(120).join("\n")).not.toContain("esc to interrupt");
 
-		const streaming = new FooterComponent(
-			createSession({ sessionName: "", isStreaming: true }),
-			createFooterData(1),
-		);
+		const streaming = new FooterComponent(createSession({ sessionName: "", isStreaming: true }), createFooterData(1));
 		const rendered = streaming.render(120).join("\n");
 		expect(rendered).toContain("esc to interrupt");
 		// Elapsed timer + pulse dot present (●/○ depending on sub-second phase).

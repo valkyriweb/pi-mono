@@ -1,7 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getModel } from "../src/models.ts";
+import { getModels } from "../src/models.ts";
 import { streamOpenAIResponses } from "../src/providers/openai-responses.ts";
 import type { Model } from "../src/types.ts";
+import { isReasoning, pickModel, supportsThinkingLevel } from "./helpers/models.ts";
+
+// Capability-derived model selection so dropped/renamed model ids cannot break the
+// suite. Reasoning models that support an "off" thinking level emit reasoning.effort
+// "none"; those that do not omit reasoning entirely.
+const openaiResponsesReasoningModels = getModels("openai").filter(
+	(model) => model.api === "openai-responses" && isReasoning(model),
+);
+const offSupportedReasoningModels = openaiResponsesReasoningModels.filter(supportsThinkingLevel("off"));
+const offUnsupportedReasoningModels = openaiResponsesReasoningModels.filter(
+	(model) => !supportsThinkingLevel("off")(model),
+);
+// The 2.5x priority multiplier is hardcoded for id "gpt-5.5" in openai-responses.ts;
+// every other model gets 2x. Select by id-shape so the test mirrors that source logic.
+const nonGpt55ResponsesModel = pickModel(
+	"openai",
+	(model) => model.api === "openai-responses" && model.id !== "gpt-5.5",
+);
+const gpt55Model = pickModel("openai", (model) => model.id === "gpt-5.5");
 
 type CapturedHeaders = RequestInit["headers"];
 
@@ -24,7 +43,7 @@ function getHeader(headers: CapturedHeaders, name: string): string | null {
 
 async function captureOpenAIResponseHeaders(
 	options: Parameters<typeof streamOpenAIResponses>[2],
-	model: Model<"openai-responses"> = getModel("openai", "gpt-5.4"),
+	model: Model<"openai-responses"> = pickModel("openai", (m) => m.api === "openai-responses"),
 ): Promise<{ sessionId: string | null; clientRequestId: string | null }> {
 	const captured = { sessionId: null as string | null, clientRequestId: null as string | null };
 	vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
@@ -58,7 +77,7 @@ describe("openai-responses provider defaults", () => {
 	});
 
 	it("omits reasoning when no reasoning is requested", async () => {
-		const model = getModel("github-copilot", "gpt-5-mini");
+		const model = pickModel("github-copilot", (m) => m.api === "openai-responses") as Model<"openai-responses">;
 		let capturedPayload: unknown;
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -92,10 +111,9 @@ describe("openai-responses provider defaults", () => {
 		});
 	});
 
-	it.each(["gpt-5.1", "gpt-5.2", "gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.5"] as const)(
-		"sends none reasoning effort for OpenAI %s when no reasoning is requested",
-		async (modelId) => {
-			const model = getModel("openai", modelId);
+	it.each(offSupportedReasoningModels)(
+		"sends none reasoning effort for OpenAI $id when no reasoning is requested",
+		async (model) => {
 			let capturedPayload: unknown;
 
 			vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -129,10 +147,9 @@ describe("openai-responses provider defaults", () => {
 		},
 	);
 
-	it.each(["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro", "gpt-5.2-pro", "gpt-5.4-pro", "gpt-5.5-pro"] as const)(
-		"omits reasoning effort for OpenAI %s when off is unsupported",
-		async (modelId) => {
-			const model = getModel("openai", modelId);
+	it.each(offUnsupportedReasoningModels)(
+		"omits reasoning effort for OpenAI $id when off is unsupported",
+		async (model) => {
 			let capturedPayload: unknown;
 
 			vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -183,7 +200,7 @@ describe("openai-responses provider defaults", () => {
 		);
 
 		const stream = streamOpenAIResponses(
-			getModel("openai", "gpt-5.4"),
+			nonGpt55ResponsesModel,
 			{
 				systemPrompt: "sys",
 				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
@@ -206,7 +223,7 @@ describe("openai-responses provider defaults", () => {
 
 	it("sets cache-affinity headers for proxy OpenAI Responses requests with a sessionId", async () => {
 		const proxyModel: Model<"openai-responses"> = {
-			...getModel("openai", "gpt-5.4"),
+			...nonGpt55ResponsesModel,
 			provider: "opencode",
 			baseUrl: "https://proxy.example.com/v1",
 		};
@@ -217,7 +234,7 @@ describe("openai-responses provider defaults", () => {
 
 	it("can omit the session_id header while preserving other cache-affinity headers", async () => {
 		const proxyModel: Model<"openai-responses"> = {
-			...getModel("openai", "gpt-5.4"),
+			...nonGpt55ResponsesModel,
 			provider: "opencode",
 			baseUrl: "https://proxy.example.com/v1",
 			compat: { sendSessionIdHeader: false },
@@ -246,47 +263,49 @@ describe("openai-responses provider defaults", () => {
 	});
 
 	it.each([
-		["gpt-5.4", "priority", 2],
-		["gpt-5.5", "priority", 2.5],
-		["gpt-5.5", "flex", 0.5],
-	] as const)("applies %s %s service-tier cost multiplier", async (modelId, serviceTier, multiplier) => {
-		const model = getModel("openai", modelId);
-		const sse = `${[
-			`data: ${JSON.stringify({
-				type: "response.completed",
-				response: {
-					status: "completed",
-					service_tier: serviceTier,
-					usage: {
-						input_tokens: 1000000,
-						output_tokens: 1000000,
-						total_tokens: 2000000,
-						input_tokens_details: { cached_tokens: 0 },
+		{ model: nonGpt55ResponsesModel, serviceTier: "priority", multiplier: 2 },
+		{ model: gpt55Model, serviceTier: "priority", multiplier: 2.5 },
+		{ model: gpt55Model, serviceTier: "flex", multiplier: 0.5 },
+	] as const)(
+		"applies $serviceTier service-tier cost multiplier ($multiplier)",
+		async ({ model, serviceTier, multiplier }) => {
+			const sse = `${[
+				`data: ${JSON.stringify({
+					type: "response.completed",
+					response: {
+						status: "completed",
+						service_tier: serviceTier,
+						usage: {
+							input_tokens: 1000000,
+							output_tokens: 1000000,
+							total_tokens: 2000000,
+							input_tokens_details: { cached_tokens: 0 },
+						},
 					},
+				})}`,
+			].join("\n\n")}\n\n`;
+
+			vi.spyOn(globalThis, "fetch").mockResolvedValue(
+				new Response(sse, {
+					status: 200,
+					headers: { "content-type": "text/event-stream" },
+				}),
+			);
+
+			const stream = streamOpenAIResponses(
+				model,
+				{
+					systemPrompt: "sys",
+					messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
 				},
-			})}`,
-		].join("\n\n")}\n\n`;
+				{ apiKey: "test-key", serviceTier },
+			);
 
-		vi.spyOn(globalThis, "fetch").mockResolvedValue(
-			new Response(sse, {
-				status: 200,
-				headers: { "content-type": "text/event-stream" },
-			}),
-		);
+			const result = await stream.result();
 
-		const stream = streamOpenAIResponses(
-			model,
-			{
-				systemPrompt: "sys",
-				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
-			},
-			{ apiKey: "test-key", serviceTier },
-		);
-
-		const result = await stream.result();
-
-		expect(result.usage.cost.input).toBe(model.cost.input * multiplier);
-		expect(result.usage.cost.output).toBe(model.cost.output * multiplier);
-		expect(result.usage.cost.total).toBe((model.cost.input + model.cost.output) * multiplier);
-	});
+			expect(result.usage.cost.input).toBe(model.cost.input * multiplier);
+			expect(result.usage.cost.output).toBe(model.cost.output * multiplier);
+			expect(result.usage.cost.total).toBe((model.cost.input + model.cost.output) * multiplier);
+		},
+	);
 });

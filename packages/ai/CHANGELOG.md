@@ -36,6 +36,10 @@
 
 ### Fixed
 
+- Point the github-copilot integration tests at `gpt-5.5`. GitHub Copilot removed `gpt-4o` from its model list, so the build-time-regenerated registry no longer contains `github-copilot:gpt-4o` and the `tsgo --noEmit` gate failed.
+
+### Fixed
+
 - Anthropic and OpenAI Responses requests now advertise parallel tool-call support when the selected tools can safely run concurrently.
 - `streamAnthropic` now recovers from the Anthropic 400 "thinking/redacted_thinking blocks in the latest assistant message cannot be modified" by retrying once with all thinking blocks stripped from history (Anthropic only validates replayed thinking; fresh thinking is still generated). Previously this permanently wedged sessions across continue/new-prompt/compaction. Happy path untouched (cache-safe).
 - Fixed OpenAI GPT-5.5 generated metadata to omit unsupported minimal thinking ([#5243](https://github.com/earendil-works/pi/issues/5243)).

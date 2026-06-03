@@ -1,9 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/messages.js";
 import { describe, expect, it } from "vitest";
-import { getModel } from "../src/models.ts";
 import { streamAnthropic } from "../src/providers/anthropic.ts";
 import type { Context, ThinkingContent } from "../src/types.ts";
+import { pickModel } from "./helpers/models.ts";
 
 /**
  * Verifies the `pause_turn` resume loop in `streamAnthropic`. The fix is
@@ -172,7 +172,7 @@ function createScriptedAnthropicClient(responses: Response[]): { client: Anthrop
 }
 
 describe("Anthropic pause_turn resume", () => {
-	const model = getModel("anthropic", "claude-sonnet-4-5");
+	const model = pickModel("anthropic");
 	const baseContext: Context = {
 		messages: [
 			{

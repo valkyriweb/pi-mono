@@ -1,14 +1,15 @@
 import { Agent } from "@valkyriweb/pi-agent-core";
-import { type AssistantMessage, getModel, type Usage } from "@valkyriweb/pi-ai";
+import type { AssistantMessage, Usage } from "@valkyriweb/pi-ai";
 import { describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { pickModel } from "./helpers/models.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
-const model = getModel("anthropic", "claude-sonnet-4-5")!;
+const model = pickModel("anthropic");
 
 function createUsage(totalTokens: number): Usage {
 	return {

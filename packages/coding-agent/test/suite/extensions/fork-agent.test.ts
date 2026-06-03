@@ -314,6 +314,9 @@ describe("ctx.forkAgent", () => {
 		const factory = (pi: ExtensionAPI) => {
 			pi.on("before_agent_start", async (_event, ctx) => {
 				const engine: AgentEngine = {
+					snapshot() {
+						throw new Error("snapshot() is not exercised by this fork-override test");
+					},
 					async run() {
 						return { mode: "single", status: "completed", runs: [], background: false };
 					},
