@@ -27,6 +27,7 @@ function createSession(options: {
 	usage?: AssistantUsage;
 	entries?: unknown[];
 	branchEntries?: unknown[];
+	isStreaming?: boolean;
 }): AgentSession {
 	const usage = options.usage;
 	const entries =
@@ -53,6 +54,7 @@ function createSession(options: {
 			},
 			thinkingLevel: options.thinkingLevel ?? "off",
 		},
+		isStreaming: options.isStreaming ?? false,
 		sessionManager: {
 			getEntries: () => entries,
 			getBranch: () => options.branchEntries ?? entries,
@@ -292,6 +294,36 @@ describe("FooterComponent width handling", () => {
 		expect(rendered).toContain("↑34k");
 		expect(rendered).toContain("R33k");
 		expect(rendered).toContain("cache 49%");
+	});
+
+	it("shows the streaming work-bar only while streaming", () => {
+		const idle = new FooterComponent(createSession({ sessionName: "" }), createFooterData(1));
+		expect(idle.render(120).join("\n")).not.toContain("esc to interrupt");
+
+		const streaming = new FooterComponent(
+			createSession({ sessionName: "", isStreaming: true }),
+			createFooterData(1),
+		);
+		const rendered = streaming.render(120).join("\n");
+		expect(rendered).toContain("esc to interrupt");
+		// Elapsed timer + pulse dot present (●/○ depending on sub-second phase).
+		expect(rendered).toMatch(/[●○] \d+s/);
+	});
+
+	it("keeps the stats line within width while streaming on a narrow terminal", () => {
+		const width = 50;
+		const footer = new FooterComponent(
+			createSession({
+				sessionName: "",
+				modelId: "claude-opus-4-8",
+				isStreaming: true,
+				usage: { input: 12_345, output: 6_789, cacheRead: 4_000, cacheWrite: 1_000, cost: { total: 1.234 } },
+			}),
+			createFooterData(2),
+		);
+		for (const line of footer.render(width)) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+		}
 	});
 
 	it("shows active background agent runs in the footer", () => {

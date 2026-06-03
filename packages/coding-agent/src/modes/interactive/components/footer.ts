@@ -69,6 +69,11 @@ export class FooterComponent implements Component {
 		assistantTurns: 0,
 	};
 	private selectedExtensionFooterId: string | undefined = undefined;
+	// Wall-clock anchor for the streaming work-bar. Set on the first render where
+	// the session is streaming, cleared the moment it stops. The streaming Loader
+	// (statusContainer) ticks requestRender every 80ms, so the elapsed timer and
+	// pulse below animate for free while a turn is in flight, and stay idle after.
+	private streamingStartedAt: number | undefined = undefined;
 
 	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
 		this.session = session;
@@ -209,6 +214,22 @@ export class FooterComponent implements Component {
 			process.env.HOME || process.env.USERPROFILE,
 		);
 
+		// Live work-bar: while a turn streams, the bottom statusline gets a pulsing
+		// dot + elapsed timer on the left and an "esc to interrupt" hint on the
+		// right — the Claude-Code-style liveness pi's footer otherwise lacks
+		// (pi's spinner lives above the editor, not here). Purely additive: nothing
+		// renders when idle.
+		const streaming = this.session.isStreaming === true;
+		if (streaming) {
+			this.streamingStartedAt ??= Date.now();
+		} else {
+			this.streamingStartedAt = undefined;
+		}
+		const elapsedMs = streaming && this.streamingStartedAt !== undefined ? Date.now() - this.streamingStartedAt : 0;
+		const elapsedSec = Math.floor(elapsedMs / 1000);
+		// Gentle ~0.6s pulse — alive without competing with the top spinner.
+		const pulse = Math.floor(elapsedMs / 600) % 2 === 0 ? "●" : "○";
+
 		const branch = this.footerData.getGitBranch();
 		const sessionName = this.session.sessionManager.getSessionName();
 
@@ -227,6 +248,7 @@ export class FooterComponent implements Component {
 
 		// ── Line 2: token stats · context% ··············· model · thinking ───────
 		const leftParts: string[] = [];
+		if (streaming) leftParts.push(theme.fg("accent", `${pulse} ${elapsedSec}s`));
 		if (totalInput) leftParts.push(theme.fg("dim", `↑${formatTokens(totalInput)}`));
 		if (totalOutput) leftParts.push(theme.fg("dim", `↓${formatTokens(totalOutput)}`));
 		if (totalCacheRead) leftParts.push(theme.fg("dim", `R${formatTokens(totalCacheRead)}`));
@@ -289,7 +311,9 @@ export class FooterComponent implements Component {
 
 		// Right side: model (warm yellow) · thinking level (teal)
 		const modelName = state.model?.id || "no-model";
-		const rightParts: string[] = [theme.fg("syntaxFunction", modelName)];
+		const rightParts: string[] = [];
+		if (streaming) rightParts.push(theme.fg("dim", "esc to interrupt"));
+		rightParts.push(theme.fg("syntaxFunction", modelName));
 		if (state.model?.reasoning) {
 			const thinkingLevel = state.thinkingLevel || "off";
 			rightParts.push(thinkingLevel === "off" ? theme.fg("dim", "thinking off") : theme.fg("accent", thinkingLevel));
