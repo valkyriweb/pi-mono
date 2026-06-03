@@ -166,6 +166,15 @@ function modelCacheKey(model: Model<any>): string {
 	return `${model.provider}/${model.id}`;
 }
 
+/** Order-independent equality for two string sets. */
+function sameStringSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+	if (a.size !== b.size) return false;
+	for (const value of a) {
+		if (!b.has(value)) return false;
+	}
+	return true;
+}
+
 function isRateLimitErrorText(text: string | undefined): boolean {
 	return /\b429\b|rate.?limit|quota|too many requests/i.test(text ?? "");
 }
@@ -474,6 +483,12 @@ export class AgentSession {
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
 	private _toolDefinitions: Map<string, ToolDefinitionEntry> = new Map();
+	// Post-registration deferral seam (cache-critical). Names here are forced to
+	// `deferLoading:true` on every registry rebuild so they ride tools[] as
+	// `defer_loading` stubs instead of full schemas. Source of truth — applied by
+	// _applyDeferredOverrides() inside _refreshToolRegistry(). See
+	// setDeferredToolOverrides().
+	private _deferredOverrides: Set<string> = new Set();
 	private _toolPromptSnippets: Map<string, string> = new Map();
 	private _toolPromptGuidelines: Map<string, string[]> = new Map();
 
@@ -958,7 +973,7 @@ export class AgentSession {
 				maxRetryDelayMs: 0,
 				timeoutMs: providerRetrySettings.timeoutMs,
 				sessionId: context.sessionId,
-				cacheAffinityKey: createPromptCacheAffinityKey(model, this._cwd),
+				cacheAffinityKey: createPromptCacheAffinityKey(model, heartbeatContext),
 				signal: abortController.signal,
 				transport: this.settingsManager.getTransport(),
 			});
@@ -1298,6 +1313,27 @@ export class AgentSession {
 				validToolNames.push(name);
 			}
 		}
+		// CACHE CRITICAL (cache law #4): if the rebuilt tools[] is element-for-element
+		// reference-identical to the current state, do NOT rewrite state.tools or
+		// rebuild the system prompt — an unconditional refresh bursts the
+		// within-session tools[] (and system) cache prefix. This absorbs the no-op
+		// _refreshToolRegistry → setActiveToolsByName churn on tools_changed events.
+		//
+		// Reference-equality (not name-set equality) is the correct guard: pi rebuilds
+		// the registry with NEW object refs whenever a definition changes (e.g. a tool
+		// gains deferLoading, or an allowlist empties out), so a genuine change yields
+		// different refs and the rebuild proceeds; only a true no-op call (same refs in
+		// same order) early-returns. This mirrors pi-ai's convertedToolCache WeakMap,
+		// which memoizes serialization by tool reference.
+		//
+		// Skip the guard until the base prompt has been built at least once
+		// (_baseSystemPromptOptions is set only by _rebuildSystemPrompt). On init the
+		// empty→empty case is reference-equal but the prompt has never been built, and
+		// there is no warm cache to protect — the first build must run.
+		const current = this.agent.state.tools;
+		if (this._baseSystemPromptOptions && current.length === tools.length && current.every((t, i) => t === tools[i]))
+			return;
+
 		this.agent.state.tools = tools;
 
 		// Rebuild base system prompt with new tool set. The rebuild is UNFILTERED
@@ -1305,6 +1341,68 @@ export class AgentSession {
 		this._baseSystemPrompt = this._rebuildSystemPrompt(validToolNames);
 		this.agent.state.systemPrompt = this._baseSystemPrompt;
 		this._systemPromptNeedsRefilter = true;
+	}
+
+	/**
+	 * Post-registration deferral seam (cache-critical).
+	 *
+	 * Marks already-registered tools as `deferLoading:true` so EVERY consumer
+	 * agrees the tool is a deferred stub rather than a full schema:
+	 * `getToolDefinitions()`, core `isDeferredTool`, and the pi-ai providers that
+	 * serialize `defer_loading`. This lets an extension (e.g. tool-search) make a
+	 * tool deferrable without the tool's own registration opting in.
+	 *
+	 * Generic and idempotent. Apply ONCE before the first request: calling with an
+	 * unchanged override set is a no-op so the within-session `tools[]` cache prefix
+	 * is not burst by a needless refresh. Names that are `alwaysLoad`, or already
+	 * natively `deferLoading` (and not part of this override), are ignored — those
+	 * are never forced. Dropping a name from the set restores its original
+	 * `deferLoading` on the next rebuild (the registry is reconstructed from the
+	 * base/extension definitions, so the original value returns automatically).
+	 */
+	setDeferredToolOverrides(names: string[]): void {
+		const desired = new Set<string>();
+		for (const name of names) {
+			const entry = this._toolDefinitions.get(name);
+			if (!entry) continue;
+			const definition = entry.definition;
+			// Never override alwaysLoad tools.
+			if (definition.alwaysLoad === true) continue;
+			// Skip tools that are natively deferLoading on their own (not via this
+			// override) — there is nothing to force. Tools already in the override set
+			// report deferLoading:true because WE set it, so keep them to stay idempotent.
+			if (definition.deferLoading === true && !this._deferredOverrides.has(name)) continue;
+			desired.add(name);
+		}
+
+		// CACHE CRITICAL: an unchanged set must not trigger a refresh — an
+		// unconditional rebuild bursts the within-session tools[] cache.
+		if (sameStringSet(this._deferredOverrides, desired)) return;
+
+		this._deferredOverrides = desired;
+		// Rebuild via the same path registration uses; _applyDeferredOverrides()
+		// re-applies the override onto the freshly rebuilt registry/definitions.
+		this._refreshToolRegistry();
+	}
+
+	/**
+	 * Force `deferLoading:true` on every name in `_deferredOverrides`, mutating the
+	 * freshly rebuilt `_toolDefinitions` (shallow-copied so the shared base
+	 * definition is untouched) and `_toolRegistry` entries. Called from
+	 * _refreshToolRegistry() so the override survives every registry rebuild.
+	 */
+	private _applyDeferredOverrides(): void {
+		if (this._deferredOverrides.size === 0) return;
+		for (const name of this._deferredOverrides) {
+			const entry = this._toolDefinitions.get(name);
+			if (entry && entry.definition.alwaysLoad !== true && entry.definition.deferLoading !== true) {
+				entry.definition = { ...entry.definition, deferLoading: true };
+			}
+			const tool = this._toolRegistry.get(name);
+			if (tool && tool.alwaysLoad !== true && tool.deferLoading !== true) {
+				tool.deferLoading = true;
+			}
+		}
 	}
 
 	/** Whether compaction or branch summarization is currently running */
@@ -2051,6 +2149,7 @@ export class AgentSession {
 			activeToolNames: syncClaudeBridgeNativeTools(this.getActiveToolNames(), nextModel),
 			activateNewTools: false,
 		});
+		await this.extendResourcesFromExtensions("reload");
 	}
 
 	/**
@@ -2066,6 +2165,7 @@ export class AgentSession {
 		const previousModel = this.model;
 		const thinkingLevel = this._getThinkingLevelForModelSwitch();
 		this.agent.state.model = model;
+		this.agent.cacheAffinityKey = createPromptCacheAffinityKey(model, this.agent.state);
 		this.sessionManager.appendModelChange(model.provider, model.id);
 		this.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
 
@@ -2103,6 +2203,7 @@ export class AgentSession {
 
 		// Apply model
 		this.agent.state.model = next.model;
+		this.agent.cacheAffinityKey = createPromptCacheAffinityKey(next.model, this.agent.state);
 		this.sessionManager.appendModelChange(next.model.provider, next.model.id);
 		this.settingsManager.setDefaultModelAndProvider(next.model.provider, next.model.id);
 
@@ -2131,6 +2232,7 @@ export class AgentSession {
 
 		const thinkingLevel = this._getThinkingLevelForModelSwitch();
 		this.agent.state.model = nextModel;
+		this.agent.cacheAffinityKey = createPromptCacheAffinityKey(nextModel, this.agent.state);
 		this.sessionManager.appendModelChange(nextModel.provider, nextModel.id);
 		this.settingsManager.setDefaultModelAndProvider(nextModel.provider, nextModel.id);
 
@@ -2812,6 +2914,7 @@ export class AgentSession {
 		}
 
 		this.agent.state.model = refreshedModel;
+		this.agent.cacheAffinityKey = createPromptCacheAffinityKey(refreshedModel, this.agent.state);
 	}
 
 	private _getAgentParentSnapshot(): AgentParentSnapshot {
@@ -3037,6 +3140,7 @@ export class AgentSession {
 						.getBranch()
 						.filter((entry): entry is CustomEntry => entry.type === "custom" && entry.customType === customType),
 				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
+				setDeferredOverrides: (names) => this.setDeferredToolOverrides(names),
 				refreshTools: (options) => this._refreshToolRegistry(options),
 				getCommands,
 				setModel: async (model) => {
@@ -3186,6 +3290,10 @@ export class AgentSession {
 			toolRegistry.set(tool.name, tool);
 		}
 		this._toolRegistry = toolRegistry;
+		// Re-apply post-registration deferral overrides onto the freshly rebuilt
+		// registry + definitions so deferLoading stays forced across every rebuild
+		// (setDeferredToolOverrides seam). No-op when the override set is empty.
+		this._applyDeferredOverrides();
 
 		const nextActiveToolNames = (
 			options?.activeToolNames ? [...options.activeToolNames] : [...previousActiveToolNames]
@@ -3908,14 +4016,23 @@ export class AgentSession {
 			}
 		}
 
+		const estimate = estimateContextTokens(this.messages);
+		if (estimate.lastUsageIndex !== null) {
+			const tokens = estimate.tokens;
+			return {
+				tokens,
+				contextWindow,
+				percent: (tokens / contextWindow) * 100,
+			};
+		}
+
 		const contextUsageService =
 			this._extensionRunner?.getService<ContextUsageSnapshotService>(CONTEXT_USAGE_SERVICE_ID);
 		const serviceUsage = contextUsageService?.get();
 		if (serviceUsage && serviceUsage.contextWindow === contextWindow) return serviceUsage;
 
-		const estimate = estimateContextTokens(this.messages);
 		const systemPromptTokens = estimateSystemPromptTokens(this.systemPrompt);
-		const tokens = estimate.tokens + (estimate.lastUsageIndex === null ? systemPromptTokens : 0);
+		const tokens = estimate.tokens + systemPromptTokens;
 		const percent = (tokens / contextWindow) * 100;
 
 		return {
