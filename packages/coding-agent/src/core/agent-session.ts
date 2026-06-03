@@ -958,7 +958,7 @@ export class AgentSession {
 				maxRetryDelayMs: 0,
 				timeoutMs: providerRetrySettings.timeoutMs,
 				sessionId: context.sessionId,
-				cacheAffinityKey: createPromptCacheAffinityKey(model, this._cwd),
+				cacheAffinityKey: createPromptCacheAffinityKey(model, heartbeatContext),
 				signal: abortController.signal,
 				transport: this.settingsManager.getTransport(),
 			});

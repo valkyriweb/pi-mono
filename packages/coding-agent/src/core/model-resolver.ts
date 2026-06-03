@@ -206,7 +206,13 @@ export interface ParsedModelResult {
 	warning: string | undefined;
 }
 
+function normalizeProviderScopedModelId(provider: string, modelId: string): string {
+	const prefix = `${provider}/`;
+	return modelId.toLowerCase().startsWith(prefix.toLowerCase()) ? modelId.slice(prefix.length) : modelId;
+}
+
 function buildFallbackModel(provider: string, modelId: string, availableModels: Model<Api>[]): Model<Api> | undefined {
+	modelId = normalizeProviderScopedModelId(provider, modelId);
 	const providerModels = availableModels.filter((m) => m.provider === provider);
 	if (providerModels.length === 0) return undefined;
 
@@ -580,7 +586,8 @@ export async function findInitialModel(options: {
 
 	// 3. Try saved default from settings
 	if (defaultProvider && defaultModelId) {
-		const found = modelRegistry.find(defaultProvider, defaultModelId);
+		const normalizedDefaultModelId = normalizeProviderScopedModelId(defaultProvider, defaultModelId);
+		const found = modelRegistry.find(defaultProvider, normalizedDefaultModelId);
 		if (found) {
 			model = found;
 			if (defaultThinkingLevel) {

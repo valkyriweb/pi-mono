@@ -443,6 +443,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				: undefined;
 			return streamSimple(model, context, {
 				...options,
+				cacheAffinityKey: options?.cacheAffinityKey ?? createPromptCacheAffinityKey(model, context),
 				apiKey: auth.apiKey,
 				timeoutMs,
 				websocketConnectTimeoutMs,
@@ -469,7 +470,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		},
 		sessionId: sessionManager.getSessionId(),
-		cacheAffinityKey: model ? createPromptCacheAffinityKey(model, cwd) : undefined,
+		cacheAffinityKey: undefined,
 		transformContext: async (messages) => {
 			const runner = extensionRunnerRef.current;
 			if (!runner) return messages;
