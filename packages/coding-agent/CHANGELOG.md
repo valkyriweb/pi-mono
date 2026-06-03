@@ -6,6 +6,10 @@
 
 - Session picker badges sessions that are open in another live pi process, backed by a `session-liveness` probe.
 
+### Changed
+
+- Tool-use guidance now mirrors Claude Code's efficiency rules. The parallelization guideline batches all independent calls in one message (reads, listings, searches, independent read-only bash, edits to different files, multiple `Agent` launches), serializing only on real data dependencies. `edit`/`write` guidelines tell the model not to re-read a file to confirm a successful mutation (the tool errors on failure), and `read` guidance steers toward `offset`/`limit` region reads when the relevant span is already known.
+
 ### Fixed
 
 - Agent tool call and collapsed result rendering now show provider/model and thinking metadata.

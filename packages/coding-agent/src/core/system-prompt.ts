@@ -129,7 +129,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
 	if (hasRead || hasGrep || hasFind || hasLs) {
 		addGuideline(
-			"Parallelize independent read-only tool calls: when you need several files, listings, searches, or bounded reads that do not depend on each other, emit multiple tool calls in a single assistant message rather than one per turn.",
+			"Batch independent tool calls in a single message: when several calls have no data dependency on each other — reads, directory listings, searches, bounded reads, independent read-only bash queries, edits to different files, or multiple Agent launches — emit them together in one assistant message instead of one call per turn. Serialize only when a later call needs an earlier call's result.",
 		);
 	}
 
