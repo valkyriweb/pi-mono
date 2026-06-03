@@ -2140,6 +2140,7 @@ export interface ExtensionActions {
 	getToolDefinitions: GetToolDefinitionsHandler;
 	getCustomEntries: GetCustomEntriesHandler;
 	setActiveTools: SetActiveToolsHandler;
+	setDeferredOverrides?: (names: string[]) => void;
 	refreshTools: RefreshToolsHandler;
 	getCommands: GetCommandsHandler;
 	setModel: SetModelHandler;
