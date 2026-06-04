@@ -42,3 +42,6 @@ plans/
 collect.sh
 .repowise/
 .mcp.json
+
+# pi workspace worktrees nested in repo root
+.pi-ws-*/

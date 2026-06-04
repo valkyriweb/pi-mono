@@ -47,6 +47,8 @@ Read local docs before changing the matching surface:
 
 ## PR Review Gate
 
+**Gate (run order):** `codex-review` → `code-craft-pr` → `matt-pocock/improve-codebase-architecture` → `docs-freshness-pr` (wire through `pr-pipeline-orchestrator`); resolve all Tier 1/2 findings and file Tier 3 as GitHub issues. This gate is the `.github/pull_request_template.md` checklist (mirrored in `my-pi`).
+
 Flag P1 in local review when:
 
 - Custom behavior is implemented in core without evidence that extension/package APIs are insufficient.
@@ -58,7 +60,8 @@ Flag P1 in local review when:
 
 - After code changes (not documentation changes): `npm run check` (get full output, no tail). Fix all errors, warnings, and infos before committing.
 - Note: `npm run check` does not run tests.
-- NEVER run: `npm run build`, `npm test`
+- After changing core/package `src`, rebuild that package's dist so the change is live at runtime (pi runs built `dist`, not source): `npm --prefix packages/<pkg> run build`. Do NOT run the root `npm run build` casually — it chains `test:build-gate` → `test:e2e`, which hits real provider APIs and burns paid tokens. Use the root build (or `npm run release:local`) only when a cross-package release-style verification is intended.
+- NEVER run: `npm test` (runs workspace e2e against real provider APIs / paid tokens).
 - Never run the full vitest suite directly: it includes e2e tests that activate when endpoint/auth env vars are present. For all non-e2e tests, run `./test.sh` from the repo root. Otherwise run specific tests from the package root: `node ../../node_modules/vitest/dist/cli.js --run test/specific.test.ts`.
 - Run tests from the package root, not the repo root.
 - If you create or modify a test file, you MUST run that test file and iterate until it passes.
