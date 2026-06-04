@@ -68,6 +68,30 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).toContain("custom result");
 	});
 
+	test("hidden render shell suppresses tool output blocks", () => {
+		const toolDefinition: ToolDefinition = {
+			...createBaseToolDefinition("hidden_tool"),
+			renderShell: "hidden",
+			renderCall: () => new Text("custom call", 0, 0),
+			renderResult: () => new Text("custom result", 0, 0),
+		};
+
+		const component = new ToolExecutionComponent(
+			"hidden_tool",
+			"tool-hidden-1",
+			{},
+			{},
+			toolDefinition,
+			createFakeTui(),
+			process.cwd(),
+		);
+
+		expect(component.render(120)).toEqual([]);
+		component.markExecutionStarted();
+		component.updateResult({ content: [{ type: "text", text: "done" }], details: {}, isError: false }, false);
+		expect(component.render(120)).toEqual([]);
+	});
+
 	test("agent renderer displays single and expanded results", () => {
 		const component = new ToolExecutionComponent(
 			"agent",

@@ -86,7 +86,6 @@ const claudeCodeTools = [
 	"NotebookEdit",
 	"Skill",
 	"Task",
-	"TaskOutput",
 	"TodoWrite",
 	"WebFetch",
 	"WebSearch",

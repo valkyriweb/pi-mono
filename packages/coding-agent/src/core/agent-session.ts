@@ -3222,7 +3222,7 @@ export class AgentSession {
 				!(tool.definition.name === "agent" && this._baseToolDefinitions.has("agent")),
 		);
 		// Extensions can fully supersede a core base builtin (e.g. native-tool-overrides
-		// provides capitalized Read/Edit/... and TaskOutput/TaskStop, replacing core's
+		// provides capitalized Read/Edit/... and TaskStop, replacing core's
 		// lowercase read/edit/... and bash_output/bash_kill). Collect the declared
 		// replacements so the superseded builtins drop out of the registry — the
 		// override becomes the single tool per capability. No declaration ⇒ base tools

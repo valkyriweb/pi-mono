@@ -93,10 +93,14 @@ export const LocalAgentTask: Task = {
 		return lookup(taskId);
 	},
 
-	async output(taskId): Promise<TaskOutputResult | undefined> {
+	async output(taskId, options): Promise<TaskOutputResult | undefined> {
 		const run = findAgentRecentRun(taskId);
 		if (!run) return undefined;
 		const outputPath = run.outputPaths[0] ?? run.runs.find((detail) => detail.outputPath)?.outputPath;
+		if (options?.maxLines !== undefined && options.maxLines <= 1) {
+			const snapshot = snapshotFromRun(run);
+			return { text: `${snapshot.id}: ${snapshot.status}`, fullOutputPath: outputPath, snapshot };
+		}
 		return { text: renderRunOutput(run), fullOutputPath: outputPath, snapshot: snapshotFromRun(run) };
 	},
 

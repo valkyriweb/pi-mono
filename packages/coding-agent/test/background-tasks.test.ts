@@ -9,15 +9,21 @@ import {
 } from "../src/core/agents/status.ts";
 import type { AgentRunDetails } from "../src/core/agents/types.ts";
 import {
-	createTaskListToolDefinition,
-	createTaskOutputToolDefinition,
+	createTaskBackgroundListToolDefinition,
 	createTaskStopToolDefinition,
 } from "../src/core/tools/background-tasks.ts";
-import { getBashBgJob, killAllBashBgJobs, spawnBashBackground } from "../src/core/tools/bash.ts";
+import {
+	createBashOutputToolDefinition,
+	getBashBgJob,
+	killAllBashBgJobs,
+	spawnBashBackground,
+} from "../src/core/tools/bash.ts";
+import { LocalAgentTask } from "../src/core/tasks/local-agent-task.ts";
+import { LocalBashTask } from "../src/core/tasks/local-bash-task.ts";
 
-const TaskOutput = createTaskOutputToolDefinition();
 const TaskStop = createTaskStopToolDefinition();
-const TaskList = createTaskListToolDefinition();
+const TaskBackgroundList = createTaskBackgroundListToolDefinition();
+const BashOutput = createBashOutputToolDefinition();
 
 /** Invoke a tool's execute with the unused signal/onUpdate/ctx slots padded out. */
 async function call(tool: { execute: unknown }, params: Record<string, unknown>): Promise<string> {
@@ -60,7 +66,7 @@ function completedRunDetail(finalOutput: string): AgentRunDetails {
 	};
 }
 
-describe("background-tasks tools — unified task_id over bash + agents", () => {
+describe("background-tasks tools — push notification + explicit output paths", () => {
 	let bashTempDir = "";
 
 	beforeEach(() => {
@@ -75,37 +81,66 @@ describe("background-tasks tools — unified task_id over bash + agents", () => 
 		if (bashTempDir) rmSync(bashTempDir, { recursive: true, force: true });
 	});
 
-	test("TaskOutput renders a bash job's status header + log", async () => {
-		const job = spawnBashBackground("echo hello-from-bash", bashTempDir);
-		await waitForJobToSettle(job.id);
-		const text = await call(TaskOutput, { task_id: job.id });
-		expect(text).toContain(`bgId: ${job.id}`);
-		expect(text).toContain("status:");
-		expect(text).toContain("hello-from-bash");
+	test("TaskOutput is not exported as a model-facing tool", async () => {
+		const mod = await import("../src/core/tools/background-tasks.ts");
+		expect("createTaskOutputToolDefinition" in mod).toBe(false);
+		expect("createTaskOutputTool" in mod).toBe(false);
 	});
 
-	test("TaskOutput returns an agent run's final result", async () => {
+	test("background bash adapter exposes output file path for Read inspection", async () => {
+		const job = spawnBashBackground("echo hello-from-bash", bashTempDir);
+		await waitForJobToSettle(job.id);
+		const output = await LocalBashTask.output?.(job.id, { mode: "tail", maxLines: 20 });
+		expect(output?.text).toContain(`bgId: ${job.id}`);
+		expect(output?.text).toContain("status:");
+		expect(output?.text).toContain("hello-from-bash");
+		expect(output?.fullOutputPath).toBe(job.logPath);
+	});
+
+	test("background bash adapter exposes non-zero exit status and output file path", async () => {
+		const job = spawnBashBackground("echo failed-background; exit 7", bashTempDir);
+		await waitForJobToSettle(job.id);
+		const output = await LocalBashTask.output?.(job.id, { mode: "tail", maxLines: 20 });
+		expect(output?.text).toContain(`bgId: ${job.id}`);
+		expect(output?.text).toContain("status: exited (exit 7)");
+		expect(output?.text).toContain("failed-background");
+		expect(output?.fullOutputPath).toBe(job.logPath);
+	});
+
+	test("background agent adapter returns final result and output path when available", async () => {
 		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map files" }], { background: true });
 		updateAgentRecentRunProgress(run, {
 			mode: "single",
 			status: "completed",
-			runs: [completedRunDetail("AGENT FINAL RESULT")],
+			runs: [{ ...completedRunDetail("AGENT FINAL RESULT"), outputPath: "/tmp/agent-output.txt" }],
 		});
-		const text = await call(TaskOutput, { task_id: run.id });
-		expect(text).toContain(run.id);
-		expect(text).toContain("AGENT FINAL RESULT");
+		const output = await LocalAgentTask.output?.(run.id);
+		expect(output?.text).toContain(run.id);
+		expect(output?.text).toContain("AGENT FINAL RESULT");
+		expect(output?.fullOutputPath).toBe("/tmp/agent-output.txt");
 	});
 
-	test("TaskOutput on unknown id reports recent ids", async () => {
-		const text = await call(TaskOutput, { task_id: "nope" });
-		expect(text).toContain("No background task with task_id=nope");
+	test("background agent adapter avoids full render for bounded path discovery", async () => {
+		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map files" }], { background: true });
+		updateAgentRecentRunProgress(run, {
+			mode: "single",
+			status: "completed",
+			runs: [{ ...completedRunDetail("VERY LARGE AGENT FINAL RESULT"), outputPath: "/tmp/agent-output.txt" }],
+		});
+		const output = await LocalAgentTask.output?.(run.id, { mode: "tail", maxLines: 1 });
+		expect(output?.text).toBe(`${run.id}: completed`);
+		expect(output?.text).not.toContain("VERY LARGE AGENT FINAL RESULT");
+		expect(output?.fullOutputPath).toBe("/tmp/agent-output.txt");
 	});
 
-	test("TaskOutput block=true waits until the task finishes", async () => {
-		const job = spawnBashBackground("sleep 0.3; echo done-blocking", bashTempDir);
-		const text = await call(TaskOutput, { task_id: job.id, block: true, timeout: 4000 });
-		expect(getBashBgJob(job.id)?.status).not.toBe("running");
-		expect(text).toContain("done-blocking");
+	test("BashOutput renders persisted bash log when registry entry is gone", async () => {
+		const job = spawnBashBackground("echo orphaned-bash-output", bashTempDir);
+		await waitForJobToSettle(job.id);
+		killAllBashBgJobs();
+
+		const text = await call(BashOutput, { bgId: job.id });
+		expect(text).toContain("status: registry-missing");
+		expect(text).toContain("orphaned-bash-output");
 	});
 
 	test("TaskStop kills a running bash job", async () => {
@@ -132,18 +167,18 @@ describe("background-tasks tools — unified task_id over bash + agents", () => 
 		expect(text).toContain("No stoppable background task");
 	});
 
-	test("TaskList enumerates bash jobs AND agent runs together", async () => {
+	test("TaskBackgroundList enumerates bash jobs AND agent runs together", async () => {
 		const job = spawnBashBackground("sleep 5", bashTempDir);
 		const run = startAgentRecentRun("single", [{ agent: "scout", task: "Map files" }], { background: true });
-		const text = await call(TaskList, {});
+		const text = await call(TaskBackgroundList, {});
 		expect(text).toContain(job.id);
 		expect(text).toContain("[bash]");
 		expect(text).toContain(run.id);
 		expect(text).toContain("[agent]");
 	});
 
-	test("TaskList with no tasks says so", async () => {
-		const text = await call(TaskList, {});
+	test("TaskBackgroundList with no tasks says so", async () => {
+		const text = await call(TaskBackgroundList, {});
 		expect(text).toBe("No background tasks.");
 	});
 });
