@@ -40,6 +40,13 @@ export type AuthStatus = {
 	label?: string;
 };
 
+function resolveAuthProviderCandidates(provider: string): string[] {
+	if (provider === "openai") {
+		return ["openai", "openai-codex"];
+	}
+	return [provider];
+}
+
 type LockResult<T> = {
 	result: T;
 	next?: string;
@@ -298,7 +305,11 @@ export class AuthStorage {
 	 * Get credential for a provider.
 	 */
 	get(provider: string): AuthCredential | undefined {
-		return this.data[provider] ?? undefined;
+		for (const candidate of resolveAuthProviderCandidates(provider)) {
+			const credential = this.data[candidate];
+			if (credential) return credential;
+		}
+		return undefined;
 	}
 
 	/**
@@ -328,7 +339,7 @@ export class AuthStorage {
 	 * Check if credentials exist for a provider in auth.json.
 	 */
 	has(provider: string): boolean {
-		return provider in this.data;
+		return resolveAuthProviderCandidates(provider).some((candidate) => candidate in this.data);
 	}
 
 	/**
@@ -336,10 +347,12 @@ export class AuthStorage {
 	 * Unlike getApiKey(), this doesn't refresh OAuth tokens.
 	 */
 	hasAuth(provider: string): boolean {
-		if (this.runtimeOverrides.has(provider)) return true;
-		if (this.data[provider]) return true;
-		if (getEnvApiKey(provider)) return true;
-		if (this.fallbackResolver?.(provider)) return true;
+		for (const candidate of resolveAuthProviderCandidates(provider)) {
+			if (this.runtimeOverrides.has(candidate)) return true;
+			if (this.data[candidate]) return true;
+			if (getEnvApiKey(candidate)) return true;
+			if (this.fallbackResolver?.(candidate)) return true;
+		}
 		return false;
 	}
 
@@ -347,21 +360,37 @@ export class AuthStorage {
 	 * Return auth status without exposing credential values or refreshing tokens.
 	 */
 	getAuthStatus(provider: string): AuthStatus {
-		if (this.data[provider]) {
-			return { configured: true, source: "stored" };
+		for (const candidate of resolveAuthProviderCandidates(provider)) {
+			if (this.data[candidate]) {
+				return { configured: true, source: "stored", label: candidate === provider ? undefined : candidate };
+			}
 		}
 
-		if (this.runtimeOverrides.has(provider)) {
-			return { configured: false, source: "runtime", label: "--api-key" };
+		for (const candidate of resolveAuthProviderCandidates(provider)) {
+			if (this.runtimeOverrides.has(candidate)) {
+				return {
+					configured: false,
+					source: "runtime",
+					label: candidate === provider ? "--api-key" : `--api-key (${candidate})`,
+				};
+			}
 		}
 
-		const envKeys = findEnvKeys(provider);
-		if (envKeys?.[0]) {
-			return { configured: false, source: "environment", label: envKeys[0] };
+		for (const candidate of resolveAuthProviderCandidates(provider)) {
+			const envKeys = findEnvKeys(candidate);
+			if (envKeys?.[0]) {
+				return { configured: false, source: "environment", label: envKeys[0] };
+			}
 		}
 
-		if (this.fallbackResolver?.(provider)) {
-			return { configured: false, source: "fallback", label: "custom provider config" };
+		for (const candidate of resolveAuthProviderCandidates(provider)) {
+			if (this.fallbackResolver?.(candidate)) {
+				return {
+					configured: false,
+					source: "fallback",
+					label: candidate === provider ? "custom provider config" : `custom provider config (${candidate})`,
+				};
+			}
 		}
 
 		return { configured: false };
@@ -461,19 +490,22 @@ export class AuthStorage {
 	 */
 	async getApiKey(providerId: string, options?: { includeFallback?: boolean }): Promise<string | undefined> {
 		// Runtime override takes highest priority
-		const runtimeKey = this.runtimeOverrides.get(providerId);
-		if (runtimeKey) {
-			return runtimeKey;
+		for (const candidate of resolveAuthProviderCandidates(providerId)) {
+			const runtimeKey = this.runtimeOverrides.get(candidate);
+			if (runtimeKey) {
+				return runtimeKey;
+			}
 		}
 
-		const cred = this.data[providerId];
+		const credentialProviderId = resolveAuthProviderCandidates(providerId).find((candidate) => this.data[candidate]);
+		const cred = credentialProviderId ? this.data[credentialProviderId] : undefined;
 
 		if (cred?.type === "api_key") {
 			return resolveConfigValue(cred.key);
 		}
 
 		if (cred?.type === "oauth") {
-			const provider = getOAuthProvider(providerId);
+			const provider = credentialProviderId ? getOAuthProvider(credentialProviderId) : undefined;
 			if (!provider) {
 				// Unknown OAuth provider, can't get API key
 				return undefined;
@@ -485,7 +517,9 @@ export class AuthStorage {
 			if (needsRefresh) {
 				// Use locked refresh to prevent race conditions
 				try {
-					const result = await this.refreshOAuthTokenWithLock(providerId);
+					const result = credentialProviderId
+						? await this.refreshOAuthTokenWithLock(credentialProviderId as OAuthProviderId)
+						: null;
 					if (result) {
 						return result.apiKey;
 					}
@@ -511,12 +545,17 @@ export class AuthStorage {
 		}
 
 		// Fall back to environment variable
-		const envKey = getEnvApiKey(providerId);
-		if (envKey) return envKey;
+		for (const candidate of resolveAuthProviderCandidates(providerId)) {
+			const envKey = getEnvApiKey(candidate);
+			if (envKey) return envKey;
+		}
 
 		// Fall back to custom resolver (e.g., models.json custom providers)
 		if (options?.includeFallback !== false) {
-			return this.fallbackResolver?.(providerId) ?? undefined;
+			for (const candidate of resolveAuthProviderCandidates(providerId)) {
+				const fallbackKey = this.fallbackResolver?.(candidate);
+				if (fallbackKey) return fallbackKey;
+			}
 		}
 
 		return undefined;

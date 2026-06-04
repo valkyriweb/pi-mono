@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentTool, ThinkingLevel } from "@valkyriweb/pi-agent-core";
-import { fauxAssistantMessage, fauxToolCall, type Model } from "@valkyriweb/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, type Model, registerFauxProvider } from "@valkyriweb/pi-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { addFilter } from "../../src/core/extensions/extension-hooks.ts";
@@ -45,6 +45,54 @@ describe("AgentSession model and extension characterization", () => {
 				.filter((entry) => entry.type === "model_change")
 				.map((entry) => `${entry.provider}/${entry.modelId}`),
 		).toEqual([`${nextModel.provider}/${nextModel.id}`]);
+	});
+
+	it("setModel re-syncs provider-sensitive extension resources before the next request", async () => {
+		const discoveredForProviders: string[] = [];
+		const harness = await createHarness({
+			provider: "claude-bridge",
+			models: [{ id: "claude-opus-4-8", name: "Claude", reasoning: true }],
+			extensionFactories: [
+				(pi) => {
+					pi.on("resources_discover", (_event, ctx) => {
+						discoveredForProviders.push(ctx.model?.provider ?? "none");
+						return {};
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		const codex = registerFauxProvider({
+			provider: "openai-codex",
+			models: [{ id: "gpt-5.5", name: "GPT 5.5", reasoning: true }],
+		});
+		try {
+			const codexModel = codex.getModel();
+			harness.authStorage.setRuntimeApiKey(codexModel.provider, "faux-key");
+			harness.session.modelRegistry.registerProvider(codexModel.provider, {
+				baseUrl: codexModel.baseUrl,
+				apiKey: "faux-key",
+				api: codex.api,
+				streamSimple: codex.streamSimple,
+				models: codex.models.map((registeredModel) => ({
+					id: registeredModel.id,
+					name: registeredModel.name,
+					api: registeredModel.api,
+					reasoning: registeredModel.reasoning,
+					input: registeredModel.input,
+					cost: registeredModel.cost,
+					contextWindow: registeredModel.contextWindow,
+					maxTokens: registeredModel.maxTokens,
+					baseUrl: registeredModel.baseUrl,
+				})),
+			});
+
+			await harness.session.setModel(codexModel);
+
+			expect(discoveredForProviders).toContain("openai-codex");
+		} finally {
+			codex.unregister();
+		}
 	});
 
 	it("cycles through scoped models and preserves the scoped thinking preference", async () => {

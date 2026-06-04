@@ -57,6 +57,7 @@ describe("ExtensionRunner B1 hooks", () => {
 		getToolDefinitions: () => [],
 		getCustomEntries: () => [],
 		setActiveTools: () => {},
+		setDeferredOverrides: () => {},
 		refreshTools: () => {},
 		getCommands: () => [],
 		setModel: async () => false,

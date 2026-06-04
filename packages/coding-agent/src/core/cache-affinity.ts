@@ -1,17 +1,32 @@
 import { createHash } from "node:crypto";
-import type { Model } from "@valkyriweb/pi-ai";
+import type { Context, Model } from "@valkyriweb/pi-ai";
+
+function hashStableJson(value: unknown): string {
+	return createHash("sha256").update(JSON.stringify(value)).digest("base64url").slice(0, 24);
+}
+
+function normalizeModelFamily(model: Model<any>): string {
+	if (model.provider === "openai-codex") return "codex";
+	return model.id;
+}
 
 /**
- * Stable prompt-cache affinity shared by normal turns and cache heartbeats.
+ * Stable provider-visible prompt-cache affinity shared by normal turns and cache heartbeats.
  *
- * `sessionId` remains the transport/session identity. Cache affinity is broader:
- * requests from the same cwd + model should land near the same provider-side
- * prompt cache so a heartbeat can warm the long static prefix for new sessions.
+ * The key intentionally excludes session id, cwd, and exact Codex model id. OpenAI/Codex
+ * receives the concrete model separately; the prompt cache key should describe the stable
+ * provider-visible prefix shape so fresh sessions and same-family Codex models can share
+ * a warmed static prefix.
  */
-export function createPromptCacheAffinityKey(model: Model<any>, cwd: string): string {
-	const digest = createHash("sha256")
-		.update(`${model.provider}\0${model.id}\0${cwd}`)
-		.digest("base64url")
-		.slice(0, 16);
-	return `pi:${model.provider}:${model.id}:${digest}`;
+export function createPromptCacheAffinityKey(
+	model: Model<any>,
+	context: Pick<Context, "systemPrompt" | "tools">,
+): string {
+	const digest = hashStableJson({
+		provider: model.provider,
+		family: normalizeModelFamily(model),
+		systemPrompt: context.systemPrompt ?? "",
+		tools: context.tools ?? [],
+	});
+	return `pi:${model.provider}:${normalizeModelFamily(model)}:${digest}`;
 }

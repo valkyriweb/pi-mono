@@ -219,8 +219,8 @@ describe("openai-codex streaming", () => {
 			},
 		);
 
-		expect(body.prompt_cache_key).toBe("shared-cache-affinity-key");
-		expect(body.prompt_cache_retention).toBe("24h");
+		expect(body.prompt_cache_key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+		expect(body.prompt_cache_retention).toBeUndefined();
 		expect(body.max_output_tokens).toBe(1);
 	});
 
