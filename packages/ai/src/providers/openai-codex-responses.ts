@@ -13,6 +13,7 @@ type DynamicImport = (specifier: string) => Promise<unknown>;
 
 const dynamicImport: DynamicImport = (specifier) => import(specifier);
 const NODE_OS_SPECIFIER = "node:" + "os";
+const NODE_FS_SPECIFIER = "node:" + "fs";
 
 if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
 	dynamicImport(NODE_OS_SPECIFIER).then((m) => {
@@ -231,14 +232,28 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 			if (nextBody !== undefined) {
 				body = nextBody as RequestBody;
 			}
+			body.prompt_cache_key =
+				(options?.cacheRetention ?? "short") === "none"
+					? undefined
+					: codexPromptCacheKey(options?.cacheAffinityKey, options?.sessionId, body);
+			const codexThreadId = body.prompt_cache_key;
 			const websocketRequestId = options?.sessionId || createCodexRequestId();
-			const sseHeaders = buildSSEHeaders(model.headers, options?.headers, accountId, apiKey, options?.sessionId);
+			const sseHeaders = buildSSEHeaders(
+				model.headers,
+				options?.headers,
+				accountId,
+				apiKey,
+				options?.sessionId,
+				codexThreadId,
+			);
+			await writeCodexCacheDebugSnapshot(model, body, options, sseHeaders);
 			const websocketHeaders = buildWebSocketHeaders(
 				model.headers,
 				options?.headers,
 				accountId,
 				apiKey,
 				websocketRequestId,
+				codexThreadId,
 			);
 			const bodyJson = JSON.stringify(body);
 			const idleTimeoutMs = normalizeTimeoutMs(options?.timeoutMs);
@@ -432,7 +447,11 @@ export const streamSimpleOpenAICodexResponses: StreamFunction<"openai-codex-resp
 // ============================================================================
 
 // Exposed for unit tests; not part of the public package API.
-export { buildRequestBody as _buildRequestBodyForTests };
+export {
+	buildRequestBody as _buildRequestBodyForTests,
+	buildSSEHeaders as _buildSSEHeadersForTests,
+	buildWebSocketHeaders as _buildWebSocketHeadersForTests,
+};
 
 function buildRequestBody(
 	model: Model<"openai-codex-responses">,
@@ -454,10 +473,7 @@ function buildRequestBody(
 		input: messages,
 		text: { verbosity: options?.textVerbosity || "low" },
 		include: ["reasoning.encrypted_content"],
-		prompt_cache_key:
-			cacheRetention === "none"
-				? undefined
-				: clampOpenAIPromptCacheKey(options?.cacheAffinityKey ?? options?.sessionId),
+		prompt_cache_key: undefined,
 		tool_choice: "auto",
 		parallel_tool_calls: true,
 	};
@@ -509,6 +525,9 @@ function buildRequestBody(
 			};
 		}
 	}
+
+	body.prompt_cache_key =
+		cacheRetention === "none" ? undefined : codexPromptCacheKey(options?.cacheAffinityKey, options?.sessionId, body);
 
 	return body;
 }
@@ -1475,6 +1494,94 @@ function createCodexRequestId(): string {
 	return `codex_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+async function writeCodexCacheDebugSnapshot(
+	model: Model<"openai-codex-responses">,
+	body: RequestBody,
+	options: OpenAICodexResponsesOptions | undefined,
+	headers: Headers,
+): Promise<void> {
+	if (typeof process === "undefined") return;
+	const input = Array.isArray(body.input) ? body.input : [];
+	const tools = Array.isArray(body.tools) ? body.tools : [];
+	const inputJson = JSON.stringify(input) ?? "";
+	const toolsJson = JSON.stringify(tools) ?? "";
+	const snapshot = {
+		timestamp: new Date().toISOString(),
+		provider: model.provider,
+		api: "openai-codex-responses",
+		model: `${model.provider}/${model.id}`,
+		sessionId: options?.sessionId,
+		cacheAffinityKey: options?.cacheAffinityKey,
+		promptCacheKey: body.prompt_cache_key,
+		transport: options?.transport,
+		sseSessionId: headers.get("session-id"),
+		sseThreadId: headers.get("thread-id"),
+		sseClientRequestId: headers.get("x-client-request-id"),
+		inputItems: input.length,
+		inputHash: stableSnapshotHash(input),
+		inputBytes: Buffer.byteLength(inputJson),
+		instructionHash: stableSnapshotHash(body.instructions ?? ""),
+		instructionBytes: Buffer.byteLength(body.instructions ?? ""),
+		toolCount: tools.length,
+		toolsHash: stableSnapshotHash(tools),
+		toolsBytes: Buffer.byteLength(toolsJson),
+		deferredToolCount: tools.filter(
+			(tool) => !!tool && typeof tool === "object" && (tool as { defer_loading?: unknown }).defer_loading === true,
+		).length,
+	};
+	try {
+		const fs = (await dynamicImport(NODE_FS_SPECIFIER)) as typeof import("node:fs");
+		fs.appendFileSync(
+			`${process.env.HOME ?? "."}/.pi/agent/logs/codex-cache-debug.jsonl`,
+			`${JSON.stringify(snapshot)}\n`,
+		);
+	} catch {
+		// Debug-only; never fail provider requests.
+	}
+}
+
+function fnv1a64(input: string, seed: bigint): bigint {
+	let hash = seed;
+	for (let index = 0; index < input.length; index++) {
+		hash ^= BigInt(input.charCodeAt(index));
+		hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+	}
+	return hash;
+}
+
+function stableCodexThreadId(input: string): string {
+	const first = fnv1a64(input, 0xcbf29ce484222325n).toString(16).padStart(16, "0");
+	const second = fnv1a64(input, 0x84222325cbf29ce4n).toString(16).padStart(16, "0");
+	const hex = `${first}${second}`;
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${((Number.parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, "0")}${hex.slice(18, 20)}-${hex.slice(20, 32)}`;
+}
+
+function stableSnapshotHash(value: unknown): string {
+	let serialized: string;
+	try {
+		serialized = JSON.stringify(value) ?? "";
+	} catch {
+		serialized = "<unserializable>";
+	}
+	return stableCodexThreadId(serialized);
+}
+
+function codexPromptCacheKey(
+	cacheAffinityKey: string | undefined,
+	sessionId: string | undefined,
+	body?: RequestBody,
+): string | undefined {
+	if (cacheAffinityKey) {
+		if (body) {
+			const instructionHash = stableSnapshotHash(body.instructions ?? "");
+			const toolsHash = stableSnapshotHash(body.tools ?? []);
+			return stableCodexThreadId(`${cacheAffinityKey}:shape:${instructionHash}:${toolsHash}`);
+		}
+		return stableCodexThreadId(cacheAffinityKey);
+	}
+	return clampOpenAIPromptCacheKey(sessionId);
+}
+
 function buildBaseCodexHeaders(
 	initHeaders: Record<string, string> | undefined,
 	additionalHeaders: Record<string, string> | undefined,
@@ -1499,6 +1606,7 @@ function buildSSEHeaders(
 	accountId: string,
 	token: string,
 	sessionId?: string,
+	threadId?: string,
 ): Headers {
 	const headers = buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token);
 	headers.set("OpenAI-Beta", "responses=experimental");
@@ -1507,6 +1615,11 @@ function buildSSEHeaders(
 
 	if (sessionId) {
 		headers.set("session-id", sessionId);
+	}
+	if (threadId) {
+		headers.set("thread-id", threadId);
+		headers.set("x-client-request-id", threadId);
+	} else if (sessionId) {
 		headers.set("x-client-request-id", sessionId);
 	}
 
@@ -1519,6 +1632,7 @@ function buildWebSocketHeaders(
 	accountId: string,
 	token: string,
 	requestId: string,
+	threadId?: string,
 ): Headers {
 	const headers = buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token);
 	headers.delete("accept");
@@ -1526,7 +1640,10 @@ function buildWebSocketHeaders(
 	headers.delete("OpenAI-Beta");
 	headers.delete("openai-beta");
 	headers.set("OpenAI-Beta", OPENAI_BETA_RESPONSES_WEBSOCKETS);
-	headers.set("x-client-request-id", requestId);
+	headers.set("x-client-request-id", threadId ?? requestId);
 	headers.set("session-id", requestId);
+	if (threadId) {
+		headers.set("thread-id", threadId);
+	}
 	return headers;
 }

@@ -150,4 +150,43 @@ describe("createAgentSession stream options", () => {
 
 		expect(options?.websocketConnectTimeoutMs).toBe(0);
 	});
+
+	it("refreshes cacheAffinityKey when the model is selected after session creation", async () => {
+		const model = createModel("openai-codex-responses");
+		const settingsManager = SettingsManager.inMemory({});
+		const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
+		authStorage.setRuntimeApiKey(model.provider, "test-api-key");
+		const modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+		let capturedOptions: SimpleStreamOptions | undefined;
+
+		modelRegistry.registerProvider(model.provider, {
+			api: "openai-codex-responses",
+			streamSimple: (_model, _context, providerOptions) => {
+				capturedOptions = providerOptions;
+				return createDoneStream("openai-codex-responses");
+			},
+		});
+
+		const sessionManager = SessionManager.inMemory(cwd);
+		const { session } = await createAgentSession({
+			cwd,
+			agentDir,
+			authStorage,
+			modelRegistry,
+			settingsManager,
+			sessionManager,
+		});
+
+		try {
+			await session.setModel(model);
+			await session.prompt("ting", { expandPromptTemplates: false });
+
+			expect(capturedOptions?.sessionId).toBe(sessionManager.getSessionId());
+			expect(capturedOptions?.cacheAffinityKey).toMatch(/^pi:capture-provider:capture-model:/);
+			expect(capturedOptions?.cacheAffinityKey).not.toBe(capturedOptions?.sessionId);
+		} finally {
+			session.dispose();
+			modelRegistry.unregisterProvider(model.provider);
+		}
+	});
 });

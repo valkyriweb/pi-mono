@@ -60,6 +60,7 @@ describe("ExtensionRunner B2/B3 hooks", () => {
 		getToolDefinitions: () => [],
 		getCustomEntries: () => [],
 		setActiveTools: () => {},
+		setDeferredOverrides: () => {},
 		refreshTools: () => {},
 		getCommands: () => [],
 		setModel: async () => false,

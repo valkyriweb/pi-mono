@@ -196,6 +196,34 @@ describe("AgentSession context usage", () => {
 		});
 	});
 
+	it("prefers completed assistant transcript usage over a stale service estimate", () => {
+		const branch = [
+			messageEntry(assistantMessage(110), "assistant"),
+			messageEntry(userMessage("u".repeat(40)), "trailing-user"),
+		];
+		const service: ContextUsageSnapshotService = {
+			get: () => ({ tokens: 500, contextWindow: 1000, percent: 50 }),
+		};
+
+		const usage = AgentSession.prototype.getContextUsage.call({
+			model: { contextWindow: 1000 },
+			systemPrompt: "x".repeat(200),
+			messages: branch.filter((entry) => entry.type === "message").map((entry) => entry.message),
+			sessionManager: {
+				getBranch: () => branch,
+			},
+			_extensionRunner: {
+				getService: (id: string) => (id === CONTEXT_USAGE_SERVICE_ID ? service : undefined),
+			},
+		});
+
+		expect(usage).toEqual({
+			tokens: 120,
+			contextWindow: 1000,
+			percent: 12,
+		});
+	});
+
 	it("ignores queued refreshes from stale extension contexts", async () => {
 		const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
 		const pi = {

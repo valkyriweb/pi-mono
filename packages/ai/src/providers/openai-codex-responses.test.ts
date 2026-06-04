@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Context, Model, Tool } from "../types.ts";
-import { _buildRequestBodyForTests as buildRequestBody } from "./openai-codex-responses.ts";
+import {
+	_buildRequestBodyForTests as buildRequestBody,
+	_buildSSEHeadersForTests as buildSSEHeaders,
+	_buildWebSocketHeadersForTests as buildWebSocketHeaders,
+} from "./openai-codex-responses.ts";
 
 // Minimal model fixture — buildRequestBody walks through convertResponsesMessages
 // which calls downgradeUnsupportedImages, which reads `model.input`. Everything
@@ -23,7 +27,7 @@ function buildBodyWith(tools: Tool[]) {
 }
 
 describe("buildRequestBody — Codex prompt cache", () => {
-	it("keeps cache affinity but omits unsupported cache retention", () => {
+	it("keeps session id cache fallback for long cache", () => {
 		const context: Context = {
 			systemPrompt: "",
 			messages: [],
@@ -34,7 +38,75 @@ describe("buildRequestBody — Codex prompt cache", () => {
 		});
 
 		expect(body.prompt_cache_key).toBe("codex-session");
-		expect((body as Record<string, unknown>).prompt_cache_retention).toBeUndefined();
+		expect(body.prompt_cache_retention).toBeUndefined();
+	});
+
+	it("derives a UUID-shaped Codex thread cache key from Pi cache affinity", () => {
+		const context: Context = {
+			systemPrompt: "",
+			messages: [],
+		};
+		const body = buildRequestBody(model, context, {
+			cacheRetention: "long",
+			sessionId: "pi-session-id",
+			cacheAffinityKey: "pi:openai-codex:gpt-5.5:abc123",
+		});
+		const sameBody = buildRequestBody(model, context, {
+			cacheRetention: "long",
+			sessionId: "other-pi-session-id",
+			cacheAffinityKey: "pi:openai-codex:gpt-5.5:abc123",
+		});
+
+		expect(body.prompt_cache_key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+		expect(sameBody.prompt_cache_key).toBe(body.prompt_cache_key);
+	});
+
+	it("includes provider-visible prompt shape in the Codex cache key", () => {
+		const contextA: Context = {
+			systemPrompt: "stable system",
+			messages: [],
+			tools: [{ name: "read", description: "Read", parameters: { type: "object", properties: {} } } as Tool],
+		};
+		const contextB: Context = {
+			systemPrompt: "stable system",
+			messages: [],
+			tools: [
+				{ name: "read", description: "Read", parameters: { type: "object", properties: {} } } as Tool,
+				{ name: "write", description: "Write", parameters: { type: "object", properties: {} } } as Tool,
+			],
+		};
+		const options = {
+			cacheRetention: "long" as const,
+			sessionId: "pi-session-id",
+			cacheAffinityKey: "pi:openai-codex:gpt-5.5:abc123",
+		};
+
+		const bodyA = buildRequestBody(model, contextA, options);
+		const sameShapeDifferentSession = buildRequestBody(model, contextA, { ...options, sessionId: "other-session" });
+		const bodyB = buildRequestBody(model, contextB, options);
+
+		expect(sameShapeDifferentSession.prompt_cache_key).toBe(bodyA.prompt_cache_key);
+		expect(bodyB.prompt_cache_key).not.toBe(bodyA.prompt_cache_key);
+	});
+
+	it("uses the stable Codex cache key as the Codex thread/request id", () => {
+		const threadId = "11111111-2222-5333-8444-555555555555";
+		const sseHeaders = buildSSEHeaders(undefined, undefined, "account-id", "token", "pi-session-id", threadId);
+		const websocketHeaders = buildWebSocketHeaders(
+			undefined,
+			undefined,
+			"account-id",
+			"token",
+			"pi-session-id",
+			threadId,
+		);
+
+		expect(sseHeaders.get("session-id")).toBe("pi-session-id");
+		expect(sseHeaders.get("thread-id")).toBe(threadId);
+		expect(sseHeaders.get("x-client-request-id")).toBe(threadId);
+		expect(websocketHeaders.get("session-id")).toBe("pi-session-id");
+		expect(websocketHeaders.get("thread-id")).toBe(threadId);
+		expect(websocketHeaders.get("x-client-request-id")).toBe(threadId);
 	});
 });
 

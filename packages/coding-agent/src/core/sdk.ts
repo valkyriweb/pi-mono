@@ -20,7 +20,7 @@ import { ModelRegistry } from "./model-registry.ts";
 import { findInitialModel } from "./model-resolver.ts";
 import type { ResourceLoader } from "./resource-loader.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
-import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
+import { getDefaultSessionDir, type SessionContext, SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import { isInstallTelemetryEnabled } from "./telemetry.ts";
 import { time } from "./timings.ts";
@@ -443,6 +443,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				: undefined;
 			return streamSimple(model, context, {
 				...options,
+				cacheAffinityKey: options?.cacheAffinityKey ?? createPromptCacheAffinityKey(model, context),
 				apiKey: auth.apiKey,
 				timeoutMs,
 				websocketConnectTimeoutMs,
@@ -469,7 +470,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		},
 		sessionId: sessionManager.getSessionId(),
-		cacheAffinityKey: model ? createPromptCacheAffinityKey(model, cwd) : undefined,
+		cacheAffinityKey: undefined,
 		transformContext: async (messages) => {
 			const runner = extensionRunnerRef.current;
 			if (!runner) return messages;
@@ -482,9 +483,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
 	});
 
+	const sessionModelMatches = (storedModel: SessionContext["model"], selectedModel: Model<any>): boolean =>
+		storedModel?.provider === selectedModel.provider && storedModel.modelId === selectedModel.id;
+
 	// Restore messages if session has existing data
 	if (hasExistingSession) {
 		agent.state.messages = existingSession.messages;
+		if (model && !sessionModelMatches(existingSession.model, model)) {
+			sessionManager.appendModelChange(model.provider, model.id);
+		}
 		if (!hasThinkingEntry) {
 			sessionManager.appendThinkingLevelChange(thinkingLevel);
 		}

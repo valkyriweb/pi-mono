@@ -74,6 +74,7 @@ describe("pi-agents tracer (issue 07)", () => {
 		getToolDefinitions: () => [],
 		getCustomEntries: () => [],
 		setActiveTools: () => {},
+		setDeferredOverrides: () => {},
 		refreshTools: () => {},
 		getCommands: () => [],
 		setModel: async () => false,
