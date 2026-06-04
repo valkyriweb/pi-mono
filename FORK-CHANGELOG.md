@@ -6,6 +6,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Changed
 
+- Ignored the `.rusty/` pi session store in `.gitignore` (runtime state, never committed).
 - Clarified the exact-semver regex intent with a comment in `scripts/check-pinned-deps.mjs` (canary for the ported agentic-review pipeline). No behavior change.
 - Repo chrome split from the concurrent-session checkpoint: PR template, `.gitignore` entry for nested `.pi-ws-*` worktrees, AGENTS.md guidance refresh, biome config tweak, and three `docs/goals/` session logs.
 
