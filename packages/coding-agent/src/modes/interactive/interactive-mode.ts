@@ -300,6 +300,8 @@ export class InteractiveMode {
 	private workingMessage: string | undefined = undefined;
 	private workingVisible = true;
 	private workingIndicatorOptions: LoaderIndicatorOptions | undefined = undefined;
+	private workingStartedAt: number | undefined = undefined;
+	private workingElapsedTimer: NodeJS.Timeout | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working...";
 	private readonly defaultHiddenThinkingLabel = "Thinking...";
 	private hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
@@ -1563,11 +1565,7 @@ export class InteractiveMode {
 			commandContextActions: {
 				waitForIdle: () => this.session.agent.waitForIdle(),
 				newSession: async (options) => {
-					if (this.loadingAnimation) {
-						this.loadingAnimation.stop();
-						this.loadingAnimation = undefined;
-					}
-					this.statusContainer.clear();
+					this.stopWorkingLoader();
 					try {
 						const result = await this.runtimeHost.newSession(options);
 						if (!result.cancelled) {
@@ -1774,17 +1772,27 @@ export class InteractiveMode {
 	}
 
 	private getWorkingLoaderMessage(): string {
-		return this.workingMessage ?? this.defaultWorkingMessage;
+		const message = this.workingMessage ?? this.defaultWorkingMessage;
+		if (this.workingStartedAt === undefined) return message;
+
+		const elapsedSec = Math.floor((Date.now() - this.workingStartedAt) / 1000);
+		return `${message.replace(/\.\.\.$/, "…")} (${elapsedSec}s)`;
 	}
 
 	private createWorkingLoader(): Loader {
-		return new Loader(
+		const loader = new Loader(
 			this.ui,
 			(spinner) => theme.fg("accent", spinner),
 			(text) => theme.fg("muted", text),
 			this.getWorkingLoaderMessage(),
 			this.workingIndicatorOptions,
 		);
+		this.workingElapsedTimer = setInterval(() => {
+			if (this.loadingAnimation === loader && this.workingStartedAt !== undefined) {
+				loader.setMessage(this.getWorkingLoaderMessage());
+			}
+		}, 1000);
+		return loader;
 	}
 
 	private stopWorkingLoader(): void {
@@ -1792,6 +1800,11 @@ export class InteractiveMode {
 			this.loadingAnimation.stop();
 			this.loadingAnimation = undefined;
 		}
+		if (this.workingElapsedTimer) {
+			clearInterval(this.workingElapsedTimer);
+			this.workingElapsedTimer = undefined;
+		}
+		this.workingStartedAt = undefined;
 		this.statusContainer.clear();
 	}
 
@@ -1803,6 +1816,7 @@ export class InteractiveMode {
 			return;
 		}
 		if (this.session.isStreaming && !this.loadingAnimation) {
+			this.workingStartedAt = Date.now();
 			this.statusContainer.clear();
 			this.loadingAnimation = this.createWorkingLoader();
 			this.statusContainer.addChild(this.loadingAnimation);
@@ -2152,7 +2166,7 @@ export class InteractiveMode {
 			setWorkingMessage: (message) => {
 				this.workingMessage = message;
 				if (this.loadingAnimation) {
-					this.loadingAnimation.setMessage(message ?? this.defaultWorkingMessage);
+					this.loadingAnimation.setMessage(this.getWorkingLoaderMessage());
 				}
 			},
 			setWorkingVisible: (visible) => this.setWorkingVisible(visible),
@@ -3052,11 +3066,7 @@ export class InteractiveMode {
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(false);
 				}
-				if (this.loadingAnimation) {
-					this.loadingAnimation.stop();
-					this.loadingAnimation = undefined;
-					this.statusContainer.clear();
-				}
+				this.stopWorkingLoader();
 				if (this.streamingComponent) {
 					this.chatContainer.removeChild(this.streamingComponent);
 					this.streamingComponent = undefined;
@@ -4852,11 +4862,7 @@ export class InteractiveMode {
 		sessionPath: string,
 		options?: Parameters<ExtensionCommandContext["switchSession"]>[1],
 	): Promise<{ cancelled: boolean }> {
-		if (this.loadingAnimation) {
-			this.loadingAnimation.stop();
-			this.loadingAnimation = undefined;
-		}
-		this.statusContainer.clear();
+		this.stopWorkingLoader();
 		try {
 			const result = await this.runtimeHost.switchSession(sessionPath, {
 				withSession: options?.withSession,
@@ -5442,11 +5448,7 @@ export class InteractiveMode {
 		}
 
 		try {
-			if (this.loadingAnimation) {
-				this.loadingAnimation.stop();
-				this.loadingAnimation = undefined;
-			}
-			this.statusContainer.clear();
+			this.stopWorkingLoader();
 			const result = await this.runtimeHost.importFromJsonl(inputPath);
 			if (result.cancelled) {
 				this.showStatus("Import cancelled");
@@ -5795,11 +5797,7 @@ export class InteractiveMode {
 	}
 
 	private async handleClearCommand(): Promise<void> {
-		if (this.loadingAnimation) {
-			this.loadingAnimation.stop();
-			this.loadingAnimation = undefined;
-		}
-		this.statusContainer.clear();
+		this.stopWorkingLoader();
 		try {
 			const result = await this.runtimeHost.newSession();
 			if (result.cancelled) {
@@ -5967,11 +5965,7 @@ export class InteractiveMode {
 			return;
 		}
 
-		if (this.loadingAnimation) {
-			this.loadingAnimation.stop();
-			this.loadingAnimation = undefined;
-		}
-		this.statusContainer.clear();
+		this.stopWorkingLoader();
 
 		try {
 			await this.session.compact(customInstructions);
@@ -5985,10 +5979,7 @@ export class InteractiveMode {
 		if (this.settingsManager.getShowTerminalProgress()) {
 			this.ui.terminal.setProgress(false);
 		}
-		if (this.loadingAnimation) {
-			this.loadingAnimation.stop();
-			this.loadingAnimation = undefined;
-		}
+		this.stopWorkingLoader();
 		this.clearExtensionTerminalInputListeners();
 		this.footer.dispose();
 		this.footerDataProvider.dispose();
