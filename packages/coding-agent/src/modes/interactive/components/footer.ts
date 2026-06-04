@@ -42,6 +42,14 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
 }
 
+interface UsageSnapshot {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: { total: number };
+}
+
 interface UsageTotals {
 	totalInput: number;
 	totalOutput: number;
@@ -49,6 +57,7 @@ interface UsageTotals {
 	totalCacheWrite: number;
 	totalCost: number;
 	assistantTurns: number;
+	lastUsage?: UsageSnapshot;
 }
 
 /**
@@ -136,15 +145,7 @@ export class FooterComponent implements Component {
 
 	private getUsageTotals(): UsageTotals {
 		const entries = this.getUsageEntries();
-		let lastUsage:
-			| {
-					input: number;
-					output: number;
-					cacheRead: number;
-					cacheWrite: number;
-					cost: { total: number };
-			  }
-			| undefined;
+		let lastUsage: UsageSnapshot | undefined;
 		for (let i = entries.length - 1; i >= 0; i--) {
 			const entry = entries[i];
 			if (entry?.type === "message" && entry.message.role === "assistant") {
@@ -176,6 +177,7 @@ export class FooterComponent implements Component {
 			totalCacheWrite: 0,
 			totalCost: 0,
 			assistantTurns: 0,
+			lastUsage,
 		};
 
 		const startIndex =
@@ -198,21 +200,8 @@ export class FooterComponent implements Component {
 
 	render(width: number): string[] {
 		const state = this.session.state;
-		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, assistantTurns } =
+		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, assistantTurns, lastUsage } =
 			this.getUsageTotals();
-
-		const contextUsage = this.session.getContextUsage();
-		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
-		const contextPercentValue = contextUsage?.percent ?? 0;
-		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
-		const contextTokens = contextUsage?.tokens ?? null;
-		const knownTokens = contextTokens ?? 0;
-
-		// CWD with ~ substitution
-		const basePwd = formatCwdForFooter(
-			this.session.sessionManager.getCwd(),
-			process.env.HOME || process.env.USERPROFILE,
-		);
 
 		// Live work-bar: while a turn streams, the bottom statusline gets a pulsing
 		// dot + elapsed timer on the left and an "esc to interrupt" hint on the
@@ -229,6 +218,19 @@ export class FooterComponent implements Component {
 		const elapsedSec = Math.floor(elapsedMs / 1000);
 		// Gentle ~0.6s pulse — alive without competing with the top spinner.
 		const pulse = Math.floor(elapsedMs / 600) % 2 === 0 ? "●" : "○";
+
+		const contextUsage = this.session.getContextUsage();
+		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
+		const contextPercentValue = contextUsage?.percent ?? 0;
+		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
+		const contextTokens = contextUsage?.tokens ?? null;
+		const knownTokens = contextTokens ?? 0;
+
+		// CWD with ~ substitution
+		const basePwd = formatCwdForFooter(
+			this.session.sessionManager.getCwd(),
+			process.env.HOME || process.env.USERPROFILE,
+		);
 
 		const branch = this.footerData.getGitBranch();
 		const sessionName = this.session.sessionManager.getSessionName();
@@ -254,14 +256,21 @@ export class FooterComponent implements Component {
 		if (totalCacheRead) leftParts.push(theme.fg("dim", `R${formatTokens(totalCacheRead)}`));
 		if (totalCacheWrite) leftParts.push(theme.fg("dim", `W${formatTokens(totalCacheWrite)}`));
 		// Provider usage is normalized into non-cached input, cache reads, and
-		// cache writes. Claude-style providers report both read/write; OpenAI/Codex
-		// reports cached input as cacheRead and normally has no cacheWrite. In both
-		// cases the comparable hit-rate denominator is the cacheable prompt work the
-		// provider reported for the active branch only.
-		const cacheDenom = totalInput + totalCacheRead + totalCacheWrite;
-		if (cacheDenom > 0 && (totalCacheRead || totalCacheWrite)) {
-			const hitPct = (totalCacheRead / cacheDenom) * 100;
-			const label = `cache ${hitPct.toFixed(0)}%`;
+		// cache writes. Show cache warmth for the latest turn, not cumulative
+		// session totals: a two-turn Codex session has one cold turn + one warm turn,
+		// so cumulative math misleadingly displays 50% even when turn 2 is fully warm.
+		const latestCacheRead = lastUsage?.cacheRead ?? 0;
+		const latestCacheWrite = lastUsage?.cacheWrite ?? 0;
+		const latestInput = lastUsage?.input ?? 0;
+		const cacheDenom = latestInput + latestCacheRead + latestCacheWrite;
+		if (cacheDenom > 0) {
+			const hitPct = (latestCacheRead / cacheDenom) * 100;
+			const totalCacheDenom = totalInput + totalCacheRead + totalCacheWrite;
+			const avgPct = totalCacheDenom > 0 ? (totalCacheRead / totalCacheDenom) * 100 : undefined;
+			const label =
+				avgPct === undefined
+					? `cache ${hitPct.toFixed(0)}%`
+					: `cache ${hitPct.toFixed(0)}% avg ${avgPct.toFixed(0)}%`;
 			// Past the warmup window (≥10 assistant turns) the prefix should be
 			// steady-state cached. <90% means real drift; <80% means something is
 			// mutating the cached prefix every turn. Under 10 turns we keep the

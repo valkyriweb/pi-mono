@@ -206,7 +206,7 @@ describe("FooterComponent width handling", () => {
 		expect(rendered).toContain("↑2.0k");
 		expect(rendered).toContain("R8.0k");
 		expect(rendered).toContain("W2.0k");
-		expect(rendered).toContain("cache 67%");
+		expect(rendered).toContain("cache 67% avg 67%");
 		expect(rendered).toContain("t1");
 		expect(rendered).not.toContain("↑102k");
 		expect(rendered).not.toContain("t2");
@@ -268,20 +268,21 @@ describe("FooterComponent width handling", () => {
 
 		expect(rendered).toContain("↑3.0k");
 		expect(rendered).toContain("R17k");
-		expect(rendered).toContain("cache 85%");
+		expect(rendered).toContain("cache 80% avg 85%");
 		expect(rendered).not.toContain("↑103k");
 		expect(rendered).not.toContain("W100k");
 	});
 
-	it("uses provider-normalized cache fields for OpenAI/Codex read-only cache reports", () => {
+	it("shows cold first-turn cache status", () => {
 		const footer = new FooterComponent(
 			createSession({
 				sessionName: "",
-				provider: "openai-codex",
+				provider: "test",
+				modelId: "test-model",
 				usage: {
-					input: 34_000,
+					input: 37_196,
 					output: 1,
-					cacheRead: 33_000,
+					cacheRead: 0,
 					cacheWrite: 0,
 					cost: { total: 1 },
 				},
@@ -291,19 +292,87 @@ describe("FooterComponent width handling", () => {
 
 		const rendered = footer.render(140).join("\n");
 
+		expect(rendered).toContain("↑37k");
+		expect(rendered).toContain("cache 0% avg 0%");
+		expect(rendered).toContain("t1");
+	});
+
+	it("shows warm first-turn cache status", () => {
+		const footer = new FooterComponent(
+			createSession({
+				sessionName: "",
+				provider: "test",
+				modelId: "test-model",
+				usage: {
+					input: 300,
+					output: 1,
+					cacheRead: 36_864,
+					cacheWrite: 0,
+					cost: { total: 1 },
+				},
+			}),
+			createFooterData(1),
+		);
+
+		const rendered = footer.render(140).join("\n");
+
+		expect(rendered).toContain("R37k");
+		expect(rendered).toContain("cache 99% avg 99%");
+		expect(rendered).toContain("t1");
+	});
+
+	it("shows latest-turn cache warmth instead of cumulative cold-start dilution", () => {
+		const footer = new FooterComponent(
+			createSession({
+				sessionName: "",
+				provider: "openai-codex",
+				entries: [
+					{
+						id: "cold",
+						type: "message",
+						message: {
+							role: "assistant",
+							usage: {
+								input: 34_000,
+								output: 1,
+								cacheRead: 0,
+								cacheWrite: 0,
+								cost: { total: 1 },
+							},
+						},
+					},
+					{
+						id: "warm",
+						type: "message",
+						message: {
+							role: "assistant",
+							usage: {
+								input: 13,
+								output: 1,
+								cacheRead: 33_000,
+								cacheWrite: 0,
+								cost: { total: 1 },
+							},
+						},
+					},
+				],
+			}),
+			createFooterData(1),
+		);
+
+		const rendered = footer.render(140).join("\n");
+
 		expect(rendered).toContain("↑34k");
 		expect(rendered).toContain("R33k");
-		expect(rendered).toContain("cache 49%");
+		expect(rendered).toContain("cache 100% avg 49%");
+		expect(rendered).not.toContain("cache 49% avg");
 	});
 
 	it("shows the streaming work-bar only while streaming", () => {
 		const idle = new FooterComponent(createSession({ sessionName: "" }), createFooterData(1));
 		expect(idle.render(120).join("\n")).not.toContain("esc to interrupt");
 
-		const streaming = new FooterComponent(
-			createSession({ sessionName: "", isStreaming: true }),
-			createFooterData(1),
-		);
+		const streaming = new FooterComponent(createSession({ sessionName: "", isStreaming: true }), createFooterData(1));
 		const rendered = streaming.render(120).join("\n");
 		expect(rendered).toContain("esc to interrupt");
 		// Elapsed timer + pulse dot present (●/○ depending on sub-second phase).
