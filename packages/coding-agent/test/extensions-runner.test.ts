@@ -70,6 +70,7 @@ describe("ExtensionRunner", () => {
 		getToolDefinitions: () => [],
 		getCustomEntries: () => [],
 		setActiveTools: () => {},
+		setDeferredOverrides: () => {},
 		refreshTools: () => {},
 		getCommands: () => [],
 		setModel: async () => false,

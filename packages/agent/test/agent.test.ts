@@ -1,6 +1,7 @@
-import { type AssistantMessage, type AssistantMessageEvent, EventStream, getModel } from "@valkyriweb/pi-ai";
+import { type AssistantMessage, type AssistantMessageEvent, EventStream } from "@valkyriweb/pi-ai";
 import { describe, expect, it } from "vitest";
 import { Agent } from "../src/index.ts";
+import { pickModel } from "./helpers/models.ts";
 
 // Mock stream that mimics AssistantMessageEventStream
 class MockAssistantStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
@@ -64,7 +65,7 @@ describe("Agent", () => {
 	});
 
 	it("should create an agent instance with custom initial state", () => {
-		const customModel = getModel("openai", "gpt-4o-mini");
+		const customModel = pickModel("openai");
 		const agent = new Agent({
 			initialState: {
 				systemPrompt: "You are a helpful assistant.",
@@ -250,7 +251,7 @@ describe("Agent", () => {
 		expect(agent.state.systemPrompt).toBe("Custom prompt");
 
 		// Test setModel
-		const newModel = getModel("google", "gemini-2.5-flash");
+		const newModel = pickModel("google");
 		agent.state.model = newModel;
 		expect(agent.state.model).toBe(newModel);
 

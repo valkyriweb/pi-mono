@@ -4,21 +4,22 @@
 
 ### Added
 
-- Footer streaming work-bar: while a turn streams, the bottom statusline shows a pulsing dot + elapsed timer (left) and an `esc to interrupt` hint (right). Purely additive — nothing renders when idle; animated by the existing 80ms streaming `Loader` tick.
 - Session picker badges sessions that are open in another live pi process, backed by a `session-liveness` probe.
-
-### Changed
-
-- Tool-use guidance now mirrors Claude Code's efficiency rules. The parallelization guideline batches all independent calls in one message (reads, listings, searches, independent read-only bash, edits to different files, multiple `Agent` launches), serializing only on real data dependencies. `edit`/`write` guidelines tell the model not to re-read a file to confirm a successful mutation (the tool errors on failure), and `read` guidance steers toward `offset`/`limit` region reads when the relevant span is already known.
 
 ### Fixed
 
+- Complete the prompt-cache affinity refactor across two layers. (1) In `agent-session.ts`, the interactive cache-heartbeat and the four model-switch paths were still passing `cwd` to `createPromptCacheAffinityKey`, which now expects the prefix context (`{systemPrompt, tools}`); the stale `cwd` argument collapsed the affinity key to a constant-per-family value (and the tree no longer type-checked). (2) The computed key was then silently dropped one hop before the provider: `packages/ai`'s shared `buildBaseOptions` hand-enumerates which option fields reach the provider request and omitted `cacheAffinityKey`, so every provider (Codex, OpenAI-responses, completions, Anthropic, …) fell back to keying the prompt cache by `sessionId`. With both fixed, all entry paths derive the key from the real prefix shape and it actually reaches the provider — verified at runtime: three independent Codex sessions with the same prefix now emit one shared `pi:openai-codex:codex:…` affinity and one shared shape-derived `prompt_cache_key` (no longer `== sessionId`).
+- Record a `model_change` entry when an existing session is reopened with an explicit different model, so CLI `--session-id --model …` continuations preserve the same audit trail as interactive model switches.
 - Agent tool call and collapsed result rendering now show provider/model and thinking metadata.
 - Agent tool call labels inherit the parent session's live model and thinking level via a new engine `snapshot()`, so forked agent calls render the active provider/model/thinking instead of stale defaults.
 - Stubbed `sessionLiveness` in the #5080 shutdown ordering regression test so its mock matches `shutdown()` now calling `this.sessionLiveness.stop()`.
 - Reset the footer assistant turn count after compaction by rendering it from the same post-compaction transcript window as token/cache totals.
 - Replaced a negated-OR null guard with optional chaining (`!adapter?.kill`) in `core/tools/background-tasks.ts`. Behavior-preserving.
 - Surface agent-view module load failures instead of silently reporting the package as not installed.
+
+### Changed
+
+- Tool-use guidance now mirrors Claude Code's efficiency rules. The parallelization guideline batches all independent calls in one message (reads, listings, searches, independent read-only bash, edits to different files, multiple `Agent` launches), serializing only on real data dependencies. `edit`/`write` guidelines tell the model not to re-read a file to confirm a successful mutation (the tool errors on failure), and `read` guidance steers toward `offset`/`limit` region reads when the relevant span is already known.
 
 ## 0.78.2
 
