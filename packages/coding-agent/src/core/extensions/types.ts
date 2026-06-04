@@ -2046,11 +2046,21 @@ export interface ToolRegistryView {
 	info(): ToolInfo[];
 	definitions(): ToolDefinition[];
 	active(): string[];
+	/**
+	 * Post-registration deferral seam (cache-critical). Marks already-registered
+	 * tools as `deferLoading:true` so they ride `tools[]` as `defer_loading` stubs
+	 * instead of full schemas. Apply once before the first request; idempotent
+	 * (an unchanged set is a no-op). `alwaysLoad` and natively-deferred tools are
+	 * ignored. Dropping a name restores its original `deferLoading`.
+	 */
+	setDeferredOverrides(names: string[]): void;
 }
 
 export type GetCommandsHandler = () => SlashCommandInfo[];
 
 export type SetActiveToolsHandler = (toolNames: string[]) => void;
+
+export type SetDeferredToolOverridesHandler = (names: string[]) => void;
 
 export type RefreshToolsHandler = (options?: { activateNewTools?: boolean }) => void;
 
@@ -2140,6 +2150,7 @@ export interface ExtensionActions {
 	getToolDefinitions: GetToolDefinitionsHandler;
 	getCustomEntries: GetCustomEntriesHandler;
 	setActiveTools: SetActiveToolsHandler;
+	setDeferredOverrides: SetDeferredToolOverridesHandler;
 	refreshTools: RefreshToolsHandler;
 	getCommands: GetCommandsHandler;
 	setModel: SetModelHandler;

@@ -328,6 +328,7 @@ export class ExtensionRunner {
 		this.runtime.getToolDefinitions = actions.getToolDefinitions;
 		this.runtime.getCustomEntries = actions.getCustomEntries;
 		this.runtime.setActiveTools = actions.setActiveTools;
+		this.runtime.setDeferredOverrides = actions.setDeferredOverrides;
 		this.runtime.refreshTools = actions.refreshTools;
 		this.runtime.getCommands = actions.getCommands;
 		this.runtime.setModel = actions.setModel;
@@ -1119,7 +1120,22 @@ export class ExtensionRunner {
 			if (!handlers || handlers.length === 0) continue;
 
 			for (const handler of handlers) {
-				const handlerResult = await handler(event, ctx);
+				let handlerResult: ToolCallEventResult | undefined;
+				try {
+					handlerResult = (await handler(event, ctx)) as ToolCallEventResult | undefined;
+				} catch (err) {
+					// A session replacement (compaction/dispose) can set staleMessage
+					// AFTER the guard at the top of this method and invalidate ctx while a
+					// tool_call handler is running. The handler's guarded ctx getter then
+					// throws assertActive. The old session is gone, so the tool result is
+					// moot — short-circuit like emit() rather than letting the stale-ctx
+					// guard propagate up through beforeToolCall and surface as the tool's
+					// isError result (which blocks the call and confuses the model).
+					// Genuine (non-stale) extension errors still propagate, preserving the
+					// fail-safe "tool_call hook failure blocks execution" contract.
+					if (this.staleMessage) return result;
+					throw err;
+				}
 
 				if (handlerResult) {
 					result = handlerResult as ToolCallEventResult;

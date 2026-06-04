@@ -222,6 +222,11 @@ function buildFallbackModel(provider: string, modelId: string, availableModels: 
 	};
 }
 
+function stripProviderPrefix(provider: string, modelId: string): string {
+	const prefix = `${provider}/`;
+	return modelId.toLowerCase().startsWith(prefix.toLowerCase()) ? modelId.substring(prefix.length) : modelId;
+}
+
 /**
  * Parse a pattern to extract model and thinking level.
  * Handles models with colons in their IDs (e.g., OpenRouter's :exacto suffix).
@@ -580,7 +585,8 @@ export async function findInitialModel(options: {
 
 	// 3. Try saved default from settings
 	if (defaultProvider && defaultModelId) {
-		const found = modelRegistry.find(defaultProvider, defaultModelId);
+		const normalizedDefaultModelId = stripProviderPrefix(defaultProvider, defaultModelId);
+		const found = modelRegistry.find(defaultProvider, normalizedDefaultModelId);
 		if (found) {
 			model = found;
 			if (defaultThinkingLevel) {

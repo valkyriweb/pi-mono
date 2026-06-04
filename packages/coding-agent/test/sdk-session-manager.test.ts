@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pickModel } from "./helpers/models.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { pickModel } from "./helpers/models.ts";
 
 describe("createAgentSession session manager defaults", () => {
 	let tempDir: string;

@@ -35,6 +35,49 @@ describe("AuthStorage", () => {
 	}
 
 	describe("API key resolution", () => {
+		test("openai falls back to openai-codex stored API key", async () => {
+			writeAuthJson({
+				"openai-codex": { type: "api_key", key: "codex-api-key" },
+			});
+
+			authStorage = AuthStorage.create(authJsonPath);
+
+			expect(authStorage.has("openai")).toBe(true);
+			expect(authStorage.hasAuth("openai")).toBe(true);
+			expect(authStorage.getAuthStatus("openai")).toEqual({
+				configured: true,
+				source: "stored",
+				label: "openai-codex",
+			});
+			expect(await authStorage.getApiKey("openai")).toBe("codex-api-key");
+		});
+
+		test("openai direct credential wins over openai-codex alias", async () => {
+			writeAuthJson({
+				openai: { type: "api_key", key: "direct-openai-key" },
+				"openai-codex": { type: "api_key", key: "codex-api-key" },
+			});
+
+			authStorage = AuthStorage.create(authJsonPath);
+
+			expect(await authStorage.getApiKey("openai")).toBe("direct-openai-key");
+		});
+
+		test("openai falls back to openai-codex runtime API key", async () => {
+			writeAuthJson({});
+			authStorage = AuthStorage.create(authJsonPath);
+
+			authStorage.setRuntimeApiKey("openai-codex", "runtime-codex-key");
+
+			expect(authStorage.hasAuth("openai")).toBe(true);
+			expect(authStorage.getAuthStatus("openai")).toEqual({
+				configured: false,
+				source: "runtime",
+				label: "--api-key (openai-codex)",
+			});
+			expect(await authStorage.getApiKey("openai")).toBe("runtime-codex-key");
+		});
+
 		test("literal API key is returned directly", async () => {
 			writeAuthJson({
 				anthropic: { type: "api_key", key: "sk-ant-literal-key" },
@@ -433,6 +476,43 @@ describe("AuthStorage", () => {
 	});
 
 	describe("oauth lock compromise handling", () => {
+		test("openai refreshes through aliased openai-codex OAuth credentials", async () => {
+			registerOAuthProvider({
+				id: "openai-codex",
+				name: "OpenAI Codex",
+				async login() {
+					throw new Error("Not used in this test");
+				},
+				async refreshToken(credentials) {
+					return {
+						...credentials,
+						access: "refreshed-codex-access-token",
+						expires: Date.now() + 60_000,
+					};
+				},
+				getApiKey(credentials) {
+					return `Bearer ${credentials.access}`;
+				},
+			});
+
+			writeAuthJson({
+				"openai-codex": {
+					type: "oauth",
+					refresh: "refresh-token",
+					access: "expired-codex-access-token",
+					expires: Date.now() - 10_000,
+				},
+			});
+
+			authStorage = AuthStorage.create(authJsonPath);
+
+			expect(await authStorage.getApiKey("openai")).toBe("Bearer refreshed-codex-access-token");
+
+			const persisted = JSON.parse(readFileSync(authJsonPath, "utf-8")) as Record<string, { access?: string }>;
+			expect(persisted["openai-codex"]?.access).toBe("refreshed-codex-access-token");
+			expect(persisted.openai).toBeUndefined();
+		});
+
 		test("returns undefined on compromised lock and allows a later retry", async () => {
 			const providerId = `test-oauth-provider-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 			registerOAuthProvider({
