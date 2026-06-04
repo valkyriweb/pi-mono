@@ -9,6 +9,12 @@
 - Updated dependencies [[`8d79829`](https://github.com/valkyriweb/pi-mono/commit/8d79829aa8f241d8f16b13c6a7644083b6f733b9)]:
   - @valkyriweb/pi-ai@0.78.3
 
+## [Unreleased]
+
+### Added
+
+- `Agent` now exposes the agent loop's existing `shouldStopAfterTurn` hook (constructor option + mutable field), so hosts can request a graceful stop at a turn boundary — e.g. to compact before context grows past a hard cap — and resume with `continue()`.
+
 ## 0.78.2
 
 ### Patch Changes

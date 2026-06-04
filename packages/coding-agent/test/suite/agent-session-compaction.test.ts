@@ -1,12 +1,15 @@
+import type { AgentTool } from "@valkyriweb/pi-agent-core";
 import {
 	type AssistantMessage,
 	type Context,
 	createAssistantMessageEventStream,
 	fauxAssistantMessage,
+	fauxToolCall,
 	type Model,
 } from "@valkyriweb/pi-ai";
+import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHarness, type Harness } from "./harness.ts";
+import { createHarness, getMessageText, type Harness } from "./harness.ts";
 
 type SessionWithCompactionInternals = {
 	_checkCompaction: (
@@ -526,6 +529,92 @@ describe("AgentSession compaction characterization", () => {
 
 		expect(runAutoCompactionSpy).toHaveBeenCalledTimes(1);
 		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false);
+	});
+
+	it("runs threshold compaction before custom-message triggerTurn turns", async () => {
+		const harness = await createHarness({ models: [{ id: "faux-1", contextWindow: 200_000 }] });
+		harnesses.push(harness);
+		const sessionInternals = harness.session as unknown as SessionWithCompactionInternals;
+		harness.setResponses([fauxAssistantMessage("turn after compaction")]);
+		const bigAssistant = createAssistant(harness, {
+			stopReason: "stop",
+			totalTokens: 190_000,
+			timestamp: Date.now(),
+		});
+		harness.session.agent.state.messages = [
+			{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: Date.now() - 1000 },
+			bigAssistant,
+		];
+		const runAutoCompactionSpy = vi.spyOn(sessionInternals, "_runAutoCompaction").mockResolvedValue(false);
+
+		await harness.session.sendCustomMessage(
+			{ customType: "test", content: [{ type: "text", text: "continue goal" }], display: false },
+			{ triggerTurn: true },
+		);
+
+		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false);
+	});
+
+	it("compacts mid-run when a continuing turn crosses the threshold, then resumes", async () => {
+		const echoTool: AgentTool = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo text back",
+			parameters: Type.Object({ text: Type.String() }),
+			execute: async (_toolCallId, params) => {
+				const text = typeof params === "object" && params !== null && "text" in params ? String(params.text) : "";
+				return { content: [{ type: "text", text: `echo:${text}` }], details: { text } };
+			},
+		};
+		const harness = await createHarness({
+			tools: [echoTool],
+			models: [{ id: "faux-1", contextWindow: 200_000 }],
+			// The faux provider simulates small usage numbers; pull the threshold
+			// down to ~10 tokens so the first turn is over it.
+			settings: { compaction: { reserveTokens: 199_990, keepRecentTokens: 1 } },
+			extensionFactories: [
+				(pi) => {
+					pi.on("session_before_compact", async (event) => ({
+						compaction: {
+							summary: "mid-run summary",
+							firstKeptEntryId: event.preparation.firstKeptEntryId,
+							tokensBefore: event.preparation.tokensBefore,
+							details: {},
+						},
+					}));
+				},
+			],
+		});
+		harnesses.push(harness);
+
+		harness.setResponses([
+			fauxAssistantMessage(fauxToolCall("echo", { text: "hi" }), { stopReason: "toolUse" }),
+			fauxAssistantMessage("done after compaction"),
+		]);
+
+		await harness.session.prompt("start");
+
+		const compactionEntries = harness.sessionManager.getEntries().filter((entry) => entry.type === "compaction");
+		expect(compactionEntries).toHaveLength(1);
+		expect(harness.getPendingResponseCount()).toBe(0);
+		const lastMessage = harness.session.messages.at(-1);
+		expect(lastMessage?.role).toBe("assistant");
+		expect(getMessageText(lastMessage)).toContain("done after compaction");
+	});
+
+	it("keeps defer semantics when an over-threshold run ends naturally", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1", contextWindow: 200_000 }],
+			settings: { compaction: { reserveTokens: 199_990, keepRecentTokens: 1 } },
+		});
+		harnesses.push(harness);
+
+		harness.setResponses([fauxAssistantMessage("big final answer")]);
+
+		await harness.session.prompt("start");
+
+		const compactionEntries = harness.sessionManager.getEntries().filter((entry) => entry.type === "compaction");
+		expect(compactionEntries).toHaveLength(0);
 	});
 
 	it("triggers threshold compaction for error messages using the last successful usage", async () => {

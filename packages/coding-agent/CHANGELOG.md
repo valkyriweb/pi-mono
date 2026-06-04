@@ -15,11 +15,14 @@
 
 ### Added
 
+- Mid-run compaction cap: when a turn in a still-running task (pending tool results or queued steering/follow-up messages) crosses the compaction threshold, the agent loop now stops at the turn boundary, auto-compacts, and resumes the interrupted run against the compacted context. Previously a long run could drift far past the threshold until it ended, since threshold compaction was only checked post-run (deferred) or pre-prompt. Runs that end naturally keep the existing defer-to-next-prompt semantics.
 - Session picker badges sessions that are open in another live pi process, backed by a `session-liveness` probe.
 - Footer shows a cache-hit average % panel: per-turn `UsageSnapshot` tracking renders the session's rolling cache-read share next to token totals.
 
 ### Fixed
 
+- Moved the streaming work counter out of the footer into the work-bar (`fix(tui): move work counter out of footer`).
+- `sendCustomMessage({ triggerTurn: true })` now runs the same pre-turn threshold-compaction check as `prompt()`. Harness-driven turns (e.g. pi-goal continuations) previously skipped compaction entirely, so long goal runs grew context unbounded until hard overflow; now the turn starts against the compacted context and the custom message is delivered after compaction.
 - Complete the prompt-cache affinity refactor across two layers. (1) In `agent-session.ts`, the interactive cache-heartbeat and the four model-switch paths were still passing `cwd` to `createPromptCacheAffinityKey`, which now expects the prefix context (`{systemPrompt, tools}`); the stale `cwd` argument collapsed the affinity key to a constant-per-family value (and the tree no longer type-checked). (2) The computed key was then silently dropped one hop before the provider: `packages/ai`'s shared `buildBaseOptions` hand-enumerates which option fields reach the provider request and omitted `cacheAffinityKey`, so every provider (Codex, OpenAI-responses, completions, Anthropic, …) fell back to keying the prompt cache by `sessionId`. With both fixed, all entry paths derive the key from the real prefix shape and it actually reaches the provider — verified at runtime: three independent Codex sessions with the same prefix now emit one shared `pi:openai-codex:codex:…` affinity and one shared shape-derived `prompt_cache_key` (no longer `== sessionId`).
 - Record a `model_change` entry when an existing session is reopened with an explicit different model, so CLI `--session-id --model …` continuations preserve the same audit trail as interactive model switches.
 - Agent tool call and collapsed result rendering now show provider/model and thinking metadata.
