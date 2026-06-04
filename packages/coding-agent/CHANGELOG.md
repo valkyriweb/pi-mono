@@ -5,6 +5,7 @@
 ### Added
 
 - Session picker badges sessions that are open in another live pi process, backed by a `session-liveness` probe.
+- Footer shows a cache-hit average % panel: per-turn `UsageSnapshot` tracking renders the session's rolling cache-read share next to token totals.
 
 ### Fixed
 
