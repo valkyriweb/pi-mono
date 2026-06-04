@@ -1632,6 +1632,9 @@ export class InteractiveMode {
 		this.setupAutocompleteProvider();
 
 		const extensionRunner = this.session.extensionRunner;
+		// Deferred extensions register their commands after startup; rebuild the
+		// autocomplete provider so those commands (e.g. /recap) appear in the menu.
+		extensionRunner.onDeferredExtensionsLoaded(() => this.setupAutocompleteProvider());
 		extensionRunner.bindSlotUI({
 			showMainPane: (id, payload) => this.showExtensionMainPane(id, payload),
 			hideMainPane: (id) => this.hideExtensionMainPane(id),
