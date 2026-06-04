@@ -286,6 +286,7 @@ export class ExtensionRunner {
 	private shortcutDiagnostics: ResourceDiagnostic[] = [];
 	private commandDiagnostics: ResourceDiagnostic[] = [];
 	private staleMessage: string | undefined;
+	private deferredLoadedListeners: Set<() => void> = new Set();
 
 	constructor(
 		extensions: Extension[],
@@ -443,6 +444,15 @@ export class ExtensionRunner {
 		return this.deferredLoadPromise;
 	}
 
+	/**
+	 * Register a callback fired after deferred extensions finish loading, so UI
+	 * surfaces built from startup snapshots (e.g. the slash-command autocomplete
+	 * list) can rebuild with the newly registered commands.
+	 */
+	onDeferredExtensionsLoaded(listener: () => void): void {
+		this.deferredLoadedListeners.add(listener);
+	}
+
 	private async loadDeferredExtensionsOnce(): Promise<void> {
 		const pending = this.deferredExtensions.splice(0);
 		const previousSuppressNewToolActivation = this.runtime.suppressNewToolActivation;
@@ -471,6 +481,11 @@ export class ExtensionRunner {
 			this.runtime.suppressNewToolActivation = previousSuppressNewToolActivation;
 		}
 		this.runtime.refreshTools({ activateNewTools: false });
+		if (pending.length > 0) {
+			for (const listener of this.deferredLoadedListeners) {
+				listener();
+			}
+		}
 	}
 
 	/** Get all registered tools from all extensions (first registration per name wins). */
