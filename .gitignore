@@ -45,3 +45,6 @@ collect.sh
 
 # pi workspace worktrees nested in repo root
 .pi-ws-*/
+
+# rusty (pi) session store
+.rusty/
