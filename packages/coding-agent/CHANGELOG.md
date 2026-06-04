@@ -28,6 +28,7 @@
 - Reset the footer assistant turn count after compaction by rendering it from the same post-compaction transcript window as token/cache totals.
 - Replaced a negated-OR null guard with optional chaining (`!adapter?.kill`) in `core/tools/background-tasks.ts`. Behavior-preserving.
 - Surface agent-view module load failures instead of silently reporting the package as not installed.
+- Move the live work elapsed counter out of the footer and into the working loader line above input, matching Claude Code's placement.
 
 ### Changed
 
