@@ -1,50 +1,22 @@
 /**
- * Unified background-task tools — Claude Code `task_id` parity.
+ * Unified background runtime controls.
  *
  * One id space over every long-running thing (background bash jobs + background
  * agent runs), dispatched through the `core/tasks` registry seam:
  *
- *   TaskOutput(task_id) → read accumulated output of any task
- *   TaskStop(task_id)   → stop any task
- *   TaskList()          → list every background task
+ *   TaskStop(task_id)         → stop any runtime task
+ *   TaskBackgroundList()      → list every background/runtime task
  *
- * These replace the bash-only `BashOutput`/`KillShell` tools. The bash output
- * rendering (tail/head/all slicing, status header) is preserved verbatim via
- * the `local_bash` adapter's `output` capability, so retiring the old tools
- * loses no functionality — exactly CC's "BashOutput = shape, TaskOutput = tool".
+ * Output is push-notified on completion and persisted to output files where
+ * available. Model-facing readback happens with Read(path, offset, limit), not
+ * a polling/pull tool.
  */
 
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "../extensions/types.ts";
-import { findTaskAdapter, getTaskSnapshot, listTasks } from "../tasks/index.ts";
-import { isTerminalTaskStatus, type TaskSnapshot } from "../tasks/types.ts";
+import { findTaskAdapter, listTasks } from "../tasks/index.ts";
+import type { TaskSnapshot } from "../tasks/types.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
-
-const DEFAULT_BLOCK_TIMEOUT_MS = 60_000;
-const BLOCK_POLL_INTERVAL_MS = 100;
-
-const taskOutputSchema = Type.Object({
-	task_id: Type.String({
-		description: "Task id returned by bash(run_in_background:true) or Agent(run_in_background:true).",
-	}),
-	mode: Type.Optional(
-		Type.Union([Type.Literal("tail"), Type.Literal("head"), Type.Literal("all")], {
-			description: "For log-backed (bash) tasks: which slice of the log to return. Default: tail.",
-		}),
-	),
-	maxLines: Type.Optional(
-		Type.Number({ description: "For log-backed (bash) tasks: max lines to return (default 200, hard cap 1000)." }),
-	),
-	block: Type.Optional(
-		Type.Boolean({
-			description:
-				"Wait until the task finishes (or timeout) before returning. Default: false (return current output immediately).",
-		}),
-	),
-	timeout: Type.Optional(Type.Number({ description: "Max ms to wait when block=true. Default 60000." })),
-});
-
-export type TaskOutputToolInput = Static<typeof taskOutputSchema>;
 
 const taskStopSchema = Type.Object({
 	task_id: Type.Optional(
@@ -55,65 +27,9 @@ const taskStopSchema = Type.Object({
 
 export type TaskStopToolInput = Static<typeof taskStopSchema>;
 
-const taskListSchema = Type.Object({});
+const taskBackgroundListSchema = Type.Object({});
 
-export type TaskListToolInput = Static<typeof taskListSchema>;
-
-async function waitForTerminal(taskId: string, timeoutMs: number): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		const snap = getTaskSnapshot(taskId);
-		if (!snap || isTerminalTaskStatus(snap.status)) return;
-		await new Promise((resolve) => setTimeout(resolve, BLOCK_POLL_INTERVAL_MS));
-	}
-}
-
-export function createTaskOutputToolDefinition(): ToolDefinition<typeof taskOutputSchema, TaskSnapshot | undefined> {
-	return {
-		name: "TaskOutput",
-		label: "TaskOutput",
-		description:
-			"Read accumulated output from a background task by task_id — a background bash job (bash run_in_background:true) or a background agent run (Agent run_in_background:true). Bash tasks return a status header plus a bounded slice of stdout/stderr (mode/maxLines); agent tasks return their final result. Does not block by default; pass block:true to wait until the task finishes (up to timeout). For live wake-on-output streaming of bash, use monitor_start instead.",
-		promptSnippet: "Read output from a background task by task_id",
-		parameters: taskOutputSchema,
-		async execute(_id, { task_id, mode, maxLines, block, timeout }) {
-			const adapter = findTaskAdapter(task_id);
-			if (!adapter) {
-				const known =
-					listTasks()
-						.map((t) => t.id)
-						.slice(-5)
-						.join(", ") || "(none)";
-				return {
-					content: [{ type: "text", text: `No background task with task_id=${task_id}. Recent ids: ${known}` }],
-					details: undefined,
-				};
-			}
-			if (block) await waitForTerminal(task_id, timeout ?? DEFAULT_BLOCK_TIMEOUT_MS);
-			if (!adapter.output) {
-				const snap = adapter.snapshot(task_id);
-				return {
-					content: [
-						{ type: "text", text: `task_id=${task_id} (${snap?.status ?? "unknown"}) has no readable output.` },
-					],
-					details: snap,
-				};
-			}
-			const out = await adapter.output(task_id, { mode, maxLines });
-			if (!out) {
-				return {
-					content: [{ type: "text", text: `No background task with task_id=${task_id}.` }],
-					details: undefined,
-				};
-			}
-			return { content: [{ type: "text", text: out.text }], details: out.snapshot };
-		},
-	};
-}
-
-export function createTaskOutputTool() {
-	return wrapToolDefinition(createTaskOutputToolDefinition());
-}
+export type TaskBackgroundListToolInput = Static<typeof taskBackgroundListSchema>;
 
 export function createTaskStopToolDefinition(): ToolDefinition<typeof taskStopSchema, TaskSnapshot | undefined> {
 	return {
@@ -145,31 +61,44 @@ export function createTaskStopTool() {
 	return wrapToolDefinition(createTaskStopToolDefinition());
 }
 
-function renderTaskRow(task: TaskSnapshot): string {
-	const elapsed = ((task.endedAt ?? Date.now()) - task.startedAt) / 1000;
-	const flavor = task.type === "local_bash" ? "bash" : task.type === "local_agent" ? "agent" : task.type;
-	return `${task.id}  [${flavor}]  ${task.status}  ${elapsed.toFixed(1)}s  ${task.description}`;
+async function taskOutputPath(task: TaskSnapshot): Promise<string | undefined> {
+	const adapter = findTaskAdapter(task.id);
+	if (!adapter?.output) return undefined;
+	try {
+		const output = await adapter.output(task.id, { mode: "tail", maxLines: 1 });
+		return output?.fullOutputPath;
+	} catch {
+		return undefined;
+	}
 }
 
-export function createTaskListToolDefinition(): ToolDefinition<typeof taskListSchema, TaskSnapshot[]> {
+async function renderTaskRow(task: TaskSnapshot): Promise<string> {
+	const elapsed = ((task.endedAt ?? Date.now()) - task.startedAt) / 1000;
+	const flavor = task.type === "local_bash" ? "bash" : task.type === "local_agent" ? "agent" : task.type;
+	const outputPath = await taskOutputPath(task);
+	const output = outputPath ? `  output=${outputPath}` : "";
+	return `${task.id}  [${flavor}]  ${task.status}  ${elapsed.toFixed(1)}s  ${task.description}${output}`;
+}
+
+export function createTaskBackgroundListToolDefinition(): ToolDefinition<typeof taskBackgroundListSchema, TaskSnapshot[]> {
 	return {
-		name: "TaskList",
-		label: "TaskList",
+		name: "TaskBackgroundList",
+		label: "TaskBackgroundList",
 		description:
-			"List every background task (background bash jobs and background agent runs) with id, kind, status, elapsed time, and description. Use to discover task_ids for TaskOutput/TaskStop.",
-		promptSnippet: "List all background tasks",
-		parameters: taskListSchema,
+			"List every background runtime task (background bash jobs and background agent runs) with id, kind, status, elapsed time, description, and output file path when available. Use output paths with Read(offset/limit) for logs/results and TaskStop for cancellation. This is separate from TaskList, which lists durable planning tasks.",
+		promptSnippet: "List all background runtime tasks",
+		parameters: taskBackgroundListSchema,
 		async execute() {
 			const tasks = listTasks().sort((a, b) => a.startedAt - b.startedAt);
 			if (tasks.length === 0) {
 				return { content: [{ type: "text", text: "No background tasks." }], details: [] };
 			}
-			const lines = tasks.map(renderTaskRow).join("\n");
+			const lines = (await Promise.all(tasks.map(renderTaskRow))).join("\n");
 			return { content: [{ type: "text", text: `${tasks.length} background task(s):\n${lines}` }], details: tasks };
 		},
 	};
 }
 
-export function createTaskListTool() {
-	return wrapToolDefinition(createTaskListToolDefinition());
+export function createTaskBackgroundListTool() {
+	return wrapToolDefinition(createTaskBackgroundListToolDefinition());
 }

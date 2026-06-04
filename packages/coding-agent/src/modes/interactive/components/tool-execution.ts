@@ -102,7 +102,7 @@ export class ToolExecutionComponent extends Container {
 		return this.builtInToolDefinition !== undefined || this.toolDefinition !== undefined;
 	}
 
-	private getRenderShell(): "default" | "self" {
+	private getRenderShell(): "default" | "self" | "hidden" {
 		if (!this.builtInToolDefinition) {
 			return this.toolDefinition?.renderShell ?? "default";
 		}
@@ -226,6 +226,11 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
+		if (this.getRenderShell() === "hidden") {
+			this.hideComponent = true;
+			return;
+		}
+
 		const bgFn = this.isPartial
 			? (text: string) => theme.bg("toolPendingBg", text)
 			: this.result?.isError

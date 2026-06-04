@@ -279,16 +279,13 @@ export {
 	type TaskType,
 } from "./core/tasks/index.ts";
 export type { TaskOutputOptions, TaskOutputResult } from "./core/tasks/types.ts";
-// Unified background-task tools (CC task_id parity): TaskOutput / TaskStop / TaskList
+// Unified runtime background-task tools: TaskStop / TaskBackgroundList
 export {
-	createTaskListTool,
-	createTaskListToolDefinition,
-	createTaskOutputTool,
-	createTaskOutputToolDefinition,
+	createTaskBackgroundListTool,
+	createTaskBackgroundListToolDefinition,
 	createTaskStopTool,
 	createTaskStopToolDefinition,
-	type TaskListToolInput,
-	type TaskOutputToolInput,
+	type TaskBackgroundListToolInput,
 	type TaskStopToolInput,
 } from "./core/tools/background-tasks.ts";
 // Tools
