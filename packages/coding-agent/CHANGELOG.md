@@ -21,6 +21,7 @@
 
 ### Fixed
 
+- Esc now closes an active extension main pane before clearing a selected footer pill, so runtime panes can be dismissed without losing footer focus first.
 - Background Bash launch results now return explicit output paths for `Read(path, offset, limit)` inspection while keeping `TaskStop` for cancellation and removing model-facing `TaskOutput` registration/export.
 - Background task UI rendering now has a shared above-editor state component for Bash/agent task output and avoids rendering full agent output when only an output path is needed for task listings.
 - Deferred extensions (`"load": "deferred"` profile entries) now surface their slash commands in the interactive autocomplete menu. The autocomplete provider snapshots registered commands at startup — before the ~250ms deferred load — and was never rebuilt, so commands like `/recap` stayed invisible (though dispatch still worked when typed in full). `ExtensionRunner.onDeferredExtensionsLoaded()` notifies the TUI to rebuild the provider once deferred commands are registered.
