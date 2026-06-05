@@ -21,6 +21,8 @@
 
 ### Fixed
 
+- Extension loader resolves upstream package names (`@earendil-works/*`, `@mariozechner/*`) onto the fork's `@valkyriweb/*` modules, in both the jiti alias path (Node/dev) and `VIRTUAL_MODULES` (compiled Bun binary). Third-party extensions with runtime **value** imports from the upstream scopes (e.g. pi-autoresearch importing `truncateTail`/`formatSize`) previously failed to load with `Cannot find module`.
+
 - Esc now closes an active extension main pane before clearing a selected footer pill, so runtime panes can be dismissed without losing footer focus first.
 - Background Bash launch results now return explicit output paths for `Read(path, offset, limit)` inspection while keeping `TaskStop` for cancellation and removing model-facing `TaskOutput` registration/export.
 - Background task UI rendering now has a shared above-editor state component for Bash/agent task output and avoids rendering full agent output when only an output path is needed for task listings.
