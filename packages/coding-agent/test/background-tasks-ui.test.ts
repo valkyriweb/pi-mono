@@ -77,12 +77,12 @@ describe("background tasks UI", () => {
 		startAgentRecentRun("single", [{ agent: "explore", task: "Map task state" }], { background: true });
 
 		expect(footer?.visible?.()).toBe(true);
-		const rendered = stripAnsi(footer!.render({ theme: fake.theme as never, selected: true }));
+		const rendered = stripAnsi(footer!.render({ width: 80, theme: fake.theme as never, selected: true }));
 		expect(rendered).toContain("1 agent");
 		expect(rendered).toContain("1 sh");
 		expect(rendered).toContain("enter tasks");
 
-		footer?.onActivate?.({ theme: fake.theme as never, selected: true });
+		footer?.onActivate?.({ close: vi.fn() });
 		expect(fake.showMainPane).toHaveBeenCalledWith("background-tasks");
 	});
 });

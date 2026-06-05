@@ -573,10 +573,11 @@ export class DefaultResourceLoader implements ResourceLoader {
 						projectTrusted: this.settingsManager.isProjectTrusted(),
 					}),
 					{
-					cwd: this.cwd,
-					agentDir: this.agentDir,
-					cache: this.contextFileImportCache,
-				});
+						cwd: this.cwd,
+						agentDir: this.agentDir,
+						cache: this.contextFileImportCache,
+					},
+				);
 		const agentsFiles = {
 			agentsFiles: loadedAgentsFiles.contextFiles,
 			diagnostics: loadedAgentsFiles.diagnostics,

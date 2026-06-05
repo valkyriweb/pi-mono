@@ -26,15 +26,19 @@ describe("interactive-mode footer navigation", () => {
 			},
 		];
 		const fakeMode = {
-			defaultEditor: { getText: () => editorText, onSubmit: undefined as ((text: string) => Promise<void>) | undefined },
+			defaultEditor: {
+				getText: () => editorText,
+				onSubmit: undefined as ((text: string) => Promise<void>) | undefined,
+			},
 			editor: { getText: () => editorText, setText: vi.fn() },
-			selectedExtensionFooterId: undefined,
+			selectedExtensionFooterId: undefined as string | undefined,
 			debugFooterInput: vi.fn(),
 			getFooterNavEditorText: () => fakeMode.editor.getText(),
 			handleExtensionFooterNavInput: undefined as ((data: string) => boolean) | undefined,
 			getVisibleExtensionFooterIds: () =>
-				(InteractiveMode.prototype as unknown as { getVisibleExtensionFooterIds: () => string[] })
-					.getVisibleExtensionFooterIds.call(fakeMode),
+				(
+					InteractiveMode.prototype as unknown as { getVisibleExtensionFooterIds: () => string[] }
+				).getVisibleExtensionFooterIds.call(fakeMode),
 			setSelectedExtensionFooterId(id: string | undefined) {
 				this.selectedExtensionFooterId = id;
 				this.footer.setSelectedExtensionFooterId(id);
@@ -49,8 +53,9 @@ describe("interactive-mode footer navigation", () => {
 			},
 		};
 		fakeMode.handleExtensionFooterNavInput = (data: string) =>
-			(InteractiveMode.prototype as unknown as { handleExtensionFooterNavInput: (data: string) => boolean })
-				.handleExtensionFooterNavInput.call(fakeMode, data);
+			(
+				InteractiveMode.prototype as unknown as { handleExtensionFooterNavInput: (data: string) => boolean }
+			).handleExtensionFooterNavInput.call(fakeMode, data);
 		return fakeMode;
 	}
 
@@ -120,7 +125,9 @@ describe("interactive-mode footer navigation", () => {
 		const onActivate = vi.fn();
 		const fakeMode = createFakeMode(onActivate);
 
-		(InteractiveMode.prototype as unknown as { setupEditorSubmitHandler: () => void }).setupEditorSubmitHandler.call(fakeMode);
+		(InteractiveMode.prototype as unknown as { setupEditorSubmitHandler: () => void }).setupEditorSubmitHandler.call(
+			fakeMode,
+		);
 		await fakeMode.defaultEditor.onSubmit?.("");
 
 		expect(onActivate).toHaveBeenCalledTimes(1);

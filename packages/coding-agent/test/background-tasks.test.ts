@@ -8,6 +8,8 @@ import {
 	updateAgentRecentRunProgress,
 } from "../src/core/agents/status.ts";
 import type { AgentRunDetails } from "../src/core/agents/types.ts";
+import { LocalAgentTask } from "../src/core/tasks/local-agent-task.ts";
+import { LocalBashTask } from "../src/core/tasks/local-bash-task.ts";
 import {
 	createTaskBackgroundListToolDefinition,
 	createTaskStopToolDefinition,
@@ -18,8 +20,6 @@ import {
 	killAllBashBgJobs,
 	spawnBashBackground,
 } from "../src/core/tools/bash.ts";
-import { LocalAgentTask } from "../src/core/tasks/local-agent-task.ts";
-import { LocalBashTask } from "../src/core/tasks/local-bash-task.ts";
 
 const TaskStop = createTaskStopToolDefinition();
 const TaskBackgroundList = createTaskBackgroundListToolDefinition();

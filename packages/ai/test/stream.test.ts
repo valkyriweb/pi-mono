@@ -788,7 +788,7 @@ describe("Generate E2E Tests", () => {
 	});
 
 	describe.skipIf(!process.env.NVIDIA_API_KEY)("NVIDIA NIM Provider (Nemotron 3 Super via OpenAI Completions)", () => {
-		const llm = getModel("nvidia", "nvidia/nemotron-3-super-120b-a12b");
+		const llm = pickModel("nvidia");
 
 		it("should complete basic text generation", { retry: 3 }, async () => {
 			await basicTextGeneration(llm);
@@ -1170,7 +1170,7 @@ describe("Generate E2E Tests", () => {
 	);
 
 	describe.skipIf(!process.env.ANT_LING_API_KEY)("Ant Ling Provider (Ling 2.6 Flash via OpenAI Completions)", () => {
-		const llm = getModel("ant-ling", "Ling-2.6-flash");
+		const llm = pickModel("ant-ling");
 
 		it("should complete basic text generation", { retry: 3 }, async () => {
 			await basicTextGeneration(llm);
@@ -1185,7 +1185,7 @@ describe("Generate E2E Tests", () => {
 		});
 
 		it("should handle thinking mode", { retry: 3 }, async () => {
-			const ringModel = getModel("ant-ling", "Ring-2.6-1T");
+			const ringModel = pickModel("ant-ling", supportsThinkingLevel("high"));
 			await handleThinking(ringModel, { reasoningEffort: "high" });
 		});
 	});

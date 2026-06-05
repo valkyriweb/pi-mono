@@ -9,7 +9,6 @@ import {
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
 import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
-import { stripAnsi } from "../src/utils/ansi.ts";
 
 type AssistantUsage = {
 	input: number;
@@ -369,15 +368,17 @@ describe("FooterComponent width handling", () => {
 		expect(rendered).not.toContain("cache 49% avg");
 	});
 
-	it("shows the streaming work-bar only while streaming", () => {
+	it("never renders the work-bar in the footer (moved to the working loader, #53)", () => {
+		// The streaming work-bar + esc-to-interrupt hint + elapsed-timer pulse were
+		// moved out of the footer into the interactive-mode working loader (#53), so
+		// the footer must not render them in either the idle or streaming state.
 		const idle = new FooterComponent(createSession({ sessionName: "" }), createFooterData(1));
 		expect(idle.render(120).join("\n")).not.toContain("esc to interrupt");
 
 		const streaming = new FooterComponent(createSession({ sessionName: "", isStreaming: true }), createFooterData(1));
 		const rendered = streaming.render(120).join("\n");
-		expect(rendered).toContain("esc to interrupt");
-		// Elapsed timer + pulse dot present (●/○ depending on sub-second phase).
-		expect(rendered).toMatch(/[●○] \d+s/);
+		expect(rendered).not.toContain("esc to interrupt");
+		expect(rendered).not.toMatch(/[●○] \d+s/);
 	});
 
 	it("keeps the stats line within width while streaming on a narrow terminal", () => {

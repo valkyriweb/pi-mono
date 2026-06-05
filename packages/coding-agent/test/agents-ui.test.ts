@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { clearAgentRecentRunsForTests, startAgentRecentRun } from "../src/core/agents/status.ts";
 import { hookAgents } from "../src/core/extensions/agents.ts";
 import type { ExtensionFooterSpec, ExtensionMainPaneFactory } from "../src/core/extensions/types.ts";
@@ -46,7 +46,13 @@ describe("agents UI", () => {
 		startAgentRecentRun("single", [{ agent: "explore", task: "Map files" }], { background: true });
 
 		expect(footer?.visible?.()).toBe(true);
-		expect(footer?.render({ width: 120, theme: { fg: (_color: string, value: string) => value } as never, selected: true })).toContain("Agents: 1 running");
+		expect(
+			footer?.render({
+				width: 120,
+				theme: { fg: (_color: string, value: string) => value } as never,
+				selected: true,
+			}),
+		).toContain("Agents: 1 running");
 
 		footer?.onActivate({ close: vi.fn() });
 		expect(fake.showMainPane).toHaveBeenCalledWith("agents-status");

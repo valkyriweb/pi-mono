@@ -511,7 +511,15 @@ describe("ExtensionRunner", () => {
 
 		it("exposes print mode and hasUI false by default", async () => {
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
+			const runner = new ExtensionRunner(
+				result.extensions,
+				result.deferredExtensions,
+				result.runtime,
+				result.eventBus,
+				tempDir,
+				sessionManager,
+				modelRegistry,
+			);
 			runner.bindCore(extensionActions, extensionContextActions);
 
 			const ctx = runner.createContext();
@@ -521,7 +529,15 @@ describe("ExtensionRunner", () => {
 
 		it("exposes rpc mode with hasUI true when an RPC UI context is provided", async () => {
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
+			const runner = new ExtensionRunner(
+				result.extensions,
+				result.deferredExtensions,
+				result.runtime,
+				result.eventBus,
+				tempDir,
+				sessionManager,
+				modelRegistry,
+			);
 			runner.bindCore(extensionActions, extensionContextActions);
 			runner.setUIContext({} as ExtensionUIContext, "rpc");
 
@@ -532,7 +548,15 @@ describe("ExtensionRunner", () => {
 
 		it("exposes tui mode with hasUI true when a TUI UI context is provided", async () => {
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
+			const runner = new ExtensionRunner(
+				result.extensions,
+				result.deferredExtensions,
+				result.runtime,
+				result.eventBus,
+				tempDir,
+				sessionManager,
+				modelRegistry,
+			);
 			runner.bindCore(extensionActions, extensionContextActions);
 			runner.setUIContext({} as ExtensionUIContext, "tui");
 

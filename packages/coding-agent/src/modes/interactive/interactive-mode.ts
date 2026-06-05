@@ -2103,7 +2103,9 @@ export class InteractiveMode {
 			.getRegisteredFooters()
 			.filter(({ spec }) => spec.visible?.() ?? true)
 			.sort((a, b) => (a.spec.order ?? 0) - (b.spec.order ?? 0))
-			.filter(({ spec }) => spec.render({ width: this.ui.terminal.columns, theme, selected: false }).trim().length > 0)
+			.filter(
+				({ spec }) => spec.render({ width: this.ui.terminal.columns, theme, selected: false }).trim().length > 0,
+			)
 			.map(({ id }) => id);
 	}
 
@@ -2138,7 +2140,9 @@ export class InteractiveMode {
 		}
 		if ((matchesKey(data, "enter") || data === "\n") && this.getFooterNavEditorText().trim().length === 0) {
 			const footer = this.selectedExtensionFooterId
-				? this.session.extensionRunner.getRegisteredFooters().find(({ id }) => id === this.selectedExtensionFooterId)
+				? this.session.extensionRunner
+						.getRegisteredFooters()
+						.find(({ id }) => id === this.selectedExtensionFooterId)
 				: ids.length === 1
 					? this.session.extensionRunner.getRegisteredFooters().find(({ id }) => id === ids[0])
 					: undefined;
