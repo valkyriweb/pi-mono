@@ -81,6 +81,20 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@valkyriweb/pi-ai": _bundledPiAi,
 	"@valkyriweb/pi-ai/oauth": _bundledPiAiOauth,
 	"@valkyriweb/pi-coding-agent": _bundledPiCodingAgent,
+	// Upstream package-name compatibility for third-party extensions that import
+	// the upstream scopes (@earendil-works/* current, @mariozechner/* legacy).
+	// Maps onto the same bundled fork modules so value imports resolve in the
+	// compiled binary (type-only imports already erase at runtime).
+	"@earendil-works/pi-agent-core": _bundledPiAgentCore,
+	"@earendil-works/pi-tui": _bundledPiTui,
+	"@earendil-works/pi-ai": _bundledPiAi,
+	"@earendil-works/pi-ai/oauth": _bundledPiAiOauth,
+	"@earendil-works/pi-coding-agent": _bundledPiCodingAgent,
+	"@mariozechner/pi-agent-core": _bundledPiAgentCore,
+	"@mariozechner/pi-tui": _bundledPiTui,
+	"@mariozechner/pi-ai": _bundledPiAi,
+	"@mariozechner/pi-ai/oauth": _bundledPiAiOauth,
+	"@mariozechner/pi-coding-agent": _bundledPiCodingAgent,
 };
 
 const require = createRequire(import.meta.url);
@@ -131,6 +145,20 @@ function getAliases(): Record<string, string> {
 		"@valkyriweb/pi-tui": piTuiEntry,
 		"@valkyriweb/pi-ai": piAiEntry,
 		"@valkyriweb/pi-ai/oauth": piAiOauthEntry,
+		// Upstream package-name compatibility: third-party extensions import the
+		// upstream scopes (@earendil-works/* current, @mariozechner/* legacy).
+		// Map them onto the fork's @valkyriweb/* entries so value imports resolve
+		// in the bundled binary (type-only imports already erase at runtime).
+		"@earendil-works/pi-coding-agent": piCodingAgentEntry,
+		"@earendil-works/pi-agent-core": piAgentCoreEntry,
+		"@earendil-works/pi-tui": piTuiEntry,
+		"@earendil-works/pi-ai": piAiEntry,
+		"@earendil-works/pi-ai/oauth": piAiOauthEntry,
+		"@mariozechner/pi-coding-agent": piCodingAgentEntry,
+		"@mariozechner/pi-agent-core": piAgentCoreEntry,
+		"@mariozechner/pi-tui": piTuiEntry,
+		"@mariozechner/pi-ai": piAiEntry,
+		"@mariozechner/pi-ai/oauth": piAiOauthEntry,
 		typebox: typeboxEntry,
 		"typebox/compile": typeboxCompileEntry,
 		"typebox/value": typeboxValueEntry,
