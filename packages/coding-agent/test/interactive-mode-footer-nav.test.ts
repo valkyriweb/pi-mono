@@ -133,4 +133,19 @@ describe("interactive-mode footer navigation", () => {
 		expect(onActivate).toHaveBeenCalledTimes(1);
 		expect(fakeMode.editor.setText).not.toHaveBeenCalled();
 	});
+
+	it("closes an active pane before clearing selected footer on escape", () => {
+		const fakeMode = createFakeMode();
+		const paneEscape = vi.fn(() => true);
+		fakeMode.selectedExtensionFooterId = "runtime-tasks";
+		(fakeMode as unknown as { activeMainPane: unknown }).activeMainPane = {
+			id: "runtime-tasks",
+			component: { onEscape: paneEscape },
+		};
+
+		(InteractiveMode.prototype as unknown as { handleEscapeKey: () => void }).handleEscapeKey.call(fakeMode);
+
+		expect(paneEscape).toHaveBeenCalledTimes(1);
+		expect(fakeMode.footer.setSelectedExtensionFooterId).not.toHaveBeenCalled();
+	});
 });
