@@ -45,6 +45,14 @@ export {
 	subscribeBashBgJobs,
 } from "./bash.ts";
 export {
+	type BuildInterfaceDetails,
+	type BuildInterfaceInput,
+	buildInterfaceSchema,
+	createBuildInterfaceToolDefinition,
+	dispatchBuildInterface,
+	executeBuildInterface,
+} from "./build-interface.ts";
+export {
 	createEditTool,
 	createEditToolDefinition,
 	type EditOperations,
@@ -70,6 +78,13 @@ export {
 	type GrepToolOptions,
 } from "./grep.ts";
 export {
+	LAYOUT_GRAPH_VERSION,
+	type LayoutGraph,
+	type LayoutNode,
+	layoutGraphSchema,
+	nodeSchema,
+} from "./layout-graph.ts";
+export {
 	createLsTool,
 	createLsToolDefinition,
 	type LsOperations,
@@ -77,6 +92,7 @@ export {
 	type LsToolInput,
 	type LsToolOptions,
 } from "./ls.ts";
+export { createPiModelCaller, type PiModelCallerOptions } from "./pi-model-caller.ts";
 export {
 	createReadTool,
 	createReadToolDefinition,
@@ -95,6 +111,19 @@ export {
 	truncateLine,
 	truncateTail,
 } from "./truncate.ts";
+export {
+	createLLMHarness,
+	exampleQuestionsHarness,
+	exampleQuestionsInputId,
+	formatHarnessUserPrompt,
+	type ModelCaller,
+	parseHarnessJSON,
+	recordingHarness,
+	staticHarness,
+	type UIHarness,
+	type UIHarnessOptions,
+	validateLayoutGraph,
+} from "./ui-harness.ts";
 export {
 	createWriteTool,
 	createWriteToolDefinition,
