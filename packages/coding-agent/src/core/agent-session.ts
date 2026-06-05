@@ -1299,7 +1299,9 @@ export class AgentSession {
 		const activeToolNames =
 			this.model?.provider === "claude-bridge"
 				? syncClaudeBridgeNativeTools(orderedNames, this.model)
-				: orderedNames;
+				: this.model?.provider === "openai-codex"
+					? orderedNames.filter((name) => /^[a-zA-Z0-9_-]+$/.test(name))
+					: orderedNames;
 
 		const tools: AgentTool[] = [];
 		const validToolNames: string[] = [];
