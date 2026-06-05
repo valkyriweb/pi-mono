@@ -14,6 +14,21 @@ export { CancellableLoader } from "./components/cancellable-loader.ts";
 export { Editor, type EditorOptions, type EditorTheme, type LayoutLine } from "./components/editor.ts";
 export { Image, type ImageOptions, type ImageTheme } from "./components/image.ts";
 export { Input } from "./components/input.ts";
+export {
+	LAYOUT_GRAPH_VERSION,
+	type LayoutAction,
+	type LayoutAlign,
+	type LayoutGraph,
+	type LayoutNode,
+	type LayoutOption,
+	type LayoutResponse,
+	type LayoutTextStyle,
+} from "./components/layout-graph.ts";
+export {
+	LayoutRenderer,
+	type LayoutRendererOptions,
+	type LayoutRendererTheme,
+} from "./components/layout-renderer.ts";
 export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
 export { type DefaultTextStyle, Markdown, type MarkdownOptions, type MarkdownTheme } from "./components/markdown.ts";
 export {
@@ -99,6 +114,7 @@ export {
 	type OverlayHandle,
 	type OverlayMargin,
 	type OverlayOptions,
+	type OverlayUnfocusOptions,
 	type SizeValue,
 	TUI,
 } from "./tui.ts";

@@ -9,6 +9,12 @@
 - Updated dependencies [[`8d79829`](https://github.com/valkyriweb/pi-mono/commit/8d79829aa8f241d8f16b13c6a7644083b6f733b9)]:
   - @valkyriweb/pi-ai@0.78.3
 
+## [Unreleased]
+
+### Added
+
+- `Agent` now exposes the agent loop's existing `shouldStopAfterTurn` hook (constructor option + mutable field), so hosts can request a graceful stop at a turn boundary — e.g. to compact before context grows past a hard cap — and resume with `continue()`.
+
 ## 0.78.2
 
 ### Patch Changes
@@ -48,6 +54,8 @@
 ### Fixed
 
 - `Agent.continue()` is now a no-op when invoked on an assistant tail with empty queues instead of throwing. The throw was swallowed to `runtime-errors.log` and stalled goal auto-continuation; the turn has already run, so the caller's loop exits once `_lastAssistantMessage` is consumed ([`9c9ae40`](https://github.com/valkyriweb/pi-mono/commit/9c9ae40b)).
+
+## [0.78.1] - 2026-06-04
 
 ## [0.78.0] - 2026-05-29
 

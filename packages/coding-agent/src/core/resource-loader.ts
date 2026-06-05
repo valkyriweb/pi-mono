@@ -123,7 +123,11 @@ function realpathOrSelf(filePath: string): string {
 	}
 }
 
-export function loadProjectContextFiles(options: { cwd: string; agentDir: string }): ContextFile[] {
+export function loadProjectContextFiles(options: {
+	cwd: string;
+	agentDir: string;
+	projectTrusted?: boolean;
+}): ContextFile[] {
 	const resolvedCwd = resolvePath(options.cwd);
 	const resolvedAgentDir = resolvePath(options.agentDir);
 
@@ -138,29 +142,32 @@ export function loadProjectContextFiles(options: { cwd: string; agentDir: string
 		seenRealPaths.add(realpathOrSelf(globalContext.path));
 	}
 
-	const ancestorContextFiles: ContextFile[] = [];
+	// Project-local context files are only loaded when the project is trusted.
+	if (options.projectTrusted !== false) {
+		const ancestorContextFiles: ContextFile[] = [];
 
-	let currentDir = resolvedCwd;
-	const root = resolve("/");
+		let currentDir = resolvedCwd;
+		const root = resolve("/");
 
-	while (true) {
-		const contextFile = loadContextFileFromDir(currentDir);
-		if (contextFile) {
-			const realPath = realpathOrSelf(contextFile.path);
-			if (!seenRealPaths.has(realPath)) {
-				ancestorContextFiles.unshift(contextFile);
-				seenRealPaths.add(realPath);
+		while (true) {
+			const contextFile = loadContextFileFromDir(currentDir);
+			if (contextFile) {
+				const realPath = realpathOrSelf(contextFile.path);
+				if (!seenRealPaths.has(realPath)) {
+					ancestorContextFiles.unshift(contextFile);
+					seenRealPaths.add(realPath);
+				}
 			}
+
+			if (currentDir === root) break;
+
+			const parentDir = resolve(currentDir, "..");
+			if (parentDir === currentDir) break;
+			currentDir = parentDir;
 		}
 
-		if (currentDir === root) break;
-
-		const parentDir = resolve(currentDir, "..");
-		if (parentDir === currentDir) break;
-		currentDir = parentDir;
+		contextFiles.push(...ancestorContextFiles);
 	}
-
-	contextFiles.push(...ancestorContextFiles);
 
 	return contextFiles;
 }
@@ -559,11 +566,18 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 		const loadedAgentsFiles = this.noContextFiles
 			? { contextFiles: [], diagnostics: [] }
-			: expandContextFilesImports(loadProjectContextFiles({ cwd: this.cwd, agentDir: this.agentDir }), {
-					cwd: this.cwd,
-					agentDir: this.agentDir,
-					cache: this.contextFileImportCache,
-				});
+			: expandContextFilesImports(
+					loadProjectContextFiles({
+						cwd: this.cwd,
+						agentDir: this.agentDir,
+						projectTrusted: this.settingsManager.isProjectTrusted(),
+					}),
+					{
+						cwd: this.cwd,
+						agentDir: this.agentDir,
+						cache: this.contextFileImportCache,
+					},
+				);
 		const agentsFiles = {
 			agentsFiles: loadedAgentsFiles.contextFiles,
 			diagnostics: loadedAgentsFiles.diagnostics,
@@ -1010,7 +1024,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 	private discoverSystemPromptFile(): string | undefined {
 		const projectPath = join(this.cwd, CONFIG_DIR_NAME, "SYSTEM.md");
-		if (existsSync(projectPath)) {
+		if (this.settingsManager.isProjectTrusted() && existsSync(projectPath)) {
 			return projectPath;
 		}
 
@@ -1024,7 +1038,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 	private discoverAppendSystemPromptFile(): string | undefined {
 		const projectPath = join(this.cwd, CONFIG_DIR_NAME, "APPEND_SYSTEM.md");
-		if (existsSync(projectPath)) {
+		if (this.settingsManager.isProjectTrusted() && existsSync(projectPath)) {
 			return projectPath;
 		}
 

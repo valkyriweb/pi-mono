@@ -86,8 +86,10 @@ async function resolveFindBackend(input: {
 		if (bfsPath) return { backend: "bfs", command: bfsPath, args: buildBfsArgs(input) };
 	}
 
-	const fdPath = await ensureTool("fd", true);
-	if (fdPath) return { backend: "fd", command: fdPath, args: buildFdArgs(input) };
+	if (input.backend !== "bfs") {
+		const fdPath = await ensureTool("fd", true);
+		if (fdPath) return { backend: "fd", command: fdPath, args: buildFdArgs(input) };
+	}
 	return undefined;
 }
 
@@ -211,7 +213,7 @@ function formatFindResult(
 			.map((line) => (line.endsWith("/") ? theme.fg("accent", line) : theme.fg("toolOutput", line)))
 			.join("\n")}`;
 		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")})`;
+			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
 		}
 		// Result count summary
 		const n = lines.length;
@@ -240,7 +242,7 @@ export function createFindToolDefinition(
 	return {
 		name: toolName,
 		label,
-		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Use this tool for file discovery; do not invoke \`find\` via bash — those calls are blocked at runtime. Prefers bfs when available, falling back to fd. The fd fallback respects .gitignore; bfs matches Claude Code Glob behavior and does not filter .gitignore. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
+		description: `Search for files by glob pattern. Returns matching file paths relative to the search directory, sorted by modification time when the rg backend is available. Use this tool for file discovery; do not invoke \`find\` via bash — those calls are blocked at runtime. Prefers rg for Claude Code-style mtime sorting, then bfs, then fd. The rg and fd backends respect .gitignore; bfs does not. Times out after ${DEFAULT_TIMEOUT_SECONDS}s by default; pass timeout up to ${MAX_TIMEOUT_SECONDS}s for intentional broad searches. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
 		promptSnippet: "Find files by glob pattern",
 		executionMode: "parallel",
 		parameters: findSchema,

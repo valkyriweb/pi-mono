@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxToolCall, type Model, registerFauxProvider } 
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { addFilter } from "../../src/core/extensions/extension-hooks.ts";
-import type { ExtensionAPI } from "../../src/index.ts";
+import type { BuildSystemPromptOptions, ExtensionAPI } from "../../src/index.ts";
 import { createHarness, getAssistantTexts, type Harness } from "./harness.ts";
 
 describe("AgentSession model and extension characterization", () => {
@@ -351,6 +351,36 @@ describe("AgentSession model and extension characterization", () => {
 		expect(providerUserText).toBe("transformed:hello");
 		expect(transformedHarness.session.messages.filter((message) => message.role === "user")).toHaveLength(1);
 		expect(extensionApi).toBeDefined();
+	});
+
+	it("allows extension commands to inspect live system prompt options", async () => {
+		const seenOptions: BuildSystemPromptOptions[] = [];
+		const harness = await createHarness({
+			extensionFactories: [
+				(pi) => {
+					pi.registerCommand("inspect-options", {
+						description: "Inspect system prompt options",
+						handler: async (_args, ctx) => {
+							const options = ctx.getSystemPromptOptions();
+							seenOptions.push(options);
+							options.selectedTools?.push("mutated_tool");
+						},
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+
+		await harness.session.prompt("/inspect-options");
+		await harness.session.prompt("/inspect-options");
+
+		expect(seenOptions).toHaveLength(2);
+		expect(seenOptions[0]).toBe(seenOptions[1]);
+		expect(seenOptions[0]?.cwd).toBe(harness.tempDir);
+		// Fork uses CC-capitalized native tool names (Bash/Read/...) rather than
+		// upstream's lowercase ids; assert a stable default tool is present.
+		expect(seenOptions[0]?.selectedTools).toContain("Bash");
+		expect(seenOptions[1]?.selectedTools).toContain("mutated_tool");
 	});
 
 	it("allows before_agent_start handlers to inject custom messages and modify the system prompt", async () => {

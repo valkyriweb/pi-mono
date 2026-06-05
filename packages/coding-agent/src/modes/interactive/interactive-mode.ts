@@ -100,6 +100,7 @@ import type { SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import { subscribeBashBgJobs } from "../../core/tools/bash.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
+import { hasProjectTrustInputs, ProjectTrustStore } from "../../core/trust-manager.ts";
 import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.ts";
@@ -138,6 +139,7 @@ import { SettingsSelectorComponent } from "./components/settings-selector.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
+import { TrustSelectorComponent } from "./components/trust-selector.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
 import {
@@ -375,6 +377,7 @@ export class InteractiveMode {
 		| { id: string; component: Component & { dispose?(): void }; handle: OverlayHandle }
 		| undefined = undefined;
 	private selectedExtensionFooterId: string | undefined = undefined;
+	private footerInputUnsubscribe: (() => void) | undefined = undefined;
 
 	// Extension UI state
 	private extensionSelector: ExtensionSelectorComponent | undefined = undefined;
@@ -1559,6 +1562,7 @@ export class InteractiveMode {
 		const uiContext = this.createExtensionUIContext();
 		await this.session.bindExtensions({
 			uiContext,
+			mode: "tui",
 			abortHandler: () => {
 				this.restoreQueuedMessagesToEditor({ abort: true });
 			},
@@ -1716,6 +1720,7 @@ export class InteractiveMode {
 			const runnerCtx = extensionRunner.createContext();
 			return {
 				ui: this.createExtensionUIContext(),
+				mode: "tui",
 				hasUI: true,
 				cwd: this.sessionManager.getCwd(),
 				source: runnerCtx.source,
@@ -2098,6 +2103,9 @@ export class InteractiveMode {
 			.getRegisteredFooters()
 			.filter(({ spec }) => spec.visible?.() ?? true)
 			.sort((a, b) => (a.spec.order ?? 0) - (b.spec.order ?? 0))
+			.filter(
+				({ spec }) => spec.render({ width: this.ui.terminal.columns, theme, selected: false }).trim().length > 0,
+			)
 			.map(({ id }) => id);
 	}
 
@@ -2107,11 +2115,15 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private getFooterNavEditorText(): string {
+		return this.editor.getText();
+	}
+
 	private handleExtensionFooterNavInput(data: string): boolean {
 		const ids = this.getVisibleExtensionFooterIds();
 		if (
 			(matchesKey(data, "up") || matchesKey(data, "down")) &&
-			this.defaultEditor.getText().length === 0 &&
+			this.getFooterNavEditorText().trim().length === 0 &&
 			ids.length > 0
 		) {
 			const direction = matchesKey(data, "up") ? "prev" : "next";
@@ -2126,10 +2138,15 @@ export class InteractiveMode {
 			this.setSelectedExtensionFooterId(ids[nextIndex]);
 			return true;
 		}
-		if (matchesKey(data, "enter") && this.selectedExtensionFooterId) {
-			const footer = this.session.extensionRunner
-				.getRegisteredFooters()
-				.find(({ id }) => id === this.selectedExtensionFooterId);
+		if ((matchesKey(data, "enter") || data === "\n") && this.getFooterNavEditorText().trim().length === 0) {
+			const footer = this.selectedExtensionFooterId
+				? this.session.extensionRunner
+						.getRegisteredFooters()
+						.find(({ id }) => id === this.selectedExtensionFooterId)
+				: ids.length === 1
+					? this.session.extensionRunner.getRegisteredFooters().find(({ id }) => id === ids[0])
+					: undefined;
+			if (!footer) return false;
 			this.setSelectedExtensionFooterId(undefined);
 			footer?.spec.onActivate({ close: () => this.setSelectedExtensionFooterId(undefined) });
 			return true;
@@ -2571,6 +2588,11 @@ export class InteractiveMode {
 	// =========================================================================
 
 	private setupKeyHandlers(): void {
+		this.footerInputUnsubscribe?.();
+		this.footerInputUnsubscribe = this.ui.addInputListener((data) =>
+			this.handleExtensionFooterNavInput(data) ? { consume: true } : undefined,
+		);
+
 		// Set up handlers on defaultEditor - they use this.editor for text access
 		// so they work correctly regardless of which editor is active
 		this.defaultEditor.onEscape = () => {
@@ -2672,7 +2694,10 @@ export class InteractiveMode {
 	private setupEditorSubmitHandler(): void {
 		this.defaultEditor.onSubmit = async (text: string) => {
 			text = text.trim();
-			if (!text) return;
+			if (!text) {
+				if (this.handleExtensionFooterNavInput("\r")) return;
+				return;
+			}
 
 			// Handle commands
 			if (text === "/settings") {
@@ -2760,6 +2785,11 @@ export class InteractiveMode {
 			}
 			if (text === "/tree") {
 				this.showTreeSelector();
+				this.editor.setText("");
+				return;
+			}
+			if (text === "/trust") {
+				this.showTrustSelector();
 				this.editor.setText("");
 				return;
 			}
@@ -3312,6 +3342,7 @@ export class InteractiveMode {
 						this.chatContainer.addChild(component);
 						// Render user message separately if present
 						if (skillBlock.userMessage) {
+							this.chatContainer.addChild(new Spacer(1));
 							const userComponent = new UserMessageComponent(
 								skillBlock.userMessage,
 								this.getMarkdownThemeWithSettings(),
@@ -3431,6 +3462,7 @@ export class InteractiveMode {
 			updateFooter: true,
 			populateHistory: true,
 		});
+		this.renderProjectTrustWarningIfNeeded();
 
 		// Show compaction info if session was compacted
 		const allEntries = this.sessionManager.getEntries();
@@ -3439,6 +3471,26 @@ export class InteractiveMode {
 			const times = compactionCount === 1 ? "1 time" : `${compactionCount} times`;
 			this.showStatus(`Session compacted ${times}`);
 		}
+	}
+
+	private renderProjectTrustWarningIfNeeded(): void {
+		if (this.settingsManager.isProjectTrusted() || !hasProjectTrustInputs(this.sessionManager.getCwd())) {
+			return;
+		}
+
+		if (this.chatContainer.children.length > 0) {
+			this.chatContainer.addChild(new Spacer(1));
+		}
+		this.chatContainer.addChild(
+			new Text(
+				theme.fg(
+					"warning",
+					"This project is not trusted. Project instructions (AGENTS.md/CLAUDE.md), .pi resources, and project packages are ignored. Use /trust to save a trust decision, then restart pi.",
+				),
+				1,
+				0,
+			),
+		);
 	}
 
 	async getUserInput(): Promise<string> {
@@ -4483,6 +4535,31 @@ export class InteractiveMode {
 					done();
 				},
 			);
+			return { component: selector, focus: selector };
+		});
+	}
+
+	private showTrustSelector(): void {
+		const cwd = this.sessionManager.getCwd();
+		const trustStore = new ProjectTrustStore(this.runtimeHost.services.agentDir);
+		const savedDecision = trustStore.get(cwd);
+		this.showSelector((done) => {
+			const selector = new TrustSelectorComponent({
+				cwd,
+				savedDecision,
+				projectTrusted: this.settingsManager.isProjectTrusted(),
+				onSelect: (trusted) => {
+					trustStore.set(cwd, trusted);
+					done();
+					this.showStatus(
+						`Saved trust decision: ${trusted ? "trusted" : "untrusted"}. Restart pi for this to take effect.`,
+					);
+				},
+				onCancel: () => {
+					done();
+					this.ui.requestRender();
+				},
+			});
 			return { component: selector, focus: selector };
 		});
 	}
@@ -5983,6 +6060,8 @@ export class InteractiveMode {
 			this.ui.terminal.setProgress(false);
 		}
 		this.stopWorkingLoader();
+		this.footerInputUnsubscribe?.();
+		this.footerInputUnsubscribe = undefined;
 		this.clearExtensionTerminalInputListeners();
 		this.footer.dispose();
 		this.footerDataProvider.dispose();

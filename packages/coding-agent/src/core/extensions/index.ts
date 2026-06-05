@@ -74,6 +74,7 @@ export type {
 	ExtensionHandler,
 	ExtensionMainPaneAPI,
 	ExtensionMainPaneFactory,
+	ExtensionMode,
 	ExtensionOverlayAPI,
 	ExtensionOverlayFactory,
 	// Runtime

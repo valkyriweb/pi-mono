@@ -1,7 +1,7 @@
 import { truncateToWidth } from "@valkyriweb/pi-tui";
-import { createTaskBackgroundListTool } from "../tools/background-tasks.ts";
 import { findTaskAdapter, listTasks, subscribeTasks } from "../tasks/index.ts";
 import { isTerminalTaskStatus, type TaskSnapshot } from "../tasks/types.ts";
+import { createTaskBackgroundListTool } from "../tools/background-tasks.ts";
 import { addAction, load } from "./extension-hooks.ts";
 import type { ExtensionAPI, ExtensionMainPaneComponent, ExtensionMainPaneFactory } from "./types.ts";
 
@@ -112,11 +112,20 @@ class BackgroundTasksPane implements ExtensionMainPaneComponent {
 				const prefix = selected ? this.theme.fg("accent", "› ") : "  ";
 				const elapsed = Math.max(0, ((task.endedAt ?? Date.now()) - task.startedAt) / 1000).toFixed(0);
 				const status = selected ? this.theme.fg("accent", task.status) : this.theme.fg("muted", task.status);
-				lines.push(`${prefix}${task.id} ${this.theme.fg("dim", `[${taskKind(task)}]`)} ${status} ${this.theme.fg("dim", `${elapsed}s`)} ${task.description}`);
+				lines.push(
+					`${prefix}${task.id} ${this.theme.fg("dim", `[${taskKind(task)}]`)} ${status} ${this.theme.fg("dim", `${elapsed}s`)} ${task.description}`,
+				);
 			});
 		}
 		if (this.loading) lines.push("", this.theme.fg("dim", "Loading output…"));
-		if (this.detail) lines.push("", ...this.detail.split("\n").slice(0, 18).map((line) => this.theme.fg("muted", line)));
+		if (this.detail)
+			lines.push(
+				"",
+				...this.detail
+					.split("\n")
+					.slice(0, 18)
+					.map((line) => this.theme.fg("muted", line)),
+			);
 		return lines.map((line) => truncateToWidth(line, width, this.theme.fg("dim", "…")));
 	}
 
@@ -172,8 +181,7 @@ class BackgroundTasksPane implements ExtensionMainPaneComponent {
 	}
 }
 
-const paneFactory: ExtensionMainPaneFactory = (tui, theme, api) =>
-	new BackgroundTasksPane(tui, theme, api.requestHide);
+const paneFactory: ExtensionMainPaneFactory = (tui, theme, api) => new BackgroundTasksPane(tui, theme, api.requestHide);
 
 export function hookBackgroundTasksUi(pi: ExtensionAPI): void {
 	pi.registerTool(createTaskBackgroundListTool());

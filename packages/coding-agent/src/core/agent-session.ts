@@ -72,6 +72,7 @@ import {
 	type ContextUsage,
 	type ExtensionCommandContextActions,
 	type ExtensionErrorListener,
+	type ExtensionMode,
 	ExtensionRunner,
 	type ExtensionSlotUIActions,
 	type ExtensionUIContext,
@@ -270,6 +271,7 @@ export interface AgentSessionConfig {
 
 export interface ExtensionBindings {
 	uiContext?: ExtensionUIContext;
+	mode?: ExtensionMode;
 	commandContextActions?: ExtensionCommandContextActions;
 	abortHandler?: () => void;
 	shutdownHandler?: ShutdownHandler;
@@ -436,6 +438,8 @@ export class AgentSession {
 	private _compactionAbortController: AbortController | undefined = undefined;
 	private _autoCompactionAbortController: AbortController | undefined = undefined;
 	private _overflowRecoveryAttempted = false;
+	/** Set when the agent loop was stopped at a turn boundary by the mid-run compaction cap. */
+	private _midRunCompactionStop = false;
 	private _lastIdleCacheHintAssistantTimestamp: number | undefined = undefined;
 	private _cacheHeartbeatTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	private _cacheHeartbeatAbortController: AbortController | undefined = undefined;
@@ -470,6 +474,7 @@ export class AgentSession {
 	private _sessionStartEvent: SessionStartEvent;
 	private _agentToolServices?: AgentToolParentServices;
 	private _extensionUIContext?: ExtensionUIContext;
+	private _extensionMode: ExtensionMode = "print";
 	private _extensionCommandContextActions?: ExtensionCommandContextActions;
 	private _extensionAbortHandler?: () => void;
 	private _extensionShutdownHandler?: ShutdownHandler;
@@ -639,6 +644,22 @@ export class AgentSession {
 				details: hookResult.details,
 				isError: hookResult.isError ?? isError,
 			};
+		};
+
+		// Mid-run compaction cap: a run that keeps going (pending tool results,
+		// queued steering/follow-up) can drift far past the compaction threshold
+		// before it ends — the post-run check defers threshold compaction to the
+		// next prompt. Stop the loop at the turn boundary instead;
+		// _handlePostAgentRun then compacts and resumes the interrupted run.
+		// Runs ending naturally (no more work) keep the defer semantics.
+		this.agent.shouldStopAfterTurn = ({ message, toolResults }) => {
+			if (toolResults.length === 0 && !this.agent.hasQueuedMessages()) return false;
+			const settings = this.settingsManager.getCompactionSettings(this.model?.contextWindow);
+			if (!settings.enabled) return false;
+			const contextWindow = this.model?.contextWindow ?? 0;
+			if (!shouldCompact(calculateContextTokens(message.usage), contextWindow, settings)) return false;
+			this._midRunCompactionStop = true;
+			return true;
 		};
 	}
 
@@ -1299,7 +1320,9 @@ export class AgentSession {
 		const activeToolNames =
 			this.model?.provider === "claude-bridge"
 				? syncClaudeBridgeNativeTools(orderedNames, this.model)
-				: orderedNames;
+				: this.model?.provider === "openai-codex"
+					? orderedNames.filter((name) => /^[a-zA-Z0-9_-]+$/.test(name))
+					: orderedNames;
 
 		const tools: AgentTool[] = [];
 		const validToolNames: string[] = [];
@@ -1590,6 +1613,16 @@ export class AgentSession {
 
 		this._sessionHeartbeatTargetTimestamp = msg.timestamp;
 		this._noteCacheHeartbeatActivity();
+		if (this._midRunCompactionStop) {
+			// The loop was stopped at a turn boundary by the mid-run cap. Compact
+			// now ("run", not "defer") and always resume — the interrupted run
+			// still has tool results or queued messages waiting for the model.
+			// If compaction can't run (prep failed, aborted), resuming uncompacted
+			// is still correct; the overflow path remains the backstop.
+			this._midRunCompactionStop = false;
+			await this._checkCompaction(msg, true, "run");
+			return true;
+		}
 		if (await this._checkCompaction(msg, true, "defer")) {
 			return true;
 		}
@@ -1976,6 +2009,24 @@ export class AgentSession {
 				this.agent.steer(appMessage);
 			}
 		} else if (options?.triggerTurn) {
+			// Mirror prompt()'s pre-turn compaction check. Without it, harness-driven
+			// turns (e.g. pi-goal continuations via sendCustomMessage({triggerTurn}))
+			// never hit threshold compaction — context grows unbounded across goal
+			// iterations until hard overflow. Compaction runs first; the custom
+			// message then starts its turn against the compacted context.
+			const lastAssistant = this._findLastAssistantMessage();
+			if (lastAssistant) {
+				if (await this._checkCompaction(lastAssistant, false)) {
+					try {
+						await this.agent.continue();
+						while (await this._handlePostAgentRun()) {
+							await this.agent.continue();
+						}
+					} finally {
+						this._flushPendingBashMessages();
+					}
+				}
+			}
 			// Fire before_agent_start so extensions can modify the system prompt for
 			// turns triggered by custom messages — same path as session.prompt()-driven
 			// turns. Without this, e.g. pi-goal's `pendingControlPrompt` (set right
@@ -2804,6 +2855,9 @@ export class AgentSession {
 		if (bindings.uiContext !== undefined) {
 			this._extensionUIContext = bindings.uiContext;
 		}
+		if (bindings.mode !== undefined) {
+			this._extensionMode = bindings.mode;
+		}
 		if (bindings.commandContextActions !== undefined) {
 			this._extensionCommandContextActions = bindings.commandContextActions;
 		}
@@ -2890,7 +2944,7 @@ export class AgentSession {
 	}
 
 	private _applyExtensionBindings(runner: ExtensionRunner): void {
-		runner.setUIContext(this._extensionUIContext);
+		runner.setUIContext(this._extensionUIContext, this._extensionMode);
 		runner.bindCommandContext(this._extensionCommandContextActions);
 		if (this._extensionSlotUIActions) {
 			runner.bindSlotUI(this._extensionSlotUIActions);
@@ -3182,6 +3236,7 @@ export class AgentSession {
 				getEffectiveSystemPrompt: () => this.getEffectiveSystemPrompt(),
 				forkAgent: (opts) => this._forkAgentFromExtension(opts),
 				transcriptAppend: (entry) => this._transcriptAppendFromExtension(entry),
+				getSystemPromptOptions: () => this._baseSystemPromptOptions,
 			},
 			{
 				registerProvider: (name, config) => {
@@ -3810,6 +3865,7 @@ export class AgentSession {
 					customInstructions,
 					replaceInstructions,
 					reserveTokens: branchSummarySettings.reserveTokens,
+					streamFn: this.agent.streamFn,
 				});
 				if (result.aborted) {
 					return { cancelled: true, aborted: true };

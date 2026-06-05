@@ -80,7 +80,10 @@ async function renderTaskRow(task: TaskSnapshot): Promise<string> {
 	return `${task.id}  [${flavor}]  ${task.status}  ${elapsed.toFixed(1)}s  ${task.description}${output}`;
 }
 
-export function createTaskBackgroundListToolDefinition(): ToolDefinition<typeof taskBackgroundListSchema, TaskSnapshot[]> {
+export function createTaskBackgroundListToolDefinition(): ToolDefinition<
+	typeof taskBackgroundListSchema,
+	TaskSnapshot[]
+> {
 	return {
 		name: "TaskBackgroundList",
 		label: "TaskBackgroundList",
