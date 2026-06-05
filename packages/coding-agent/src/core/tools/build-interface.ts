@@ -30,8 +30,8 @@
  * validation + transformation lands once the renderer is wired (Stage 3+).
  */
 
-import type { TextContent } from "@earendil-works/pi-ai";
-import { LayoutRenderer, type LayoutResponse } from "@earendil-works/pi-tui";
+import type { TextContent } from "@valkyriweb/pi-ai";
+import { LayoutRenderer, type LayoutResponse } from "@valkyriweb/pi-tui";
 import { type Static, Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import type { LayoutGraph } from "./layout-graph.ts";
