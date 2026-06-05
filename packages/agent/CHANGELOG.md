@@ -49,6 +49,8 @@
 
 - `Agent.continue()` is now a no-op when invoked on an assistant tail with empty queues instead of throwing. The throw was swallowed to `runtime-errors.log` and stalled goal auto-continuation; the turn has already run, so the caller's loop exits once `_lastAssistantMessage` is consumed ([`9c9ae40`](https://github.com/valkyriweb/pi-mono/commit/9c9ae40b)).
 
+## [0.78.1] - 2026-06-04
+
 ## [0.78.0] - 2026-05-29
 
 ## [0.77.0] - 2026-05-28

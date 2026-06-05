@@ -54,6 +54,7 @@ export interface Args {
 	 * spawning `pi --print` for a sub-agent run passes `--source child-agent`.
 	 */
 	source?: InputSource;
+	projectTrustOverride?: boolean;
 	messages: string[];
 	fileArgs: string[];
 	/** Unknown flags (potentially extension flags) - map of flag name to value */
@@ -190,6 +191,10 @@ export function parseArgs(args: string[]): Args {
 			}
 		} else if (arg === "--verbose") {
 			result.verbose = true;
+		} else if (arg === "--approve" || arg === "-a") {
+			result.projectTrustOverride = true;
+		} else if (arg === "--no-approve" || arg === "-na") {
+			result.projectTrustOverride = false;
 		} else if (arg === "--offline") {
 			result.offline = true;
 		} else if (arg === "--source" && i + 1 < args.length) {
@@ -249,8 +254,10 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} remove <source> [-l]      Remove extension source from settings
   ${APP_NAME} uninstall <source> [-l]   Alias for remove
   ${APP_NAME} update [source|self|pi]   Update pi and installed extensions
-  ${APP_NAME} list                      List installed extensions from settings
-  ${APP_NAME} config                    Open TUI to enable/disable package resources
+  ${APP_NAME} list [--approve|--no-approve]
+                                 List installed extensions from settings
+  ${APP_NAME} config [--no-approve]
+                                 Open TUI to enable/disable package resources
   ${APP_NAME} agents                    Open Agent View from the pi-agent-view package
   ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list/agents
 
@@ -294,6 +301,8 @@ ${chalk.bold("Options:")}
   --export <file>                Export session file to HTML and exit
   --list-models [search]         List available models (with optional fuzzy search)
   --verbose                      Force verbose startup (overrides quietStartup setting)
+  --approve, -a                  Trust project-local files for this run
+  --no-approve, -na              Ignore project-local files for this run
   --offline                      Disable startup network operations (same as PI_OFFLINE=1)
   --help, -h                     Show this help
   --version, -v                  Show version number
@@ -356,6 +365,7 @@ ${chalk.bold("Examples:")}
 ${chalk.bold("Environment Variables:")}
   ANTHROPIC_API_KEY                - Anthropic Claude API key
   ANTHROPIC_OAUTH_TOKEN            - Anthropic OAuth token (alternative to API key)
+  ANT_LING_API_KEY                 - Ant Ling API key
   OPENAI_API_KEY                   - OpenAI GPT API key
   AZURE_OPENAI_API_KEY             - Azure OpenAI API key
   AZURE_OPENAI_BASE_URL            - Azure OpenAI/Cognitive Services base URL (e.g. https://{resource}.openai.azure.com)
@@ -363,6 +373,7 @@ ${chalk.bold("Environment Variables:")}
   AZURE_OPENAI_API_VERSION         - Azure OpenAI API version (default: v1)
   AZURE_OPENAI_DEPLOYMENT_NAME_MAP - Azure OpenAI model=deployment map (comma-separated)
   DEEPSEEK_API_KEY                 - DeepSeek API key
+  NVIDIA_API_KEY                   - NVIDIA NIM API key
   GEMINI_API_KEY                   - Google Gemini API key
   GROQ_API_KEY                     - Groq API key
   CEREBRAS_API_KEY                 - Cerebras API key
@@ -372,6 +383,7 @@ ${chalk.bold("Environment Variables:")}
   OPENROUTER_API_KEY               - OpenRouter API key
   AI_GATEWAY_API_KEY               - Vercel AI Gateway API key
   ZAI_API_KEY                      - ZAI API key
+  ZAI_CODING_CN_API_KEY            - ZAI Coding Plan API key (China)
   MISTRAL_API_KEY                  - Mistral API key
   MINIMAX_API_KEY                  - MiniMax API key
   MOONSHOT_API_KEY                 - Moonshot AI API key

@@ -39,6 +39,7 @@ import type {
 	ExtensionFlag,
 	ExtensionFooterSpec,
 	ExtensionMainPaneFactory,
+	ExtensionMode,
 	ExtensionOverlayFactory,
 	ExtensionRuntime,
 	ExtensionShortcut,
@@ -258,6 +259,7 @@ export class ExtensionRunner {
 	private runtime: ExtensionRuntime;
 	private eventBus: EventBus;
 	private uiContext: ExtensionUIContext;
+	private mode: ExtensionMode = "print";
 	private cwd: string;
 	private sessionManager: SessionManager;
 	private modelRegistry: ModelRegistry;
@@ -277,6 +279,7 @@ export class ExtensionRunner {
 		throw new Error("forkAgent is not available in this runtime");
 	};
 	private transcriptAppendFn: (entry: TranscriptEntry) => void = () => {};
+	private getSystemPromptOptionsFn: () => BuildSystemPromptOptions = () => ({ cwd: this.cwd });
 	private newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	private forkHandler: ForkHandler = async () => ({ cancelled: false });
 	private navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });
@@ -354,6 +357,7 @@ export class ExtensionRunner {
 		this.getEffectiveSystemPromptFn = contextActions.getEffectiveSystemPrompt;
 		this.forkAgentFn = contextActions.forkAgent;
 		this.transcriptAppendFn = contextActions.transcriptAppend;
+		this.getSystemPromptOptionsFn = contextActions.getSystemPromptOptions ?? (() => ({ cwd: this.cwd }));
 
 		// Flush provider registrations queued during extension loading
 		for (const { name, config, extensionPath } of this.runtime.pendingProviderRegistrations) {
@@ -411,8 +415,9 @@ export class ExtensionRunner {
 		this.reloadHandler = async () => {};
 	}
 
-	setUIContext(uiContext?: ExtensionUIContext): void {
+	setUIContext(uiContext?: ExtensionUIContext, mode: ExtensionMode = "print"): void {
 		this.uiContext = uiContext ?? noOpUIContext;
+		this.mode = mode;
 	}
 
 	getUIContext(): ExtensionUIContext {
@@ -846,6 +851,10 @@ export class ExtensionRunner {
 				runner.assertActive();
 				return runner.uiContext;
 			},
+			get mode() {
+				runner.assertActive();
+				return runner.mode;
+			},
 			get hasUI() {
 				runner.assertActive();
 				return runner.hasUI();
@@ -930,6 +939,10 @@ export class ExtensionRunner {
 			{},
 			Object.getOwnPropertyDescriptors(this.createContext()),
 		) as ExtensionCommandContext;
+		context.getSystemPromptOptions = () => {
+			this.assertActive();
+			return this.getSystemPromptOptionsFn();
+		};
 		context.waitForIdle = () => {
 			this.assertActive();
 			return this.waitForIdleFn();

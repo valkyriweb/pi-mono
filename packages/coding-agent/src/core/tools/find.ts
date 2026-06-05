@@ -211,7 +211,7 @@ function formatFindResult(
 			.map((line) => (line.endsWith("/") ? theme.fg("accent", line) : theme.fg("toolOutput", line)))
 			.join("\n")}`;
 		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")})`;
+			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
 		}
 		// Result count summary
 		const n = lines.length;
