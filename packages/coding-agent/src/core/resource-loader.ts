@@ -684,6 +684,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			extensions: orderedExtensions,
 			errors: [...preTrustExtensions.errors, ...remainingExtensions.errors, ...hookedExtensions.errors],
 			runtime: preTrustExtensions.runtime,
+			eventBus: preTrustExtensions.eventBus,
 			deferredExtensions: remainingExtensions.deferredExtensions,
 		};
 		this.addExtensionConflictDiagnostics(extensionsResult);
