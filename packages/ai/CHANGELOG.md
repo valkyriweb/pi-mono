@@ -1,54 +1,12 @@
 # Changelog
 
-## 0.78.3
-
-### Patch Changes
-
-- [`8d79829`](https://github.com/valkyriweb/pi-mono/commit/8d79829aa8f241d8f16b13c6a7644083b6f733b9) Thanks [@valkyriweb](https://github.com/valkyriweb)! - Rollup of the 31 commits since 0.78.2 (PRs [#45](https://github.com/valkyriweb/pi-mono/issues/45)–[#50](https://github.com/valkyriweb/pi-mono/issues/50)): mirror Claude Code tool-use efficiency in prompt guidance; footer streaming work-bar with elapsed timer and esc-to-interrupt hint; codex `prompt_cache_key` derived from stable prefix shape (`cacheAffinityKey` now forwarded through `buildBaseOptions`); reference-equality no-op guard in `setActiveToolsByName`/`setDeferredToolOverrides` so identical tool-set rebuilds no longer burst the cache prefix; footer cache-hit average % panel; repo chrome (PR template, `.pi-ws-*` gitignore, biome config). Patch on purpose: `@valkyriweb/my-pi-full` pins `<0.79.0` — a minor bump would strand every published profile until a coordinated my-pi release.
-
 ## [Unreleased]
 
-### Fixed
-
-- Removed the Anthropic provider's `TaskOutput` native-tool mapping so background output is inspected through explicit output paths rather than a model-facing pull tool.
-- `buildBaseOptions` (shared by every provider's `streamSimple` entry) hand-enumerates which `SimpleStreamOptions` fields propagate into the provider request and was omitting `cacheAffinityKey`. The caller (coding-agent `streamFn`) computed and passed a stable affinity key, but it was dropped one hop before the provider, so Codex/OpenAI derived `prompt_cache_key` from `sessionId` instead of the prefix shape — defeating cross-session prompt-cache sharing. Now forwarded; same-prefix sessions share one `prompt_cache_key`.
-
-## 0.78.2
-
-### Patch Changes
-
-- Point the `total-tokens` OpenRouter test at `google/gemini-2.5-flash`. OpenRouter removed all `gemini-2.0` model ids, so the build-time-regenerated registry no longer contains `google/gemini-2.0-flash-001` and the `tsgo --noEmit` gate failed.
-
-## 0.78.1
-
-### Patch Changes
-
-- Refresh the fork runtime with upstream large-session streaming support, footer usage compaction fixes, and regenerated model metadata.
-
-## 0.78.0
-
-### Patch Changes
-
-- [`25e9a21`](https://github.com/valkyriweb/pi-mono/commit/25e9a21a81261fc2b923ece6d7e65dac1034ee6e) Thanks [@valkyriweb](https://github.com/valkyriweb)! - Add Node 24 release workflow support and refresh fork package release gates.
-
-## [Unreleased]
-
-### Added
-
-- Package metadata now publishes this fork as `@valkyriweb/pi-ai@0.78.0-luke.0` via GitHub Packages.
-
-### Changed
-
-- Regenerated model metadata (cost/capability refresh) in `models.generated.ts`.
+## [0.79.0] - 2026-06-08
 
 ### Fixed
 
-- Point the github-copilot integration tests at `gpt-5.5`. GitHub Copilot removed `gpt-4o` from its model list, so the build-time-regenerated registry no longer contains `github-copilot:gpt-4o` and the `tsgo --noEmit` gate failed.
-
-### Fixed
-
-- Anthropic and OpenAI Responses requests now advertise parallel tool-call support when the selected tools can safely run concurrently.
-- `streamAnthropic` now recovers from the Anthropic 400 "thinking/redacted_thinking blocks in the latest assistant message cannot be modified" by retrying once with all thinking blocks stripped from history (Anthropic only validates replayed thinking; fresh thinking is still generated). Previously this permanently wedged sessions across continue/new-prompt/compaction. Happy path untouched (cache-safe).
+- Fixed OpenAI Responses custom providers to honor `compat.supportsDeveloperRole: false` for reasoning models ([#5456](https://github.com/earendil-works/pi/issues/5456)).
 - Fixed OpenRouter routing preferences on OpenAI-compatible custom providers to send `compat.openRouterRouting` even when `baseUrl` does not point directly at OpenRouter ([#5347](https://github.com/earendil-works/pi/issues/5347)).
 
 ## [0.78.1] - 2026-06-04
@@ -94,7 +52,6 @@
 
 ### Fixed
 
-- `transformMessages` now skips synthesizing a `tool_result` for hidden/empty hook messages (e.g. cache-tail context injections). Providers drop these messages later, so synthesizing a missing result before that produced duplicate `tool_result` blocks and Anthropic rejected the request. Keeps assistant `tool_use` -> `tool_result` adjacency intact (cache-critical). Covered by `anthropic-tool-serialization-stable` and `transform-messages-copilot-openai-to-anthropic` tests.
 - Fixed OpenRouter DeepSeek V4 `xhigh` reasoning metadata to preserve OpenRouter's native effort instead of sending DeepSeek's `max` effort ([#4801](https://github.com/earendil-works/pi/issues/4801)).
 - Fixed OpenAI Codex Responses replay after switching from Anthropic extended-thinking sessions by generating unique fallback message item IDs for converted thinking/text blocks ([#5148](https://github.com/earendil-works/pi/issues/5148)).
 - Fixed Anthropic-compatible replay for providers that return empty thinking signatures by adding an opt-in `allowEmptySignature` compatibility flag ([#4464](https://github.com/earendil-works/pi/issues/4464)).
@@ -238,7 +195,6 @@
 ### Breaking Changes
 
 - Replaced `OpenAICompletionsCompat.reasoningEffortMap` with top-level `Model.thinkingLevelMap` for model-specific thinking controls ([#3208](https://github.com/badlogic/pi-mono/issues/3208)). Migration: move mappings from `model.compat.reasoningEffortMap` to `model.thinkingLevelMap`. See `packages/ai/README.md#custom-models` and `packages/coding-agent/docs/models.md#thinking-level-map`. Map values keep the same provider-specific string semantics, and `null` marks a pi thinking level unsupported. Example:
-
   ```ts
   // Before
   compat: { reasoningEffortMap: { high: "high", xhigh: "max" } }
@@ -246,7 +202,6 @@
   // After
   thinkingLevelMap: { minimal: null, low: null, medium: null, high: "high", xhigh: "max" }
   ```
-
 - Removed `supportsXhigh()`. Migration: use `getSupportedThinkingLevels(model).includes("xhigh")` or `clampThinkingLevel(model, requestedLevel)` instead ([#3208](https://github.com/badlogic/pi-mono/issues/3208)).
 
 ### Added

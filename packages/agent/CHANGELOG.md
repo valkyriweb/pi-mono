@@ -1,59 +1,12 @@
 # Changelog
 
-## 0.78.3
-
-### Patch Changes
-
-- [`8d79829`](https://github.com/valkyriweb/pi-mono/commit/8d79829aa8f241d8f16b13c6a7644083b6f733b9) Thanks [@valkyriweb](https://github.com/valkyriweb)! - Rollup of the 31 commits since 0.78.2 (PRs [#45](https://github.com/valkyriweb/pi-mono/issues/45)–[#50](https://github.com/valkyriweb/pi-mono/issues/50)): mirror Claude Code tool-use efficiency in prompt guidance; footer streaming work-bar with elapsed timer and esc-to-interrupt hint; codex `prompt_cache_key` derived from stable prefix shape (`cacheAffinityKey` now forwarded through `buildBaseOptions`); reference-equality no-op guard in `setActiveToolsByName`/`setDeferredToolOverrides` so identical tool-set rebuilds no longer burst the cache prefix; footer cache-hit average % panel; repo chrome (PR template, `.pi-ws-*` gitignore, biome config). Patch on purpose: `@valkyriweb/my-pi-full` pins `<0.79.0` — a minor bump would strand every published profile until a coordinated my-pi release.
-
-- Updated dependencies [[`8d79829`](https://github.com/valkyriweb/pi-mono/commit/8d79829aa8f241d8f16b13c6a7644083b6f733b9)]:
-  - @valkyriweb/pi-ai@0.78.3
-
 ## [Unreleased]
 
-### Added
-
-- `Agent` now exposes the agent loop's existing `shouldStopAfterTurn` hook (constructor option + mutable field), so hosts can request a graceful stop at a turn boundary — e.g. to compact before context grows past a hard cap — and resume with `continue()`.
-
-## 0.78.2
-
-### Patch Changes
-
-- Updated dependencies []:
-  - @valkyriweb/pi-ai@0.78.2
-
-## 0.78.1
-
-### Patch Changes
-
-- Refresh the fork runtime with upstream large-session streaming support, footer usage compaction fixes, and regenerated model metadata.
-
-- Updated dependencies []:
-  - @valkyriweb/pi-ai@0.78.1
-
-## 0.78.0
-
-### Patch Changes
-
-- [`25e9a21`](https://github.com/valkyriweb/pi-mono/commit/25e9a21a81261fc2b923ece6d7e65dac1034ee6e) Thanks [@valkyriweb](https://github.com/valkyriweb)! - Add Node 24 release workflow support and refresh fork package release gates.
-
-- Updated dependencies [[`25e9a21`](https://github.com/valkyriweb/pi-mono/commit/25e9a21a81261fc2b923ece6d7e65dac1034ee6e)]:
-  - @valkyriweb/pi-ai@0.78.0
-
-## [Unreleased]
-
-### Added
-
-- Package metadata now publishes this fork as `@valkyriweb/pi-agent-core@0.78.0-luke.0` via GitHub Packages.
-- `maxTurns` on `AgentLoopConfig` and the `Agent` engine (`AgentOptions.maxTurns` + public `Agent.maxTurns`, threaded through `createLoopConfig`). When set, `runLoop` counts completed assistant turns and emits `agent_end` then returns before starting another LLM call once the count reaches `maxTurns` — a deterministic hard cap for runaway agentic runs (mirrors Claude Code's `query({ maxTurns })`). Undefined or `<= 0` = unbounded. Covered by `test/agent-loop.test.ts` ("should stop after maxTurns assistant turns even if the model keeps calling tools").
-
-### Changed
-
-- Re-export `./harness/progressive-disclosure.ts` from the package entrypoint so harness consumers can import progressive-disclosure helpers directly.
+## [0.79.0] - 2026-06-08
 
 ### Fixed
 
-- `Agent.continue()` is now a no-op when invoked on an assistant tail with empty queues instead of throwing. The throw was swallowed to `runtime-errors.log` and stalled goal auto-continuation; the turn has already run, so the caller's loop exits once `_lastAssistantMessage` is consumed ([`9c9ae40`](https://github.com/valkyriweb/pi-mono/commit/9c9ae40b)).
+- Fixed the compaction summarization system prompt to use neutral AI assistant wording for non-coding agents ([#5401](https://github.com/earendil-works/pi/issues/5401)).
 
 ## [0.78.1] - 2026-06-04
 
@@ -510,7 +463,6 @@
 - **Transport abstraction removed**: `ProviderTransport`, `AppTransport`, and `AgentTransport` interface have been removed. Use the `streamFn` option directly for custom streaming implementations.
 
 - **Agent options renamed**:
-
   - `transport` → removed (use `streamFn` instead)
   - `messageTransformer` → `convertToLlm`
   - `preprocessor` → `transformContext`

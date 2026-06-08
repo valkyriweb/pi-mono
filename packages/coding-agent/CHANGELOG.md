@@ -1,102 +1,43 @@
 # Changelog
 
-## 0.78.3
-
-### Patch Changes
-
-- [`8d79829`](https://github.com/valkyriweb/pi-mono/commit/8d79829aa8f241d8f16b13c6a7644083b6f733b9) Thanks [@valkyriweb](https://github.com/valkyriweb)! - Rollup of the 31 commits since 0.78.2 (PRs [#45](https://github.com/valkyriweb/pi-mono/issues/45)–[#50](https://github.com/valkyriweb/pi-mono/issues/50)): mirror Claude Code tool-use efficiency in prompt guidance; footer streaming work-bar with elapsed timer and esc-to-interrupt hint; codex `prompt_cache_key` derived from stable prefix shape (`cacheAffinityKey` now forwarded through `buildBaseOptions`); reference-equality no-op guard in `setActiveToolsByName`/`setDeferredToolOverrides` so identical tool-set rebuilds no longer burst the cache prefix; footer cache-hit average % panel; repo chrome (PR template, `.pi-ws-*` gitignore, biome config). Patch on purpose: `@valkyriweb/my-pi-full` pins `<0.79.0` — a minor bump would strand every published profile until a coordinated my-pi release.
-
-- Updated dependencies [[`8d79829`](https://github.com/valkyriweb/pi-mono/commit/8d79829aa8f241d8f16b13c6a7644083b6f733b9)]:
-  - @valkyriweb/pi-ai@0.78.3
-  - @valkyriweb/pi-agent-core@0.78.3
-  - @valkyriweb/pi-tui@0.78.3
-
 ## [Unreleased]
-
-### Added
-
-- Mid-run compaction cap: when a turn in a still-running task (pending tool results or queued steering/follow-up messages) crosses the compaction threshold, the agent loop now stops at the turn boundary, auto-compacts, and resumes the interrupted run against the compacted context. Previously a long run could drift far past the threshold until it ended, since threshold compaction was only checked post-run (deferred) or pre-prompt. Runs that end naturally keep the existing defer-to-next-prompt semantics.
-- Session picker badges sessions that are open in another live pi process, backed by a `session-liveness` probe.
-- Footer shows a cache-hit average % panel: per-turn `UsageSnapshot` tracking renders the session's rolling cache-read share next to token totals.
 
 ### Fixed
 
-- Extension loader resolves upstream package names (`@earendil-works/*`, `@mariozechner/*`) onto the fork's `@valkyriweb/*` modules, in both the jiti alias path (Node/dev) and `VIRTUAL_MODULES` (compiled Bun binary). Third-party extensions with runtime **value** imports from the upstream scopes (e.g. pi-autoresearch importing `truncateTail`/`formatSize`) previously failed to load with `Cannot find module`.
+- Fixed GitHub release notes and interactive changelog links to resolve package-relative documentation URLs correctly ([#5516](https://github.com/earendil-works/pi/issues/5516)).
 
-- Esc now closes an active extension main pane before clearing a selected footer pill, so runtime panes can be dismissed without losing footer focus first.
-- Background Bash launch results now return explicit output paths for `Read(path, offset, limit)` inspection while keeping `TaskStop` for cancellation and removing model-facing `TaskOutput` registration/export.
-- Background task UI rendering now has a shared above-editor state component for Bash/agent task output and avoids rendering full agent output when only an output path is needed for task listings.
-- Deferred extensions (`"load": "deferred"` profile entries) now surface their slash commands in the interactive autocomplete menu. The autocomplete provider snapshots registered commands at startup — before the ~250ms deferred load — and was never rebuilt, so commands like `/recap` stayed invisible (though dispatch still worked when typed in full). `ExtensionRunner.onDeferredExtensionsLoaded()` notifies the TUI to rebuild the provider once deferred commands are registered.
-- `sendCustomMessage({ triggerTurn: true })` now runs the same pre-turn threshold-compaction check as `prompt()`. Harness-driven turns (e.g. pi-goal continuations) previously skipped compaction entirely, so long goal runs grew context unbounded until hard overflow; now the turn starts against the compacted context and the custom message is delivered after compaction.
-- Complete the prompt-cache affinity refactor across two layers. (1) In `agent-session.ts`, the interactive cache-heartbeat and the four model-switch paths were still passing `cwd` to `createPromptCacheAffinityKey`, which now expects the prefix context (`{systemPrompt, tools}`); the stale `cwd` argument collapsed the affinity key to a constant-per-family value (and the tree no longer type-checked). (2) The computed key was then silently dropped one hop before the provider: `packages/ai`'s shared `buildBaseOptions` hand-enumerates which option fields reach the provider request and omitted `cacheAffinityKey`, so every provider (Codex, OpenAI-responses, completions, Anthropic, …) fell back to keying the prompt cache by `sessionId`. With both fixed, all entry paths derive the key from the real prefix shape and it actually reaches the provider — verified at runtime: three independent Codex sessions with the same prefix now emit one shared `pi:openai-codex:codex:…` affinity and one shared shape-derived `prompt_cache_key` (no longer `== sessionId`).
-- Record a `model_change` entry when an existing session is reopened with an explicit different model, so CLI `--session-id --model …` continuations preserve the same audit trail as interactive model switches.
-- Agent tool call and collapsed result rendering now show provider/model and thinking metadata.
-- Agent tool call labels inherit the parent session's live model and thinking level via a new engine `snapshot()`, so forked agent calls render the active provider/model/thinking instead of stale defaults.
-- Stubbed `sessionLiveness` in the #5080 shutdown ordering regression test so its mock matches `shutdown()` now calling `this.sessionLiveness.stop()`.
-- Reset the footer assistant turn count after compaction by rendering it from the same post-compaction transcript window as token/cache totals.
-- Replaced a negated-OR null guard with optional chaining (`!adapter?.kill`) in `core/tools/background-tasks.ts`. Behavior-preserving.
-- Surface agent-view module load failures instead of silently reporting the package as not installed.
-- Move the live work elapsed counter out of the footer and into the working loader line above input, matching Claude Code's placement.
+## [0.79.0] - 2026-06-08
 
-### Changed
+### New Features
 
-- Tool-use guidance now mirrors Claude Code's efficiency rules. The parallelization guideline batches all independent calls in one message (reads, listings, searches, independent read-only bash, edits to different files, multiple `Agent` launches), serializing only on real data dependencies. `edit`/`write` guidelines tell the model not to re-read a file to confirm a successful mutation (the tool errors on failure), and `read` guidance steers toward `offset`/`limit` region reads when the relevant span is already known.
-
-## 0.78.2
-
-### Patch Changes
-
-- [`65a2ba1`](https://github.com/valkyriweb/pi-mono/commit/65a2ba1f0fc5ea2e972f47132371ff656c96af5b) Thanks [@valkyriweb](https://github.com/valkyriweb)! - fix(core): re-apply `systemPrompt:build` filters after a mid-turn tool/skill rebuild
-
-  `_rebuildSystemPrompt` (fired by `setActiveToolsByName` and `resources_discover`) produced an unfiltered system prompt and promoted it to `agent.state.systemPrompt`. When an extension changed the active tool/skill set during `before_agent_start`, the unfiltered prompt shipped — re-introducing volatile content (e.g. the date line) and undoing cache-stabilising boundary relocation, bursting the prompt cache on every real tool/skill change. The send chokepoint now re-applies the `systemPrompt:build` filters (via the new `ExtensionRunner.applySystemPromptBuildFilters`) whenever a rebuild occurred.
-
-- Updated dependencies []:
-  - @valkyriweb/pi-ai@0.78.2
-  - @valkyriweb/pi-agent-core@0.78.2
-  - @valkyriweb/pi-tui@0.78.2
-
-## 0.78.1
-
-### Patch Changes
-
-- Refresh the fork runtime with upstream large-session streaming support, footer usage compaction fixes, and regenerated model metadata.
-
-- Updated dependencies []:
-  - @valkyriweb/pi-agent-core@0.78.1
-  - @valkyriweb/pi-ai@0.78.1
-  - @valkyriweb/pi-tui@0.78.1
-
-## 0.78.0
-
-### Patch Changes
-
-- [`25e9a21`](https://github.com/valkyriweb/pi-mono/commit/25e9a21a81261fc2b923ece6d7e65dac1034ee6e) Thanks [@valkyriweb](https://github.com/valkyriweb)! - Add Node 24 release workflow support and refresh fork package release gates.
-
-- Updated dependencies [[`25e9a21`](https://github.com/valkyriweb/pi-mono/commit/25e9a21a81261fc2b923ece6d7e65dac1034ee6e)]:
-  - @valkyriweb/pi-ai@0.78.0
-  - @valkyriweb/pi-agent-core@0.78.0
-  - @valkyriweb/pi-tui@0.78.0
-
-## [Unreleased]
+- **Project trust for local inputs** - Pi now asks before loading project-local settings, resources, instructions, and packages, with saved decisions and `--approve` / `--no-approve` controls for non-interactive modes. See [Project Trust](README.md#project-trust).
+- **Extension-controlled trust decisions** - Global and CLI extensions can handle `project_trust`, decide, remember, or defer project trust before project-local resources load. See [`project_trust`](docs/extensions.md#project_trust).
+- **Cache-hit visibility in the footer** - The interactive footer now shows the latest prompt cache hit rate (`CH`). See [Interactive Mode](README.md#interactive-mode).
+- **Richer SDK and RPC extension surfaces** - Public exports now include RPC extension UI request/response types and package asset path helpers. See [Extension UI Protocol](docs/rpc.md#extension-ui-protocol) and [SDK Exports](docs/sdk.md#exports).
 
 ### Added
 
-- Fork packages now use the `@valkyriweb/pi-*` scope with GitHub Packages `publishConfig` and lockstep `0.78.0-luke.0` versions, giving Luke's fork a versioned registry seam for reproducible runtime installs.
-- `maxTurns` plumbed through the child-agent path: `AgentTaskConfig.maxTurns` (`core/agents/types.ts`) is set on the child engine `Agent` in `runChild` (`core/agents/executor.ts`) before driving, exposed on `ForkAgentOptions.maxTurns` (`core/extensions/types.ts`) for `ctx.forkAgent({ maxTurns })`, and mapped through `engine.fork` (`core/agents/engine.ts`). Gives extensions a hard turn cap for runaway agentic forks (e.g. background memory extractors), mirroring Claude Code's `query({ maxTurns })`. The built-in `agent` tool schema is intentionally unchanged to keep `tools[]` cache-stable. Backed by `packages/agent` loop enforcement + `test/suite/extensions/fork-agent.test.ts`.
-- Background bash jobs now flow through the unified task registry (`core/tasks`) as `local_bash` tasks, alongside `local_agent` runs. One `LocalBashTask` adapter maps a `BashBgJob` onto the shared `TaskSnapshot`/`Task` surface (snapshot + kill), and `listTasks()`/`subscribeTasks()`/`getTaskSnapshot()` now span both flavors — a single seam over every long-running thing, resolvable by id alone. No model-facing tool change (cache-neutral); this is the internal foundation for unified `TaskOutput`/`TaskStop` (Claude Code `task_id` parity).
-- Added unified background-task tools `TaskOutput` / `TaskStop` / `TaskList` (`core/tools/background-tasks.ts`) over the task-registry seam — Claude Code `task_id` parity. One id space across background bash jobs and background agent runs: `TaskOutput` reads any task's output (bash → status header + bounded log slice via the preserved `renderBashBgOutput`, with `mode`/`maxLines`/`block`/`timeout`; agent → final result), `TaskStop` stops any task (`shell_id` accepted as a deprecated alias), `TaskList` enumerates everything. The `Task` seam gained an optional `output` capability, implemented by both adapters. Definitions are exported but not yet registered, so this commit is cache-neutral; registration (retiring `BashOutput`/`KillShell`) lands with the profile wiring.
-- The `agent`/`Agent`/`Task` tool accepts a per-task `cwd` to root a child session in another directory, with `~`/relative-path expansion and existence validation before spawn.
-
-### Fixed
-
-- Built-in read-only and file-edit tools now declare parallel execution where safe, and the system prompt documents that independent tool calls should run concurrently.
-- Subagent tool allow-lists now match by capability (case- and provider-prefix-insensitive) instead of exact name, so built-in agents (explore/plan/reviewer/worker/general/decompose) resolve their tools when a profile registers aliased tool names (e.g. `Read`/`Grep`/`Bash`). Previously the intersection could be empty, leaving subagents with zero tools.
+- Added a `project_trust` extension event so global and CLI extensions can decide or defer project trust during startup and runtime cwd switches.
 - Added project trust gating for project-local settings, resources, instructions, and packages ([#5332](https://github.com/earendil-works/pi/pull/5332)).
 - Added the latest prompt cache hit rate to the interactive footer.
+- Exported RPC extension UI request and response types from the public API ([#5455](https://github.com/earendil-works/pi/issues/5455)).
+- Exported coding-agent package asset path helpers from the public API ([#5415](https://github.com/earendil-works/pi/issues/5415)).
 
 ### Fixed
 
+- Fixed package exports by removing the stale `./hooks` subpath that pointed at non-existent build output.
+- Fixed inherited TUI rendering to clear stale lines when content shrinks to zero.
+- Fixed inherited autocomplete suggestions to refresh after editor cursor movement ([#5499](https://github.com/earendil-works/pi/pull/5499) by [@Roman-Galeev](https://github.com/Roman-Galeev)).
+- Fixed `/reload` to persist project trust when an implicitly trusted session creates a project `.pi` directory.
+- Fixed project trust input discovery to traverse parent directories portably.
+- Fixed inherited intermittent Shift+Enter handling by making Kitty keyboard protocol fallback response-driven instead of timeout-driven ([#5188](https://github.com/earendil-works/pi/issues/5188)).
+- Fixed the compaction summarization system prompt to use neutral AI assistant wording for non-coding agents ([#5401](https://github.com/earendil-works/pi/issues/5401)).
+- Fixed `models.json` schema support and inherited OpenAI Responses custom-provider handling for `compat.supportsDeveloperRole: false` ([#5456](https://github.com/earendil-works/pi/issues/5456)).
+- Fixed inherited prompt history navigation to place the cursor at the start when browsing upward and at the end when browsing downward ([#5454](https://github.com/earendil-works/pi/issues/5454)).
+- Fixed tmux setup documentation to require tmux 3.5 for `extended-keys-format csi-u` and document the tmux 3.2-3.4 fallback ([#5432](https://github.com/earendil-works/pi/issues/5432)).
+- Fixed inherited OpenRouter routing preferences on OpenAI-compatible custom providers to work when the custom provider base URL does not point directly at OpenRouter ([#5347](https://github.com/earendil-works/pi/issues/5347)).
 - Fixed built-in tool expand hints to style closing parentheses consistently ([#5359](https://github.com/earendil-works/pi/issues/5359)).
+- Fixed skill-wrapped prompts to insert spacing between skill instructions and the user message ([#5371](https://github.com/earendil-works/pi/pull/5371) by [@Perlence](https://github.com/Perlence)).
 
 ## [0.78.1] - 2026-06-04
 
@@ -147,7 +88,7 @@
 - Added `--name` / `-n` to set the session display name at startup ([#5153](https://github.com/earendil-works/pi-mono/issues/5153)).
 - Added a resume command hint when exiting interactive sessions ([#5176](https://github.com/earendil-works/pi-mono/pull/5176) by [@yzhg1983](https://github.com/yzhg1983)).
 - Added OSC 8 `file://` hyperlinks to file paths shown in built-in file tool titles ([#5189](https://github.com/earendil-works/pi-mono/pull/5189) by [@mpazik](https://github.com/mpazik)).
-- Added custom Amazon Bedrock request header support inherited from `@valkyriweb/pi-ai` ([#5178](https://github.com/earendil-works/pi-mono/pull/5178) by [@stephanmck](https://github.com/stephanmck)).
+- Added custom Amazon Bedrock request header support inherited from `@earendil-works/pi-ai` ([#5178](https://github.com/earendil-works/pi-mono/pull/5178) by [@stephanmck](https://github.com/stephanmck)).
 
 ### Fixed
 
@@ -180,7 +121,6 @@
 
 ### Fixed
 
-- Documented cache-critical extension hook boundaries in code comments and covered system-prompt hook ordering/cache-stability contracts with tests.
 - Fixed startup timing output so `readPipedStdin` no longer includes `createAgentSessionRuntime` work ([#4829](https://github.com/earendil-works/pi/issues/4829)).
 - Fixed OpenRouter DeepSeek V4 `xhigh` reasoning metadata to preserve OpenRouter's native effort instead of sending DeepSeek's `max` effort ([#4801](https://github.com/earendil-works/pi/issues/4801)).
 - Fixed custom session directories so current-folder resume/continue lookups stay scoped to the active cwd while all-session listings cover the custom directory.
@@ -261,7 +201,7 @@
 - Fixed config pattern matching to resolve patterns from the correct base directory ([#4898](https://github.com/earendil-works/pi-mono/pull/4898) by [@haoqixu](https://github.com/haoqixu)).
 - Fixed theme pickers to list themes by their content name instead of file stem ([#4830](https://github.com/earendil-works/pi-mono/pull/4830) by [@Perlence](https://github.com/Perlence)).
 - Fixed OpenCode Zen/Go requests to send per-session OpenCode routing headers ([#4847](https://github.com/earendil-works/pi/issues/4847)).
-- Fixed Amazon Bedrock provider loading under strict package managers by inheriting the declared `@smithy/node-http-handler` dependency from `@valkyriweb/pi-ai` ([#4842](https://github.com/earendil-works/pi/issues/4842)).
+- Fixed Amazon Bedrock provider loading under strict package managers by inheriting the declared `@smithy/node-http-handler` dependency from `@earendil-works/pi-ai` ([#4842](https://github.com/earendil-works/pi/issues/4842)).
 - Fixed inherited Amazon Bedrock Claude requests to send the model output token cap by default, avoiding Bedrock's 4096-token default truncation ([#4848](https://github.com/earendil-works/pi/issues/4848)).
 - Fixed exported session HTML to escape quote characters in attribute values ([#4832](https://github.com/earendil-works/pi/issues/4832)).
 - Fixed GitHub Copilot device-code login to keep opening the verification URL in browser-capable environments while ignoring browser launch failures for headless use ([#4788](https://github.com/earendil-works/pi-mono/pull/4788) by [@vegarsti](https://github.com/vegarsti)).
@@ -306,9 +246,9 @@
 - Fixed HTML share/export sidebar clicks for shared tool entries to scroll to the rendered tool call ([#4664](https://github.com/earendil-works/pi-mono/pull/4664) by [@yzhg1983](https://github.com/yzhg1983)).
 - Fixed theme palettes to set explicit text colors and avoid terminal-default color drift.
 - Fixed truecolor detection to align terminal image rendering and interactive theme decisions.
-- Fixed loader indicator startup inherited from `@valkyriweb/pi-tui` so initialization cannot run before frames are available.
-- Fixed OpenAI-compatible default output token requests inherited from `@valkyriweb/pi-ai` to avoid reserving impossible context windows on servers such as vLLM ([#4675](https://github.com/earendil-works/pi/issues/4675)).
-- Fixed OpenAI prompt cache keys inherited from `@valkyriweb/pi-ai` to stay within the 64-character provider limit ([#4720](https://github.com/earendil-works/pi/issues/4720)).
+- Fixed loader indicator startup inherited from `@earendil-works/pi-tui` so initialization cannot run before frames are available.
+- Fixed OpenAI-compatible default output token requests inherited from `@earendil-works/pi-ai` to avoid reserving impossible context windows on servers such as vLLM ([#4675](https://github.com/earendil-works/pi/issues/4675)).
+- Fixed OpenAI prompt cache keys inherited from `@earendil-works/pi-ai` to stay within the 64-character provider limit ([#4720](https://github.com/earendil-works/pi/issues/4720)).
 - Fixed Windows npm-family package commands for fnm-managed Node.js installs that expose both extensionless Unix scripts and `.cmd` shims ([#4793](https://github.com/earendil-works/pi/issues/4793)).
 
 ## [0.75.3] - 2026-05-18
@@ -322,7 +262,7 @@
 ### Fixed
 
 - Fixed Bun-compiled release binaries failing to start when Bun's built-in undici shim lacks npm undici's `install` export ([#4661](https://github.com/earendil-works/pi-mono/pull/4661) by [@dmasiero](https://github.com/dmasiero)).
-- Fixed Xiaomi MiMo generated model metadata to replay assistant tool-call messages with `reasoning_content` for thinking-mode multi-turn requests, inherited from `@valkyriweb/pi-ai` ([#4678](https://github.com/earendil-works/pi/issues/4678)).
+- Fixed Xiaomi MiMo generated model metadata to replay assistant tool-call messages with `reasoning_content` for thinking-mode multi-turn requests, inherited from `@earendil-works/pi-ai` ([#4678](https://github.com/earendil-works/pi/issues/4678)).
 - Fixed Windows external editor handoff so vim/nvim can receive input after opening from the TUI ([#4612](https://github.com/earendil-works/pi/issues/4612)).
 - Fixed Windows npm self-updates to move loaded native dependency packages out of the active install before reinstalling pi ([#4157](https://github.com/earendil-works/pi/issues/4157)).
 - Fixed `pi update --self` detection for pnpm v11 global installs whose package path resolves through the pnpm store ([#4647](https://github.com/earendil-works/pi/issues/4647)).
@@ -334,17 +274,17 @@
 ### Fixed
 
 - Fixed config selectors to scale their visible row count to terminal height ([#4243](https://github.com/earendil-works/pi-mono/pull/4243) by [@samjonester](https://github.com/samjonester)).
-- Fixed Anthropic-compatible API-key requests to ignore unrelated `ANTHROPIC_AUTH_TOKEN` environment values, avoiding invalid bearer credentials for providers such as Xiaomi MiMo inherited from `@valkyriweb/pi-ai` ([#4342](https://github.com/earendil-works/pi/issues/4342)).
-- Fixed Amazon Bedrock message conversion to skip unknown content blocks instead of failing the stream, inherited from `@valkyriweb/pi-ai` ([#4223](https://github.com/earendil-works/pi/issues/4223)).
-- Fixed Azure OpenAI Responses and OpenAI Responses error formatting to prefix HTTP status codes onto `errorMessage`, so transient 5xx and 429 errors are correctly matched by the agent-level auto-retry classifier inherited from `@valkyriweb/pi-ai` ([#4232](https://github.com/earendil-works/pi/issues/4232)).
-- Fixed OpenCode Go Kimi reasoning replay by normalizing streamed `reasoning` fields back to `reasoning_content` for OpenCode Go only, inherited from `@valkyriweb/pi-ai` ([#4251](https://github.com/earendil-works/pi/issues/4251)).
-- Fixed Xiaomi MiMo model metadata to use the OpenAI-compatible endpoints and `openai-completions` API, restoring multi-turn thinking/tool-call sessions inherited from `@valkyriweb/pi-ai` ([#4505](https://github.com/earendil-works/pi/issues/4505)).
+- Fixed Anthropic-compatible API-key requests to ignore unrelated `ANTHROPIC_AUTH_TOKEN` environment values, avoiding invalid bearer credentials for providers such as Xiaomi MiMo inherited from `@earendil-works/pi-ai` ([#4342](https://github.com/earendil-works/pi/issues/4342)).
+- Fixed Amazon Bedrock message conversion to skip unknown content blocks instead of failing the stream, inherited from `@earendil-works/pi-ai` ([#4223](https://github.com/earendil-works/pi/issues/4223)).
+- Fixed Azure OpenAI Responses and OpenAI Responses error formatting to prefix HTTP status codes onto `errorMessage`, so transient 5xx and 429 errors are correctly matched by the agent-level auto-retry classifier inherited from `@earendil-works/pi-ai` ([#4232](https://github.com/earendil-works/pi/issues/4232)).
+- Fixed OpenCode Go Kimi reasoning replay by normalizing streamed `reasoning` fields back to `reasoning_content` for OpenCode Go only, inherited from `@earendil-works/pi-ai` ([#4251](https://github.com/earendil-works/pi/issues/4251)).
+- Fixed Xiaomi MiMo model metadata to use the OpenAI-compatible endpoints and `openai-completions` API, restoring multi-turn thinking/tool-call sessions inherited from `@earendil-works/pi-ai` ([#4505](https://github.com/earendil-works/pi/issues/4505)).
 - Fixed JSON parse failures for compressed fetch responses under Node 26.0 by installing undici fetch globals alongside pi's global dispatcher ([#4650](https://github.com/earendil-works/pi/issues/4650), [#4652](https://github.com/earendil-works/pi/issues/4652), [#4653](https://github.com/earendil-works/pi/issues/4653)).
 - Fixed npm-family package commands on Windows to avoid shell argument splitting when install prefixes contain spaces ([#4623](https://github.com/earendil-works/pi/issues/4623)).
 
 ### Removed
 
-- Removed non-working OpenAI Codex fast model variants inherited from `@valkyriweb/pi-ai`.
+- Removed non-working OpenAI Codex fast model variants inherited from `@earendil-works/pi-ai`.
 
 ## [0.75.0] - 2026-05-17
 
@@ -356,78 +296,24 @@
 
 - Fixed compaction summary calls to use custom agent stream functions, preserving proxy-backed LLM routing ([#4484](https://github.com/earendil-works/pi/issues/4484)).
 - Fixed system prompt and context file boundaries to use explicit XML tags instead of Markdown headings, reducing inconsistent boundary ingestion by models ([#4541](https://github.com/earendil-works/pi-mono/pull/4541) by [@herrnel](https://github.com/herrnel)).
-- Fixed OpenAI Codex generated model metadata to use the current upstream model list inherited from `@valkyriweb/pi-ai` ([#4603](https://github.com/earendil-works/pi-mono/pull/4603) by [@mattiacerutti](https://github.com/mattiacerutti)).
-- Fixed GitHub Copilot GPT model thinking metadata inherited from `@valkyriweb/pi-ai` to map unsupported minimal thinking to low ([#4622](https://github.com/earendil-works/pi-mono/pull/4622) by [@mattiacerutti](https://github.com/mattiacerutti)).
+- Fixed OpenAI Codex generated model metadata to use the current upstream model list inherited from `@earendil-works/pi-ai` ([#4603](https://github.com/earendil-works/pi-mono/pull/4603) by [@mattiacerutti](https://github.com/mattiacerutti)).
+- Fixed GitHub Copilot GPT model thinking metadata inherited from `@earendil-works/pi-ai` to map unsupported minimal thinking to low ([#4622](https://github.com/earendil-works/pi-mono/pull/4622) by [@mattiacerutti](https://github.com/mattiacerutti)).
 - Fixed user-scoped npm pi packages to install under `~/.pi/agent/npm/` instead of npm's global package root, avoiding permission errors with system-managed Node installs ([#4587](https://github.com/earendil-works/pi/issues/4587)).
 - Fixed Mistral requests failing after the global fetch proxy/timeout workaround by removing the custom fetch override and using undici 8 dispatcher support instead ([#4619](https://github.com/earendil-works/pi/issues/4619)).
-- Fixed default output token requests for models whose advertised output limit is effectively their full context window, avoiding impossible provider requests inherited from `@valkyriweb/pi-ai` ([#4614](https://github.com/earendil-works/pi/issues/4614)).
-
-## [0.74.0-valk.3] - 2026-05-16
-
-Completes Fix #3 from `~/Projects/personal/my-pi/docs/cache-break-investigation-2026-05-16.md`. Combined with valk.2, all three ranked fixes are now landed.
-
-### Cache stability (fork-only)
-
-- `feat(agent-session): setActiveToolsByName preserves builtins + alwaysLoad` (20ac8254) — closes the direct-call path for the per-tool churn pattern (Bash/Edit/Write/Grep/Read each removed ~2,560× per 18d). Extensions that call `pi.setActiveTools([curated list])` without re-including builtins no longer silently invalidate the tools-slot cache prefix. Additive only — sessions created with `noTools: "builtin"` keep builtins inactive. New regression test `cache-break-builtin-preservation.test.ts` (4 cases). One existing test (`deferred-tool-activation-refresh.test.ts`) had two `toEqual` assertions updated to `toContain` since they encoded the now-corrected wholesale-replacement spec.
-
-## [0.74.0-valk.2] - 2026-05-16
-
-Cache-stability follow-up to valk.1. Lands Fix #2 + Fix #3 (conservative
-variant) from `~/Projects/personal/my-pi/docs/cache-break-investigation-2026-05-16.md`.
-Predicted impact: ~12M write-tokens / 18d for Fix #2 alone (~7.4% of total
-bridge cache-break volume).
-
-### Cache stability (fork-only)
-
-- `feat(anthropic): cache-stable tool serialization (sort keys + memoize)` (730fb3c1) — `convertTools()` emits byte-identical Anthropic tool definitions across turns. Recursive key sort defends against non-deterministic property order from MCP-bridged tool sources. Per-tool WeakMap memo (keyed by tool identity + flag combo) guarantees object identity for stable tool references across rebuilds. 4 new tests in `anthropic-tool-serialization-stable.test.ts`.
-- `feat(agent-session): preserve builtin tools across registry refresh` (7c2c3767) — `_refreshToolRegistry` restores previously-active builtin and `alwaysLoad`-tagged tools when called with a narrow `activeToolNames`. Defends against the per-tool churn pattern showing Bash/Edit/Write/Grep/Read each removed ~2,560× per 18d. Respects `noTools: "builtin"` (never force-adds tools that were not previously active) and `isAllowedTool` allowlist. Conservative scope — leaves `setActiveToolsByName` wholesale-replacement semantics untouched pending trigger data from `PI_LOG_BUILD_RUNTIME=1`.
-
-## [0.74.0-valk.1] - 2026-05-16
-
-First fork-specific release of `valkyriweb/pi-mono`. Cuts a tag against fork
-HEAD so `build-binaries.yml` produces standalone binaries for downstream
-consumers (Mac Mini openclaw node, lue-kube multica-runtime, paperclip seed).
-
-### Cache stability (fork-only)
-
-- `fix(agent): cache-safe fork children + promote extension system prompt to base` — extension `forkAgent` no longer breaks Anthropic prompt-cache prefix between turns (L1).
-- `feat(coding-agent): ExtensionContext.forkAgent + transcript.append + memory_saved renderer` — extension surface that lets `pi-memory` and similar consolidators run without cache-breaking context inheritance (L2).
-- `feat(coding-agent): forkAgent silent:true default, suppress extension-fork agent_completion spam` — reduces transcript noise from background fork agents.
-
-See `packages/coding-agent/docs/cache-strategy.md` for the L1/L2/L3 layered
-model and verification recipe.
-
-### Other fork-only changes since upstream v0.74.0
-
-- `feat(ai): adaptive thinking level for Claude 4.6+/4.7/Sonnet 4.6` (#8)
-- `feat(packages): gate package loading on active model via enabledWhen.models` (#7)
-- `feat(compaction): triggerTokens — absolute auto-compact threshold` (#5)
-- `feat(subagents): default model + thinking config`
-- `feat(coding-agent): "fast" + "medium" model aliases for agent tool`
-- `feat(bash): run_in_background + bash_output + bash_kill`
-- `feat(coding-agent): running-tasks panel + agent tool taskId wiring`
-- `feat(coding-agent): background agent terminal-status notifications`
-- `feat(agent): maxOutputTokens cap on agent tool + executor`
-- `feat(agent-session): env-gated _buildRuntime trigger logger`
-- `refactor(agent): harden harness session semantics` (result-based execution env, direct harness loop, isolated node filesystem session deps)
-- `fix(ai): honor retry-after for OpenAI Codex SSE retries`
-- `fix(ai): ignore generic GitHub tokens for Copilot auth`
-- `ci(sync): add daily upstream-sync workflow` (#6)
+- Fixed default output token requests for models whose advertised output limit is effectively their full context window, avoiding impossible provider requests inherited from `@earendil-works/pi-ai` ([#4614](https://github.com/earendil-works/pi/issues/4614)).
 
 ## [0.74.1] - 2026-05-16
 
 ### New Features
 
-- **Image generation support** - Added image generation APIs, generated image model metadata, and built-in OpenRouter image generation support inherited from `@valkyriweb/pi-ai`.
+- **Image generation support** - Added image generation APIs, generated image model metadata, and built-in OpenRouter image generation support inherited from `@earendil-works/pi-ai`.
 - **Together AI provider** - Added Together AI as a built-in provider with `/login` API-key auth, default model resolution, and setup docs. See [README.md#providers--models](README.md#providers--models) and [docs/providers.md](docs/providers.md).
 - **Windows ARM64 standalone binaries** - Added standalone release artifacts for Windows ARM64.
-- **Improved terminal and markdown rendering** - Added markdown list indentation, task-list checkbox rendering, large markdown robustness, and inline image placement fixes inherited from `@valkyriweb/pi-tui`.
-
-## [Unreleased]
+- **Improved terminal and markdown rendering** - Added markdown list indentation, task-list checkbox rendering, large markdown robustness, and inline image placement fixes inherited from `@earendil-works/pi-tui`.
 
 ### Added
 
-- Added image generation support from `@valkyriweb/pi-ai`, including image generation APIs, image model metadata, and built-in OpenRouter image generation support ([#3887](https://github.com/earendil-works/pi-mono/pull/3887) by [@cristinaponcela](https://github.com/cristinaponcela)).
+- Added image generation support from `@earendil-works/pi-ai`, including image generation APIs, image model metadata, and built-in OpenRouter image generation support ([#3887](https://github.com/earendil-works/pi-mono/pull/3887) by [@cristinaponcela](https://github.com/cristinaponcela)).
 - Added Together AI to built-in provider setup, `/login` API-key auth, and default model resolution ([#3624](https://github.com/earendil-works/pi-mono/pull/3624) by [@Nutlope](https://github.com/Nutlope)).
 - Added Windows ARM64 standalone binary release artifacts ([#4458](https://github.com/earendil-works/pi/pull/4458) by [@brianmichel](https://github.com/brianmichel)).
 
@@ -451,8 +337,8 @@ model and verification recipe.
 - Fixed uncaught interactive-mode exceptions to restore the terminal before exiting ([#4426](https://github.com/earendil-works/pi-mono/pull/4426) by [@ofa1](https://github.com/ofa1)).
 - Fixed ANSI stripping to match `strip-ansi` behavior after dependency removal.
 - Fixed UUIDv7 sequence generation shared by session IDs after dependency removal.
-- Fixed OpenRouter cached-token usage accounting, Fireworks caching compatibility, and OpenAI Codex WebSocket proxy handling inherited from `@valkyriweb/pi-ai`.
-- Fixed markdown list wrapping, task-list checkboxes, large markdown rendering, WezTerm Kitty keyboard escape handling, and short-viewport inline image placement inherited from `@valkyriweb/pi-tui`.
+- Fixed OpenRouter cached-token usage accounting, Fireworks caching compatibility, and OpenAI Codex WebSocket proxy handling inherited from `@earendil-works/pi-ai`.
+- Fixed markdown list wrapping, task-list checkboxes, large markdown rendering, WezTerm Kitty keyboard escape handling, and short-viewport inline image placement inherited from `@earendil-works/pi-tui`.
 - Fixed theme sharing across package scopes so extensions do not crash with `Theme not initialized` ([#4333](https://github.com/earendil-works/pi/issues/4333)).
 - Fixed keybinding hints to show Option instead of Alt on macOS ([#4289](https://github.com/earendil-works/pi/issues/4289)).
 - Fixed the interactive update notification to render the changelog as an OSC 8 hyperlink when the terminal supports hyperlinks ([#4280](https://github.com/earendil-works/pi/issues/4280)).
@@ -467,7 +353,7 @@ model and verification recipe.
 
 ### New Features
 
-- **Self-update support for the npm scope migration**: `pi update --self` now supports the upcoming package rename from `@mariozechner/pi-coding-agent` to `@valkyriweb/pi-coding-agent`. After the new package is published, existing global installs can update through the normal self-update flow; pi will uninstall the old global package and install the package name returned by the version check endpoint.
+- **Self-update support for the npm scope migration**: `pi update --self` now supports the upcoming package rename from `@mariozechner/pi-coding-agent` to `@earendil-works/pi-coding-agent`. After the new package is published, existing global installs can update through the normal self-update flow; pi will uninstall the old global package and install the package name returned by the version check endpoint.
 - **Interactive OAuth login selection**: OAuth providers can now present multiple login choices in `/login`, enabling provider-specific interactive authentication flows. See [Providers](docs/providers.md).
 - **JSONC-style `models.json` parsing**: `models.json` now allows comments and trailing commas, making custom provider and model configuration easier to maintain. See [Providers](docs/providers.md) and [Custom Providers](docs/custom-provider.md).
 
@@ -585,7 +471,6 @@ model and verification recipe.
 - Added top-level `name` support to `pi.registerProvider()` so extension-registered providers can show a friendly name in `/login` ([#3956](https://github.com/badlogic/pi-mono/issues/3956)).
 - Added `ctx.ui.getEditorComponent()` so extensions can wrap the currently configured custom editor factory ([#3935](https://github.com/badlogic/pi-mono/issues/3935)).
 - Added a `thinking_level_select` extension event for observing thinking level changes ([#3888](https://github.com/badlogic/pi-mono/issues/3888)).
-- Added native Claude-Code-style `@` import expansion for `AGENTS.md`/`CLAUDE.md` context files before system prompt assembly, including markdown-aware code/comment skipping, cycle protection, dependency-based caching, and diagnostics for skipped imports.
 
 ### Fixed
 
@@ -1029,12 +914,10 @@ model and verification recipe.
 Interactive mode now sends a lightweight anonymous install/update telemetry ping to `https://pi.dev/install?version=x.y.z` after it writes `lastChangelogVersion` in `settings.json`.
 
 Why this exists:
-
 - Pi needs a reliable per-version usage signal to understand whether releases are being adopted and to help justify funding continued development.
 - npm download counts are not a reliable proxy for actual Pi usage.
 
 How it works:
-
 - It only runs in interactive mode.
 - It does not run in RPC mode, print mode, JSON mode, or SDK mode.
 - On a fresh interactive install, Pi writes `lastChangelogVersion`, then sends the ping.
@@ -1042,13 +925,11 @@ How it works:
 - The request is fire-and-forget. Startup does not wait for it, and any errors are ignored.
 
 What data is collected:
-
 - Only the Pi version in the request path, for example `https://pi.dev/install?version=0.67.1`.
 - The server stores only aggregate per-version counters such as `{ "0.67.1": 3 }`.
 - It does not store IP addresses, client identifiers, prompts, paths, models, auth state, or any other per-user data. It literally only increments a counter for that version.
 
 How to disable it:
-
 - `/settings` → disable `Install telemetry`
 - `settings.json` → set `enableInstallTelemetry` to `false`
 - `PI_OFFLINE=1`
@@ -1061,7 +942,6 @@ How to disable it:
 - Updated `antigravity-image-gen.ts` example extension to use User-Agent version `1.21.9` ([#2901](https://github.com/badlogic/pi-mono/pull/2901) by [@aadishv](https://github.com/aadishv))
 - Fixed `--list-models` silently swallowing `models.json` load errors; errors are now printed to stderr ([#3072](https://github.com/badlogic/pi-mono/issues/3072))
 - Fixed custom models for built-in providers (e.g. `openrouter`) being silently dropped from `--list-models` by inheriting `api`/`baseUrl` from built-in model definitions and no longer requiring `apiKey` for providers with existing auth ([#2921](https://github.com/badlogic/pi-mono/issues/2921) and [#3072](https://github.com/badlogic/pi-mono/issues/3072))
-
 ### Added
 
 - Added full `openRouterRouting` field support in `models.json`, including fallbacks, parameter requirements, data collection, ZDR, ignore lists, quantizations, provider sorting, max price, and preferred throughput and latency constraints ([#2904](https://github.com/badlogic/pi-mono/pull/2904) by [@zmberber](https://github.com/zmberber))
@@ -1176,18 +1056,10 @@ import {
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
 
-const createRuntime: CreateAgentSessionRuntimeFactory = async ({
-  cwd,
-  sessionManager,
-  sessionStartEvent,
-}) => {
+const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
   const services = await createAgentSessionServices({ cwd });
   return {
-    ...(await createAgentSessionFromServices({
-      services,
-      sessionManager,
-      sessionStartEvent,
-    })),
+    ...(await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent })),
     services,
     diagnostics: services.diagnostics,
   };
@@ -1358,7 +1230,6 @@ return streamSimple(model, messages, {
 Resource, command, and tool provenance now use `sourceInfo` consistently.
 
 Common updates:
-
 - RPC `get_commands`: replace `path` and `location` with `sourceInfo.path`, `sourceInfo.scope`, and `sourceInfo.source`
 - `SlashCommandInfo`: replace `command.path` and `command.location` with `command.sourceInfo`
 - `Skill` and `PromptTemplate`: replace `.source` with `.sourceInfo.source`
@@ -1366,7 +1237,6 @@ Common updates:
 - Custom `ResourceLoader` implementations: remove `getPathMetadata()` and read provenance from loaded resources directly
 
 Examples:
-
 - `command.path` -> `command.sourceInfo.path`
 - `command.location === "user"` -> `command.sourceInfo.scope === "user"`
 - `skill.source` -> `skill.sourceInfo.source`
@@ -1601,19 +1471,16 @@ Examples:
 ## [0.57.1] - 2026-03-07
 
 ### New Features
-
 - Tree branch folding and segment-jump navigation in `/tree`, with `Ctrl+←`/`Ctrl+→` and `Alt+←`/`Alt+→` shortcuts while `←`/`→` and `Page Up`/`Page Down` remain available for paging. See [docs/tree.md](docs/tree.md) and [docs/keybindings.md](docs/keybindings.md).
 - `session_directory` extension event for customizing session directory paths before session manager creation. See [docs/extensions.md](docs/extensions.md).
 - Digit keybindings (`0-9`) in the TUI keybinding system, including modified combos like `ctrl+1`. See [docs/keybindings.md](docs/keybindings.md).
 
 ### Added
-
 - Added `/tree` branch folding and segment-jump navigation with `Ctrl+←`/`Ctrl+→` and `Alt+←`/`Alt+→`, while keeping `←`/`→` and `Page Up`/`Page Down` for paging ([#1724](https://github.com/badlogic/pi-mono/pull/1724) by [@Perlence](https://github.com/Perlence))
 - Added `session_directory` extension event that fires before session manager creation, allowing extensions to customize the session directory path based on cwd and other factors. CLI `--session-dir` flag takes precedence over extension-provided paths ([#1730](https://github.com/badlogic/pi-mono/pull/1730) by [@hjanuschka](https://github.com/hjanuschka)).
 - Added digit keys (`0-9`) to the keybinding system, including Kitty CSI-u and xterm `modifyOtherKeys` support for bindings like `ctrl+1` ([#1905](https://github.com/badlogic/pi-mono/issues/1905))
 
 ### Fixed
-
 - Fixed custom tool collapsed/expanded rendering in HTML exports. Custom tools that define different collapsed vs expanded displays now render correctly in exported HTML, with expandable sections when both states differ and direct display when only expanded exists ([#1934](https://github.com/badlogic/pi-mono/pull/1934) by [@aliou](https://github.com/aliou))
 - Fixed tmux startup guidance and keyboard setup warnings for modified key handling, including Ghostty `shift+enter=text:\n` remap guidance and tmux `extended-keys-format` detection ([#1872](https://github.com/badlogic/pi-mono/issues/1872))
 - Fixed z.ai context overflow recovery so `model_context_window_exceeded` errors trigger auto-compaction instead of surfacing as unhandled stop reason failures ([#1937](https://github.com/badlogic/pi-mono/issues/1937))
@@ -1756,7 +1623,6 @@ Examples:
 - Fixed Bedrock `AWS_PROFILE` region resolution by honoring profile `region` values ([#1800](https://github.com/badlogic/pi-mono/issues/1800)).
 - Fixed Gemini 3.1 thinking-level detection for `google` and `google-vertex` providers ([#1785](https://github.com/badlogic/pi-mono/issues/1785)).
 - Fixed browser bundling compatibility for `@mariozechner/pi-ai` by removing Node-only side effects from default browser import paths ([#1814](https://github.com/badlogic/pi-mono/issues/1814)).
-
 ## [0.55.4] - 2026-03-02
 
 ### New Features
@@ -2200,7 +2066,6 @@ Examples:
 ### Breaking Changes
 
 - **Extension tool signature change**: `ToolDefinition.execute` now uses `(toolCallId, params, signal, onUpdate, ctx)` parameter order to match `AgentTool.execute`. Previously it was `(toolCallId, params, onUpdate, ctx, signal)`. This makes wrapping built-in tools trivial since the first four parameters now align. Update your extensions by swapping the `signal` and `onUpdate` parameters:
-
   ```ts
   // Before
   async execute(toolCallId, params, onUpdate, ctx, signal) { ... }
@@ -2534,7 +2399,6 @@ There are multiple SDK breaking changes since v0.49.3. For the quickest migratio
 - Improved error message for OAuth authentication failures (expired credentials, offline) instead of generic 'No API key found' ([#849](https://github.com/badlogic/pi-mono/pull/849) by [@zedrdave](https://github.com/zedrdave))
 
 ### Fixed
-
 - Fixed `/model` selector scope toggle so you can switch between all and scoped models when scoped models are saved ([#844](https://github.com/badlogic/pi-mono/issues/844))
 - Fixed OpenAI Responses 400 error "reasoning without following item" when replaying aborted turns ([#838](https://github.com/badlogic/pi-mono/pull/838))
 - Fixed pi exiting with code 0 when cancelling resume session selection
@@ -2782,7 +2646,6 @@ There are multiple SDK breaking changes since v0.49.3. For the quickest migratio
 - `SessionManager.list()` and `SessionManager.listAll()` are now async, returning `Promise<SessionInfo[]>`. Callers must await them. ([#620](https://github.com/badlogic/pi-mono/pull/620) by [@tmustier](https://github.com/tmustier))
 
 ### Added
-
 - `/resume` selector now toggles between current-folder and all sessions with Tab, showing the session cwd in the All view and loading progress. ([#620](https://github.com/badlogic/pi-mono/pull/620) by [@tmustier](https://github.com/tmustier))
 - `SessionManager.list()` and `SessionManager.listAll()` accept optional `onProgress` callback for progress updates
 - `SessionInfo.cwd` field containing the session's working directory (empty string for old sessions)

@@ -1,30 +1,15 @@
 # Changelog
 
-## 0.78.3
-
-### Patch Changes
-
-- [`8d79829`](https://github.com/valkyriweb/pi-mono/commit/8d79829aa8f241d8f16b13c6a7644083b6f733b9) Thanks [@valkyriweb](https://github.com/valkyriweb)! - Rollup of the 31 commits since 0.78.2 (PRs [#45](https://github.com/valkyriweb/pi-mono/issues/45)–[#50](https://github.com/valkyriweb/pi-mono/issues/50)): mirror Claude Code tool-use efficiency in prompt guidance; footer streaming work-bar with elapsed timer and esc-to-interrupt hint; codex `prompt_cache_key` derived from stable prefix shape (`cacheAffinityKey` now forwarded through `buildBaseOptions`); reference-equality no-op guard in `setActiveToolsByName`/`setDeferredToolOverrides` so identical tool-set rebuilds no longer burst the cache prefix; footer cache-hit average % panel; repo chrome (PR template, `.pi-ws-*` gitignore, biome config). Patch on purpose: `@valkyriweb/my-pi-full` pins `<0.79.0` — a minor bump would strand every published profile until a coordinated my-pi release.
-
-## 0.78.2
-
-## 0.78.1
-
-### Patch Changes
-
-- Refresh the fork runtime with upstream large-session streaming support, footer usage compaction fixes, and regenerated model metadata.
-
-## 0.78.0
-
-### Patch Changes
-
-- [`25e9a21`](https://github.com/valkyriweb/pi-mono/commit/25e9a21a81261fc2b923ece6d7e65dac1034ee6e) Thanks [@valkyriweb](https://github.com/valkyriweb)! - Add Node 24 release workflow support and refresh fork package release gates.
-
 ## [Unreleased]
 
-### Added
+## [0.79.0] - 2026-06-08
 
-- Package metadata now publishes this fork as `@valkyriweb/pi-tui@0.78.0-luke.0` via GitHub Packages.
+### Fixed
+
+- Fixed prompt history navigation to place the cursor at the start when browsing upward and at the end when browsing downward, so repeated Up/Down traverses multiline prompts immediately ([#5454](https://github.com/earendil-works/pi/issues/5454)).
+- Fixed intermittent Shift+Enter handling by making Kitty keyboard protocol fallback response-driven instead of timeout-driven ([#5188](https://github.com/earendil-works/pi/issues/5188)).
+- Fixed TUI rendering to clear stale lines when content shrinks to zero.
+- Fixed autocomplete suggestions to re-query after editor cursor movement ([#5499](https://github.com/earendil-works/pi/pull/5499) by [@Roman-Galeev](https://github.com/Roman-Galeev)).
 
 ## [0.78.1] - 2026-06-04
 
@@ -64,6 +49,8 @@
 
 ### Changed
 
+- Replaced the optional `koffi` dependency for Windows VT input with a tiny vendored native helper, reducing install size while preserving Shift+Tab handling ([#4480](https://github.com/earendil-works/pi/issues/4480)).
+
 ## [0.75.4] - 2026-05-20
 
 ### Changed
@@ -72,7 +59,6 @@
 
 ### Fixed
 
-- Hardened terminal keyboard protocol negotiation (`terminal.ts`).
 - Fixed loader initialization so indicator startup cannot run before frames are initialized.
 - Fixed truecolor capability detection to align terminal image rendering with the interactive theme detector.
 
@@ -272,6 +258,7 @@
 - Fixed slash-command Tab completion from immediately chaining into argument autocomplete after completing the command name, restoring flows like `/model` that submit into a selector dialog ([#2577](https://github.com/badlogic/pi-mono/issues/2577))
 - Fixed stale content and incorrect viewport tracking after TUI content shrinks or transient components inflate the working area ([#2126](https://github.com/badlogic/pi-mono/pull/2126) by [@Perlence](https://github.com/Perlence))
 - Fixed `@` autocomplete to debounce editor-triggered searches, cancel in-flight `fd` lookups cleanly, and keep suggestions visible while results refresh ([#1278](https://github.com/badlogic/pi-mono/issues/1278))
+
 
 ## [0.62.0] - 2026-03-23
 
