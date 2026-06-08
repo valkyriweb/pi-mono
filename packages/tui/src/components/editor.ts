@@ -390,16 +390,16 @@ export class Editor implements Component, Focusable {
 			// Returned to "current" state - clear editor
 			this.setTextInternal("");
 		} else {
-			this.setTextInternal(this.history[this.historyIndex] || "");
+			this.setTextInternal(this.history[this.historyIndex] || "", direction === -1 ? "start" : "end");
 		}
 	}
 
 	/** Internal setText that doesn't reset history state - used by navigateHistory */
-	private setTextInternal(text: string): void {
+	private setTextInternal(text: string, cursorPlacement: "start" | "end" = "end"): void {
 		const lines = text.split("\n");
 		this.state.lines = lines.length === 0 ? [""] : lines;
-		this.state.cursorLine = this.state.lines.length - 1;
-		this.setCursorCol(this.state.lines[this.state.cursorLine]?.length || 0);
+		this.state.cursorLine = cursorPlacement === "start" ? 0 : this.state.lines.length - 1;
+		this.setCursorCol(cursorPlacement === "start" ? 0 : this.state.lines[this.state.cursorLine]?.length || 0);
 		// Reset scroll - render() will adjust to show cursor
 		this.scrollOffset = 0;
 
@@ -1755,6 +1755,18 @@ export class Editor implements Component, Focusable {
 					this.setCursorCol(prevLine.length);
 				}
 			}
+		}
+
+		// Keep an open autocomplete picker in sync with the new cursor
+		// position: cursor movement changes the text before the cursor, so a
+		// picker computed for the old position is stale. Re-query so it
+		// refreshes — or closes when the new position yields no suggestions —
+		// mirroring insertCharacter()/handleBackspace(). Without this, arrowing
+		// left from `/cmd ` back into the command name leaves the argument
+		// picker showing against a `/cmd` prefix (and a Tab there would
+		// concatenate the stale suggestion onto the partial command name).
+		if (this.autocompleteState) {
+			this.updateAutocomplete();
 		}
 	}
 

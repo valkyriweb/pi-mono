@@ -794,13 +794,14 @@ export async function loadExtensions(
 	inputs: Array<string | ExtensionLoadRequest>,
 	cwd: string,
 	eventBus?: EventBus,
+	runtime?: ExtensionRuntime,
 ): Promise<LoadExtensionsResult> {
 	const extensions: Extension[] = [];
 	const deferredExtensions: DeferredExtension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
 	const resolvedCwd = resolvePath(cwd);
 	const resolvedEventBus = eventBus ?? createEventBus();
-	const runtime = createExtensionRuntime();
+	const resolvedRuntime = runtime ?? createExtensionRuntime();
 
 	for (const input of inputs) {
 		const { path: extPath, load } = normalizeLoadRequest(input);
@@ -809,7 +810,7 @@ export async function loadExtensions(
 			continue;
 		}
 
-		const { extension, error } = await loadExtension(extPath, resolvedCwd, resolvedEventBus, runtime);
+		const { extension, error } = await loadExtension(extPath, resolvedCwd, resolvedEventBus, resolvedRuntime);
 
 		if (error) {
 			errors.push({ path: extPath, error });
@@ -826,7 +827,7 @@ export async function loadExtensions(
 		deferredExtensions,
 		errors,
 		eventBus: resolvedEventBus,
-		runtime,
+		runtime: resolvedRuntime,
 	};
 }
 

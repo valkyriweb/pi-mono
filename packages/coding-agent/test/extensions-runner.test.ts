@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { createEventBus } from "../src/core/event-bus.ts";
 import { createExtensionRuntime, discoverAndLoadExtensions, loadExtensions } from "../src/core/extensions/loader.ts";
-import { ExtensionRunner } from "../src/core/extensions/runner.ts";
+import { ExtensionRunner, emitProjectTrustEvent } from "../src/core/extensions/runner.ts";
 import type {
 	ExtensionActions,
 	ExtensionContextActions,
@@ -106,6 +106,45 @@ describe("ExtensionRunner", () => {
 			sessionManager,
 			modelRegistry,
 		);
+
+	describe("project_trust", () => {
+		it("continues past undecided handlers and returns the first yes/no decision", async () => {
+			const undecidedPath = path.join(extensionsDir, "undecided.ts");
+			const decidedPath = path.join(extensionsDir, "decided.ts");
+			fs.writeFileSync(
+				undecidedPath,
+				`export default function(pi) {
+	pi.on("project_trust", () => ({ trusted: "undecided", remember: true }));
+}`,
+			);
+			fs.writeFileSync(
+				decidedPath,
+				`export default function(pi) {
+	pi.on("project_trust", () => ({ trusted: "no", remember: true }));
+}`,
+			);
+
+			const extensionsResult = await loadExtensions([undecidedPath, decidedPath], tempDir);
+			const result = await emitProjectTrustEvent(
+				extensionsResult,
+				{ type: "project_trust", cwd: tempDir },
+				{
+					cwd: tempDir,
+					mode: "tui",
+					hasUI: false,
+					ui: {
+						select: async () => undefined,
+						confirm: async () => false,
+						input: async () => undefined,
+						notify: () => {},
+					},
+				},
+			);
+
+			expect(result.result).toEqual({ trusted: "no", remember: true });
+			expect(result.errors).toEqual([]);
+		});
+	});
 
 	describe("shortcut conflicts", () => {
 		it("warns when extension shortcut conflicts with built-in", async () => {

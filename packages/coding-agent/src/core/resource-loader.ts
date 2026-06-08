@@ -40,6 +40,10 @@ export interface ResourceExtensionPaths {
 	themePaths?: Array<{ path: string; metadata: PathMetadata }>;
 }
 
+export interface ResourceLoaderReloadOptions {
+	resolveProjectTrust?: (input: { extensionsResult: LoadExtensionsResult }) => Promise<boolean>;
+}
+
 export interface ResourceLoader {
 	getExtensions(): LoadExtensionsResult;
 	/** Includes built-in extension hooks. Internal use by AgentSession only. */
@@ -51,7 +55,7 @@ export interface ResourceLoader {
 	getSystemPrompt(): string | undefined;
 	getAppendSystemPrompt(): string[];
 	extendResources(paths: ResourceExtensionPaths): void;
-	reload(): Promise<void>;
+	reload(options?: ResourceLoaderReloadOptions): Promise<void>;
 }
 
 function resolvePromptInput(
@@ -407,7 +411,19 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 	}
 
-	async reload(): Promise<void> {
+	async reload(options?: ResourceLoaderReloadOptions): Promise<void> {
+		let preTrustExtensions: LoadExtensionsResult | undefined;
+		if (options?.resolveProjectTrust) {
+			// Force untrusted project settings for the bootstrap pass. This keeps project-local
+			// extensions/packages out while still loading user/global and temporary CLI extensions.
+			this.settingsManager.setProjectTrusted(false);
+			await this.settingsManager.reload();
+			preTrustExtensions = await this.loadCurrentExtensionSet({ includeInlineFactories: true });
+			const projectTrusted = await options.resolveProjectTrust({ extensionsResult: preTrustExtensions });
+			this.settingsManager.setProjectTrusted(projectTrusted);
+		}
+
+		// reload() preserves SettingsManager.projectTrusted and reloads settings for that trust state.
 		await this.settingsManager.reload();
 		const resolvedPaths = await this.packageManager.resolve();
 		const cliExtensionPaths = await this.packageManager.resolveExtensionSources(this.additionalExtensionPaths, {
@@ -439,29 +455,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		const enabledPrompts = getEnabledPaths(resolvedPaths.prompts);
 		const enabledThemes = getEnabledPaths(resolvedPaths.themes);
 
-		const mapSkillPath = (resource: { path: string; metadata: PathMetadata }): string => {
-			if (resource.metadata.source !== "auto" && resource.metadata.origin !== "package") {
-				return resource.path;
-			}
-			try {
-				const stats = statSync(resource.path);
-				if (!stats.isDirectory()) {
-					return resource.path;
-				}
-			} catch {
-				return resource.path;
-			}
-			const skillFile = join(resource.path, "SKILL.md");
-			if (existsSync(skillFile)) {
-				if (!metadataByPath.has(skillFile)) {
-					metadataByPath.set(skillFile, resource.metadata);
-				}
-				return skillFile;
-			}
-			return resource.path;
-		};
-
-		const enabledSkills = enabledSkillResources.map(mapSkillPath);
+		const enabledSkills = enabledSkillResources.map((resource) => this.mapSkillPath(resource, metadataByPath));
 
 		// Add CLI paths metadata
 		for (const r of cliExtensionPaths.extensions) {
@@ -485,26 +479,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			? this.mergeExtensionRequests(cliEnabledExtensionRequests)
 			: this.mergeExtensionRequests([...cliEnabledExtensionRequests, ...enabledExtensionRequests]);
 
-		const extensionsResult = await loadExtensions(extensionRequests, this.cwd, this.eventBus);
-		// Carry per-extension tuning (settings.json extensionConfig{}, merged
-		// global ← project) on the runtime before inline/hook factories run, so
-		// `pi.getExtensionConfig(ns)` reads it at handler/init time. Mirrors the
-		// post-load population of `flagValues`.
-		extensionsResult.runtime.extensionConfig = this.settingsManager.getExtensionConfig();
-		const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
-		extensionsResult.extensions.push(...inlineExtensions.extensions);
-		extensionsResult.errors.push(...inlineExtensions.errors);
-		const hookedExtensions = await this.loadExtensionHooks(extensionsResult.runtime);
-		extensionsResult.extensions.push(...hookedExtensions.extensions);
-		extensionsResult.errors.push(...hookedExtensions.errors);
-
-		// Detect extension conflicts (tools, commands, flags with same names from different extensions)
-		// Keep all extensions loaded. Conflicts are reported as diagnostics, and precedence is handled by load order.
-		const conflicts = this.detectExtensionConflicts(extensionsResult.extensions);
-		for (const conflict of conflicts) {
-			extensionsResult.errors.push({ path: conflict.path, error: conflict.message });
-		}
-
+		const extensionsResult = await this.loadFinalExtensionSet(extensionRequests, preTrustExtensions);
 		for (const p of this.additionalExtensionPaths) {
 			if (isLocalPath(p)) {
 				const resolved = this.resolveResourcePath(p);
@@ -613,6 +588,137 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.appendSystemPrompt = this.appendSystemPromptOverride
 			? this.appendSystemPromptOverride(baseAppend)
 			: baseAppend;
+	}
+
+	private async loadCurrentExtensionSet(options: { includeInlineFactories: boolean }): Promise<LoadExtensionsResult> {
+		const resolvedPaths = await this.packageManager.resolve();
+		const cliExtensionPaths = await this.packageManager.resolveExtensionSources(this.additionalExtensionPaths, {
+			temporary: true,
+		});
+		const enabledExtensionRequests = resolvedPaths.extensions
+			.filter((r) => r.enabled)
+			.map((r) => ({ path: r.path, load: r.load }));
+		const cliEnabledExtensionRequests = cliExtensionPaths.extensions
+			.filter((r) => r.enabled)
+			.map((r) => ({ path: r.path, load: "eager" as const }));
+		const extensionRequests = this.noExtensions
+			? this.mergeExtensionRequests(cliEnabledExtensionRequests)
+			: this.mergeExtensionRequests([...cliEnabledExtensionRequests, ...enabledExtensionRequests]);
+		const extensionsResult = await loadExtensions(extensionRequests, this.cwd, this.eventBus);
+		// Per-extension config available to inline factories during the pre-trust bootstrap.
+		extensionsResult.runtime.extensionConfig = this.settingsManager.getExtensionConfig();
+		if (!options.includeInlineFactories) {
+			return extensionsResult;
+		}
+
+		const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
+		extensionsResult.extensions.push(...inlineExtensions.extensions);
+		extensionsResult.errors.push(...inlineExtensions.errors);
+		return extensionsResult;
+	}
+
+	private resolveExtensionLoadPath(path: string): string {
+		return resolvePath(path, this.cwd, { normalizeUnicodeSpaces: true });
+	}
+
+	private async loadFinalExtensionSet(
+		extensionRequests: ExtensionLoadRequest[],
+		preTrustExtensions: LoadExtensionsResult | undefined,
+	): Promise<LoadExtensionsResult> {
+		const extensionPaths = extensionRequests.map((request) => request.path);
+		if (!preTrustExtensions) {
+			const extensionsResult = await loadExtensions(extensionRequests, this.cwd, this.eventBus);
+			// Carry per-extension tuning (settings.json extensionConfig{}, merged
+			// global ← project) on the runtime before inline/hook factories run, so
+			// `pi.getExtensionConfig(ns)` reads it at handler/init time.
+			extensionsResult.runtime.extensionConfig = this.settingsManager.getExtensionConfig();
+			const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
+			extensionsResult.extensions.push(...inlineExtensions.extensions);
+			extensionsResult.errors.push(...inlineExtensions.errors);
+			const hookedExtensions = await this.loadExtensionHooks(extensionsResult.runtime);
+			extensionsResult.extensions.push(...hookedExtensions.extensions);
+			extensionsResult.errors.push(...hookedExtensions.errors);
+			this.addExtensionConflictDiagnostics(extensionsResult);
+			return extensionsResult;
+		}
+
+		// Refresh per-extension config on the reused runtime now that project trust is
+		// resolved (settings reloaded in trusted state before this call).
+		preTrustExtensions.runtime.extensionConfig = this.settingsManager.getExtensionConfig();
+		const preloadedByPath = new Map(
+			preTrustExtensions.extensions
+				.filter((extension) => !extension.path.startsWith("<inline:"))
+				.map((extension) => [extension.resolvedPath, extension]),
+		);
+		const failedPreloadPaths = new Set(
+			preTrustExtensions.errors.map((error) => this.resolveExtensionLoadPath(error.path)),
+		);
+		const remainingRequests = extensionRequests.filter((request) => {
+			const resolvedPath = this.resolveExtensionLoadPath(request.path);
+			return !preloadedByPath.has(resolvedPath) && !failedPreloadPaths.has(resolvedPath);
+		});
+		const remainingExtensions = await loadExtensions(
+			remainingRequests,
+			this.cwd,
+			this.eventBus,
+			preTrustExtensions.runtime,
+		);
+		const loadedByPath = new Map(preloadedByPath);
+		for (const extension of remainingExtensions.extensions) {
+			loadedByPath.set(extension.resolvedPath, extension);
+		}
+
+		const inlineExtensions = preTrustExtensions.extensions.filter((extension) =>
+			extension.path.startsWith("<inline:"),
+		);
+		const orderedExtensions = extensionPaths
+			.map((path) => loadedByPath.get(this.resolveExtensionLoadPath(path)))
+			.filter((extension): extension is Extension => extension !== undefined);
+		orderedExtensions.push(...inlineExtensions);
+
+		// Consume the registered "load" hook so hook-style extensions join the final set.
+		const hookedExtensions = await this.loadExtensionHooks(preTrustExtensions.runtime);
+		orderedExtensions.push(...hookedExtensions.extensions);
+
+		const extensionsResult: LoadExtensionsResult = {
+			extensions: orderedExtensions,
+			errors: [...preTrustExtensions.errors, ...remainingExtensions.errors, ...hookedExtensions.errors],
+			runtime: preTrustExtensions.runtime,
+			deferredExtensions: remainingExtensions.deferredExtensions,
+		};
+		this.addExtensionConflictDiagnostics(extensionsResult);
+		return extensionsResult;
+	}
+
+	private addExtensionConflictDiagnostics(extensionsResult: LoadExtensionsResult): void {
+		// Detect extension conflicts (tools, commands, flags with same names from different extensions)
+		// Keep all extensions loaded. Conflicts are reported as diagnostics, and precedence is handled by load order.
+		const conflicts = this.detectExtensionConflicts(extensionsResult.extensions);
+		for (const conflict of conflicts) {
+			extensionsResult.errors.push({ path: conflict.path, error: conflict.message });
+		}
+	}
+
+	private mapSkillPath(resource: ResolvedResource, metadataByPath: Map<string, PathMetadata>): string {
+		if (resource.metadata.source !== "auto" && resource.metadata.origin !== "package") {
+			return resource.path;
+		}
+		try {
+			const stats = statSync(resource.path);
+			if (!stats.isDirectory()) {
+				return resource.path;
+			}
+		} catch {
+			return resource.path;
+		}
+		const skillFile = join(resource.path, "SKILL.md");
+		if (existsSync(skillFile)) {
+			if (!metadataByPath.has(skillFile)) {
+				metadataByPath.set(skillFile, resource.metadata);
+			}
+			return skillFile;
+		}
+		return resource.path;
 	}
 
 	private normalizeExtensionPaths(
