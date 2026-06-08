@@ -4,6 +4,10 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ## [Unreleased]
 
+### Added
+
+- **Render Anthropic provider-executed server tools (`web_search` / `web_fetch`) as TUI activity cards.** The Anthropic provider (`packages/ai`) now parses `server_tool_use` and `web_search_tool_result` / `web_fetch_tool_result` content blocks into display-only `server_tool_use` / `server_tool_result` stream events (new `ServerToolSource` type + two `AssistantMessageEvent` variants). They are intentionally **never** added to `AssistantMessage.content`, so the agent loop never executes them and they never round-trip to the API (cache- and replay-safe). The agent loop (`packages/agent`) forwards these through `message_update`; the interactive TUI (`packages/coding-agent`) renders them via a new `ServerToolActivityComponent` (query/URL + result sources), so these provider-side tools — which previously ran invisibly because they arrive as server-tool blocks rather than ordinary `tool_use` — now show up. Fork feature; logged here per the changelog-ownership split below.
+
 ### Changed
 
 - **Changelog ownership split to stop recurring upstream-sync conflicts.** Package `CHANGELOG.md` files are now strictly upstream-owned (Keep-a-Changelog style, fast-forwarded from upstream); all fork-specific notes live here in `FORK-CHANGELOG.md`. Three coordinated changes: (1) `.changeset/config.json` `changelog: false` so changesets stops writing fork entries into package CHANGELOGs (it still versions packages); (2) `scripts/check-changelog-updated.mjs` now accepts a touched `FORK-CHANGELOG.md` as satisfying the changelog requirement for package-src changes (package CHANGELOGs may still be updated directly for upstreamable work, but are no longer mandatory); (3) `.gitattributes` `*CHANGELOG.md merge=union` as a safety net so a stray package-CHANGELOG edit auto-unions on the next sync instead of hard-conflicting. Root cause: changesets and upstream's manual changelog both wrote the top of the same files in different formats, hard-conflicting on every sync.

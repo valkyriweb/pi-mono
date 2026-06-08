@@ -373,6 +373,12 @@ export interface Context {
 	tools?: Tool[];
 }
 
+/** A single source/result surfaced by a provider-executed (server-side) web tool. */
+export interface ServerToolSource {
+	title?: string;
+	url: string;
+}
+
 /**
  * Event protocol for AssistantMessageEventStream.
  *
@@ -380,6 +386,12 @@ export interface Context {
  * - `done` carrying the final successful AssistantMessage, or
  * - `error` carrying the final AssistantMessage with stopReason "error" or "aborted"
  *   and errorMessage.
+ *
+ * `server_tool_use`/`server_tool_result` are display-only signals for provider-executed
+ * tools (Anthropic native web_search/web_fetch). They are NOT backed by content blocks:
+ * the provider runs them server-side, so they never enter `AssistantMessage.content`, are
+ * never executed by the agent loop, and never round-trip to the API. Consumers use them
+ * purely to render an activity card.
  */
 export type AssistantMessageEvent =
 	| { type: "start"; partial: AssistantMessage }
@@ -392,6 +404,16 @@ export type AssistantMessageEvent =
 	| { type: "toolcall_start"; contentIndex: number; partial: AssistantMessage }
 	| { type: "toolcall_delta"; contentIndex: number; delta: string; partial: AssistantMessage }
 	| { type: "toolcall_end"; contentIndex: number; toolCall: ToolCall; partial: AssistantMessage }
+	| { type: "server_tool_use"; id: string; toolName: string; query?: string; url?: string; partial: AssistantMessage }
+	| {
+			type: "server_tool_result";
+			toolUseId: string;
+			toolName: string;
+			status: "completed" | "error";
+			sources?: ServerToolSource[];
+			errorCode?: string;
+			partial: AssistantMessage;
+	  }
 	| { type: "done"; reason: Extract<StopReason, "stop" | "length" | "toolUse">; message: AssistantMessage }
 	| { type: "error"; reason: Extract<StopReason, "aborted" | "error">; error: AssistantMessage };
 

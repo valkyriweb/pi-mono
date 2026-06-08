@@ -16,6 +16,7 @@ import type {
 	ImageContent,
 	Message,
 	Model,
+	ServerToolSource,
 	SimpleStreamOptions,
 	StopReason,
 	StreamFunction,
@@ -456,6 +457,58 @@ async function* iterateSseMessages(
 	}
 }
 
+/**
+ * Provider-executed (server-side) web tool result block, loosely typed because
+ * `web_fetch_tool_result` is not in the non-beta SDK content-block union while
+ * `web_search_tool_result` is. Both arrive over the wire when bridged.
+ */
+interface ServerToolResultBlockLike {
+	type: string;
+	tool_use_id: string;
+	content: unknown;
+}
+
+/**
+ * Normalize a server tool result block (web_search/web_fetch) into a compact,
+ * display-only summary. Never persisted or sent back to the API.
+ */
+function summarizeServerToolResult(block: ServerToolResultBlockLike): {
+	toolName: string;
+	status: "completed" | "error";
+	sources?: ServerToolSource[];
+	errorCode?: string;
+} {
+	const toolName = block.type === "web_fetch_tool_result" ? "web_fetch" : "web_search";
+	const content = block.content as Record<string, unknown> | unknown[] | null | undefined;
+
+	// Error shape: { type: "web_search_tool_result_error" | ..., error_code: "..." }
+	if (content && !Array.isArray(content) && typeof (content as Record<string, unknown>).error_code === "string") {
+		return { toolName, status: "error", errorCode: (content as Record<string, unknown>).error_code as string };
+	}
+
+	// web_search: content is an array of { title, url, ... } result blocks.
+	if (Array.isArray(content)) {
+		const sources: ServerToolSource[] = [];
+		for (const item of content) {
+			if (item && typeof item === "object" && typeof (item as Record<string, unknown>).url === "string") {
+				const record = item as Record<string, unknown>;
+				sources.push({
+					url: record.url as string,
+					title: typeof record.title === "string" ? (record.title as string) : undefined,
+				});
+			}
+		}
+		return { toolName, status: "completed", sources };
+	}
+
+	// web_fetch: content is a single retrieved-document object, often { url, ... }.
+	if (content && typeof content === "object" && typeof (content as Record<string, unknown>).url === "string") {
+		return { toolName, status: "completed", sources: [{ url: (content as Record<string, unknown>).url as string }] };
+	}
+
+	return { toolName, status: "completed" };
+}
+
 async function* iterateAnthropicEvents(
 	response: Response,
 	signal?: AbortSignal,
@@ -624,6 +677,13 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			// `output.usage` always reflects the full assistant turn.
 			const carryOverUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
+			// Provider-executed (server-side) web tools (web_search/web_fetch) stream as
+			// `server_tool_use` blocks whose input arrives via `input_json_delta`. We track
+			// them here — keyed by content-block index — instead of in `output.content`, so
+			// they never become agent-loop toolCalls, never round-trip to the API, and never
+			// perturb the cache prefix. They are surfaced purely as display-only events.
+			const serverToolUses = new Map<number, { id: string; name: string; partialJson: string; input: unknown }>();
+
 			while (true) {
 				for await (const event of iterateAnthropicEvents(response, options?.signal)) {
 					if (event.type === "message_start") {
@@ -682,6 +742,32 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 							};
 							output.content.push(block);
 							stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
+						} else if (event.content_block.type === "server_tool_use") {
+							// Provider-executed web tool call. Record it; the query/url input
+							// streams via input_json_delta and is emitted on content_block_stop.
+							serverToolUses.set(event.index, {
+								id: event.content_block.id,
+								name: event.content_block.name,
+								partialJson: "",
+								input: event.content_block.input ?? {},
+							});
+						} else if (
+							event.content_block.type === "web_search_tool_result" ||
+							(event.content_block as { type?: string }).type === "web_fetch_tool_result"
+						) {
+							// Server-injected result block (full content present at start). Surface
+							// a compact display-only summary; never stored in output.content.
+							const resultBlock = event.content_block as unknown as ServerToolResultBlockLike;
+							const summary = summarizeServerToolResult(resultBlock);
+							stream.push({
+								type: "server_tool_result",
+								toolUseId: resultBlock.tool_use_id,
+								toolName: summary.toolName,
+								status: summary.status,
+								sources: summary.sources,
+								errorCode: summary.errorCode,
+								partial: output,
+							});
 						}
 					} else if (event.type === "content_block_delta") {
 						if (event.delta.type === "text_delta") {
@@ -709,6 +795,10 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 								});
 							}
 						} else if (event.delta.type === "input_json_delta") {
+							const serverTool = serverToolUses.get(event.index);
+							if (serverTool) {
+								serverTool.partialJson += event.delta.partial_json;
+							}
 							const index = blocks.findIndex((b) => b.index === event.index);
 							const block = blocks[index];
 							if (block && block.type === "toolCall") {
@@ -730,6 +820,21 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 							}
 						}
 					} else if (event.type === "content_block_stop") {
+						const serverTool = serverToolUses.get(event.index);
+						if (serverTool) {
+							const parsedInput = (
+								serverTool.partialJson ? parseStreamingJson(serverTool.partialJson) : (serverTool.input ?? {})
+							) as Record<string, unknown>;
+							stream.push({
+								type: "server_tool_use",
+								id: serverTool.id,
+								toolName: serverTool.name,
+								query: typeof parsedInput.query === "string" ? (parsedInput.query as string) : undefined,
+								url: typeof parsedInput.url === "string" ? (parsedInput.url as string) : undefined,
+								partial: output,
+							});
+							serverToolUses.delete(event.index);
+						}
 						const index = blocks.findIndex((b) => b.index === event.index);
 						const block = blocks[index];
 						if (block) {

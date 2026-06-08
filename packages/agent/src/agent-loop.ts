@@ -348,6 +348,11 @@ async function streamAssistantResponse(
 			case "toolcall_start":
 			case "toolcall_delta":
 			case "toolcall_end":
+			// Display-only signals for provider-executed web tools (web_search/web_fetch).
+			// They carry `partial` but no content block; forward them so the UI can render
+			// an activity card. They are never tool calls and never round-trip.
+			case "server_tool_use":
+			case "server_tool_result":
 				if (partialMessage) {
 					partialMessage = event.partial;
 					context.messages[context.messages.length - 1] = partialMessage;

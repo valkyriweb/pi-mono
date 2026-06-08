@@ -135,6 +135,7 @@ import { memorySavedMessageRenderer } from "./components/memory-saved-message.ts
 import { ModelSelectorComponent } from "./components/model-selector.ts";
 import { type AuthSelectorProvider, OAuthSelectorComponent } from "./components/oauth-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
+import { ServerToolActivityComponent } from "./components/server-tool-activity.ts";
 import { SessionSelectorComponent } from "./components/session-selector.ts";
 import { SettingsSelectorComponent } from "./components/settings-selector.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
@@ -327,6 +328,8 @@ export class InteractiveMode {
 
 	// Tool execution tracking: toolCallId -> component
 	private pendingTools = new Map<string, ToolExecutionComponent>();
+	// Provider-executed (server-side) web tool activity cards: serverToolUse id -> component
+	private serverToolActivities = new Map<string, ServerToolActivityComponent>();
 
 	// Tool output expansion state
 	private toolOutputExpanded = false;
@@ -1699,6 +1702,7 @@ export class InteractiveMode {
 		this.streamingComponent = undefined;
 		this.streamingMessage = undefined;
 		this.pendingTools.clear();
+		this.serverToolActivities.clear();
 		this.renderInitialMessages();
 	}
 
@@ -2937,6 +2941,7 @@ export class InteractiveMode {
 		switch (event.type) {
 			case "agent_start":
 				this.pendingTools.clear();
+				this.serverToolActivities.clear();
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(true);
 				}
@@ -3030,6 +3035,27 @@ export class InteractiveMode {
 								}
 							}
 						}
+					}
+
+					// Provider-executed (server-side) web tools surface as display-only
+					// activity events, not content blocks. Render them as a distinct card.
+					const serverEvent = event.assistantMessageEvent;
+					if (serverEvent.type === "server_tool_use") {
+						if (!this.serverToolActivities.has(serverEvent.id)) {
+							const card = new ServerToolActivityComponent({
+								toolName: serverEvent.toolName,
+								query: serverEvent.query,
+								url: serverEvent.url,
+							});
+							this.chatContainer.addChild(card);
+							this.serverToolActivities.set(serverEvent.id, card);
+						}
+					} else if (serverEvent.type === "server_tool_result") {
+						this.serverToolActivities.get(serverEvent.toolUseId)?.setResult({
+							status: serverEvent.status,
+							sources: serverEvent.sources,
+							errorCode: serverEvent.errorCode,
+						});
 					}
 					this.ui.requestRender();
 				}
@@ -3128,6 +3154,7 @@ export class InteractiveMode {
 					this.streamingMessage = undefined;
 				}
 				this.pendingTools.clear();
+				this.serverToolActivities.clear();
 
 				await this.checkShutdownRequested();
 
