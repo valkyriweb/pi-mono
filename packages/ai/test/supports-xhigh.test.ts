@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSupportedThinkingLevels } from "../src/models.ts";
+import { getModel, getSupportedThinkingLevels } from "../src/models.ts";
 import { allOf, isReasoning, pickModel, supportsThinkingLevel } from "./helpers/models.ts";
 
 // These tests validate getSupportedThinkingLevels against capability classes pulled
@@ -30,8 +30,26 @@ describe("getSupportedThinkingLevels", () => {
 		expect(getSupportedThinkingLevels(model)).not.toContain("xhigh");
 	});
 
+	it("includes xhigh for Anthropic Claude Fable 5 on anthropic-messages API", () => {
+		const model = getModel("anthropic", "claude-fable-5");
+		expect(model).toBeDefined();
+		expect(getSupportedThinkingLevels(model!)).toContain("xhigh");
+	});
+
+	it("does not include xhigh for Claude Sonnet 4.5", () => {
+		const model = getModel("anthropic", "claude-sonnet-4-5");
+		expect(model).toBeDefined();
+		expect(getSupportedThinkingLevels(model!)).not.toContain("xhigh");
+	});
+
 	it("returns only off for a non-reasoning model", () => {
 		const model = pickModel("openai", (candidate) => !candidate.reasoning);
 		expect(getSupportedThinkingLevels(model)).toEqual(["off"]);
+	});
+
+	it("includes xhigh for Bedrock Claude Fable 5", () => {
+		const model = getModel("amazon-bedrock", "global.anthropic.claude-fable-5");
+		expect(model).toBeDefined();
+		expect(getSupportedThinkingLevels(model!)).toContain("xhigh");
 	});
 });
