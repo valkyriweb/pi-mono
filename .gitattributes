@@ -21,3 +21,8 @@
 *.gz binary
 *.woff binary
 *.woff2 binary
+
+# Changelogs: auto-union on merge/rebase so upstream syncs never hard-conflict.
+# Package CHANGELOGs are upstream-owned (see FORK-CHANGELOG.md); union is a safety
+# net for stray edits. The fork keeps its own notes in FORK-CHANGELOG.md.
+*CHANGELOG.md merge=union

@@ -49,7 +49,14 @@ function requiredChangelog(path) {
 const files = changedFiles();
 const changed = new Set(files);
 const required = new Set(files.map(requiredChangelog).filter(Boolean));
-const missing = [...required].filter((path) => !changed.has(path));
+// Fork convention: FORK-CHANGELOG.md is the home for all fork-specific notes, so a
+// touched FORK-CHANGELOG.md also satisfies any package-CHANGELOG requirement.
+// Package CHANGELOGs stay reserved for upstream / upstreamable release notes and may
+// still be updated directly, but are no longer mandatory for a fork change.
+const forkChangelogTouched = changed.has("FORK-CHANGELOG.md");
+const missing = [...required].filter(
+	(path) => !changed.has(path) && !(forkChangelogTouched && path !== "FORK-CHANGELOG.md"),
+);
 
 if (missing.length === 0) {
 	console.log("Changelog check passed.");
