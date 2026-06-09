@@ -23,9 +23,16 @@
 *.woff2 binary
 
 # Changelogs: auto-union on merge/rebase so upstream syncs never hard-conflict.
-# Package CHANGELOGs are upstream-owned (see FORK-CHANGELOG.md); union is a safety
-# net for stray edits. The fork keeps its own notes in FORK-CHANGELOG.md.
+# FORK-CHANGELOG.md (and any stray *CHANGELOG.md) auto-union so syncs never
+# hard-conflict. Package CHANGELOG.md files are now fork-owned stubs that point
+# at FORK-CHANGELOG.md + the archived upstream history — merge=ours keeps the
+# stub across upstream syncs so they never re-append their full changelog (the
+# old merge=union grew coding-agent's to 400KB+ and broke release-body
+# extraction; see docs/adr/0002). Upstream's history is frozen once in
+# CHANGELOG.upstream.md (union — harmless append if a sync ever touches it).
 *CHANGELOG.md merge=union
+packages/*/CHANGELOG.md merge=ours
+*CHANGELOG.upstream.md merge=union
 
 # Model registries: generated from LIVE provider API fetches (OpenRouter, NVIDIA NIM,
 # …) at generation time, so upstream's snapshot and the fork's never match → every
