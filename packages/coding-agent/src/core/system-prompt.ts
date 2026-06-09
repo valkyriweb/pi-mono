@@ -135,7 +135,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
 	if (hasBash) {
 		addGuideline(
-			"Run bash commands from the current working directory unless the command truly needs another directory. Avoid `cd <cwd> && ...`; for another directory, prefer command-native flags like `git -C <dir>` or `npm --prefix <dir>` when available.",
+			"Run bash commands from the current working directory unless the command truly needs another directory. To run in another directory, pass the bash `workdir` parameter (absolute path) instead of `cd <dir> && ...`; or use command-native flags like `git -C <dir>` or `npm --prefix <dir>`.",
 		);
 	}
 

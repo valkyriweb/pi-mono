@@ -27,6 +27,12 @@ import { DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateHead, tru
 
 const bashSchema = Type.Object({
 	command: Type.String({ description: "Bash command to execute" }),
+	workdir: Type.Optional(
+		Type.String({
+			description:
+				'Absolute path (or a path relative to the session working directory) to run the command in. Use this INSTEAD of `cd <dir> && …` whenever the command needs to run in a different directory — e.g. workdir: "/abs/path/to/project". Defaults to the session working directory.',
+		}),
+	),
 	timeout: Type.Optional(
 		Type.Union([
 			Type.Number({
@@ -1215,14 +1221,26 @@ export function createBashToolDefinition(
 			_toolCallId,
 			{
 				command,
+				workdir,
 				timeout,
 				run_in_background,
 				tui_only,
-			}: { command: string; timeout?: number | false; run_in_background?: boolean; tui_only?: boolean },
+			}: {
+				command: string;
+				workdir?: string;
+				timeout?: number | false;
+				run_in_background?: boolean;
+				tui_only?: boolean;
+			},
 			signal?: AbortSignal,
 			onUpdate?,
 			_ctx?,
 		) {
+			// Per-call working directory (Codex exec_command parity). Absolute `workdir`
+			// wins; a relative one resolves against the session cwd. A non-existent dir
+			// surfaces downstream as a clear spawn error rather than running in the wrong
+			// place. Omitting `workdir` is byte-identical to the previous behaviour.
+			const effectiveCwd = workdir ? resolve(cwd, workdir) : cwd;
 			const policy = bashPolicyStore.getStore();
 			if (policy) {
 				const denied = checkBashPolicy(command, policy);
@@ -1234,7 +1252,7 @@ export function createBashToolDefinition(
 					};
 				}
 			}
-			if (redundantCdToCurrentWorkingDirectory(command, cwd)) {
+			if (redundantCdToCurrentWorkingDirectory(command, effectiveCwd)) {
 				return {
 					isError: true,
 					content: [{ type: "text", text: redundantCdError() }],
@@ -1257,7 +1275,7 @@ export function createBashToolDefinition(
 
 			// Background fast-path: spawn detached, return immediately. No timeout, no output streaming.
 			if (run_in_background) {
-				const job = spawnBashBackground(command, cwd, options?.shellPath, commandPrefix);
+				const job = spawnBashBackground(command, effectiveCwd, options?.shellPath, commandPrefix);
 				const text =
 					`Backgrounded bash job ${job.id} (pid=${job.pid ?? "unknown"}).\n` +
 					`Task id: ${job.id}\n` +
@@ -1280,7 +1298,7 @@ export function createBashToolDefinition(
 			const timeoutSeconds = resolveBashTimeout(timeout);
 			const startedAt = Date.now();
 			const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
-			const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
+			const spawnContext = resolveSpawnContext(resolvedCommand, effectiveCwd, spawnHook);
 			const output = new OutputAccumulator({ tempFilePrefix: "pi-bash", maxBytes: BASH_MAX_OUTPUT_BYTES });
 			let updateTimer: NodeJS.Timeout | undefined;
 			let updateDirty = false;
