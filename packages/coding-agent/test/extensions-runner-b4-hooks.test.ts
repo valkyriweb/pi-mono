@@ -74,6 +74,7 @@ describe("ExtensionRunner B4 hooks", () => {
 	const extensionContextActions: ExtensionContextActions = {
 		getModel: () => undefined,
 		isIdle: () => true,
+		isProjectTrusted: () => true,
 		getSignal: () => undefined,
 		abort: () => {},
 		hasPendingMessages: () => false,

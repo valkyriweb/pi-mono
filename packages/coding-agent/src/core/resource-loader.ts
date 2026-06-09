@@ -411,14 +411,18 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 	}
 
+	async loadProjectTrustExtensions(): Promise<LoadExtensionsResult> {
+		// Force untrusted project settings for the bootstrap pass. This keeps project-local
+		// extensions/packages out while still loading user/global and temporary CLI extensions.
+		this.settingsManager.setProjectTrusted(false);
+		await this.settingsManager.reload();
+		return this.loadCurrentExtensionSet({ includeInlineFactories: true });
+	}
+
 	async reload(options?: ResourceLoaderReloadOptions): Promise<void> {
 		let preTrustExtensions: LoadExtensionsResult | undefined;
 		if (options?.resolveProjectTrust) {
-			// Force untrusted project settings for the bootstrap pass. This keeps project-local
-			// extensions/packages out while still loading user/global and temporary CLI extensions.
-			this.settingsManager.setProjectTrusted(false);
-			await this.settingsManager.reload();
-			preTrustExtensions = await this.loadCurrentExtensionSet({ includeInlineFactories: true });
+			preTrustExtensions = await this.loadProjectTrustExtensions();
 			const projectTrusted = await options.resolveProjectTrust({ extensionsResult: preTrustExtensions });
 			this.settingsManager.setProjectTrusted(projectTrusted);
 		}

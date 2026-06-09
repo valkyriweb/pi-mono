@@ -79,6 +79,7 @@ describe("pi-observability tracer (issue 09)", () => {
 	const extensionContextActions: ExtensionContextActions = {
 		getModel: () => undefined,
 		isIdle: () => true,
+		isProjectTrusted: () => true,
 		getSignal: () => undefined,
 		abort: () => {},
 		hasPendingMessages: () => false,

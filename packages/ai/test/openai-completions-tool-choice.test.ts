@@ -1090,6 +1090,36 @@ describe("openai-completions tool_choice", () => {
 		expect(params.reasoning_effort).toBeUndefined();
 	});
 
+	it("sends max_tokens for OpenCode completions models", async () => {
+		const cases = [
+			pickModel("opencode-go", (m) => m.id === "kimi-k2.6")!,
+			pickModel("opencode", (m) => m.id === "grok-build-0.1")!,
+		] as const;
+
+		for (const model of cases) {
+			let payload: unknown;
+			expect((model.compat as Record<string, unknown> | undefined)?.maxTokensField).toBe("max_tokens");
+
+			await streamSimple(
+				model,
+				{
+					messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],
+				},
+				{
+					apiKey: "test",
+					maxTokens: 123,
+					onPayload: (params: unknown) => {
+						payload = params;
+					},
+				},
+			).result();
+
+			const params = (payload ?? mockState.lastParams) as { max_tokens?: number; max_completion_tokens?: number };
+			expect(params.max_tokens).toBe(123);
+			expect(params.max_completion_tokens).toBeUndefined();
+		}
+	});
+
 	it("omits reasoning effort for OpenCode Grok Build", async () => {
 		const model = pickModel("opencode", (m) => m.id.includes("grok"));
 		let payload: unknown;
