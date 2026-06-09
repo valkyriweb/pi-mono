@@ -26,3 +26,12 @@
 # Package CHANGELOGs are upstream-owned (see FORK-CHANGELOG.md); union is a safety
 # net for stray edits. The fork keeps its own notes in FORK-CHANGELOG.md.
 *CHANGELOG.md merge=union
+
+# Model registries: generated from LIVE provider API fetches (OpenRouter, NVIDIA NIM,
+# …) at generation time, so upstream's snapshot and the fork's never match → every
+# sync would hard-conflict. merge=ours keeps the fork's committed snapshot on merge.
+# The fork refreshes deliberately via `npm --prefix packages/ai run refresh-models`
+# (decoupled from `build`, so builds no longer dirty the tree). The `ours` driver is
+# registered by scripts/setup-merge-drivers.sh (run once per clone).
+packages/ai/src/models.generated.ts merge=ours
+packages/ai/src/image-models.generated.ts merge=ours
