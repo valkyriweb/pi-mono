@@ -384,6 +384,68 @@ describe("AgentSession queue characterization", () => {
 		expect(harness.session.pendingMessageCount).toBe(0);
 	});
 
+	it("popLastQueuedMessage returns null when nothing is queued", async () => {
+		const harness = await createHarness();
+		harnesses.push(harness);
+		expect(harness.session.popLastQueuedMessage()).toBeNull();
+	});
+
+	it("popLastQueuedMessage lifts the latest follow-up out of the queue and stops its delivery", async () => {
+		const waiting = await createWaitingHarness();
+		const { harness, waitForToolStart, promptPromise, releaseToolExecution } = waiting;
+		harnesses.push(harness);
+
+		harness.setResponses([
+			fauxAssistantMessage(fauxToolCall("wait", {}), { stopReason: "toolUse" }),
+			fauxAssistantMessage("original turn complete"),
+		]);
+
+		await waitForToolStart;
+		await harness.session.followUp("edit me");
+		expect(harness.session.pendingMessageCount).toBe(1);
+
+		const recalled = harness.session.popLastQueuedMessage();
+		expect(recalled).toEqual({ text: "edit me", mode: "followUp" });
+		expect(harness.session.pendingMessageCount).toBe(0);
+
+		releaseToolExecution();
+		await promptPromise;
+		await harness.session.agent.waitForIdle();
+
+		// The recalled message must never be delivered to the model.
+		expect(getUserTexts(harness)).toEqual(["start"]);
+	});
+
+	it("popLastQueuedMessage prefers follow-up over steering", async () => {
+		const waiting = await createWaitingHarness();
+		const { harness, waitForToolStart, promptPromise, releaseToolExecution } = waiting;
+		harnesses.push(harness);
+
+		harness.setResponses([
+			fauxAssistantMessage(fauxToolCall("wait", {}), { stopReason: "toolUse" }),
+			fauxAssistantMessage("handled steer"),
+			fauxAssistantMessage("original turn complete"),
+		]);
+
+		await waitForToolStart;
+		await harness.session.steer("keep steering");
+		await harness.session.followUp("recall me");
+
+		expect(harness.session.popLastQueuedMessage()).toEqual({ text: "recall me", mode: "followUp" });
+		expect(harness.session.getFollowUpMessages()).toEqual([]);
+		expect(harness.session.getSteeringMessages()).toEqual(["keep steering"]);
+
+		// Falls back to steering once follow-ups are exhausted.
+		expect(harness.session.popLastQueuedMessage()).toEqual({ text: "keep steering", mode: "steer" });
+		expect(harness.session.pendingMessageCount).toBe(0);
+
+		releaseToolExecution();
+		await promptPromise;
+		await harness.session.agent.waitForIdle();
+
+		expect(getUserTexts(harness)).toEqual(["start"]);
+	});
+
 	it("throws when queueing an extension command with steer", async () => {
 		const harness = await createHarness({
 			extensionFactories: [

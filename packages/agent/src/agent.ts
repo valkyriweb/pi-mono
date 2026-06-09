@@ -136,6 +136,11 @@ class PendingMessageQueue {
 		return this.messages.length > 0;
 	}
 
+	/** Remove and return the most recently enqueued message, if any. */
+	removeLast(): AgentMessage | undefined {
+		return this.messages.pop();
+	}
+
 	drain(): AgentMessage[] {
 		if (this.mode === "all") {
 			const drained = this.messages.slice();
@@ -287,6 +292,16 @@ export class Agent {
 	/** Remove all queued steering messages. */
 	clearSteeringQueue(): void {
 		this.steeringQueue.clear();
+	}
+
+	/** Remove and return the most recently queued steering message, if any. */
+	removeLastSteeringMessage(): AgentMessage | undefined {
+		return this.steeringQueue.removeLast();
+	}
+
+	/** Remove and return the most recently queued follow-up message, if any. */
+	removeLastFollowUpMessage(): AgentMessage | undefined {
+		return this.followUpQueue.removeLast();
 	}
 
 	/** Remove all queued follow-up messages. */

@@ -2152,6 +2152,30 @@ export class AgentSession {
 		return { steering, followUp };
 	}
 
+	/**
+	 * Remove the most recently queued message and return it for editing.
+	 * Prefers follow-up messages over steering, since follow-ups are the
+	 * messages a user typically queues last. Removes the entry from both the
+	 * display mirror and the underlying agent delivery queue so the recalled
+	 * message is not also sent to the model. Returns null when nothing is
+	 * queued.
+	 */
+	popLastQueuedMessage(): { text: string; mode: "steer" | "followUp" } | null {
+		if (this._followUpMessages.length > 0) {
+			const text = this._followUpMessages.pop() as string;
+			this.agent.removeLastFollowUpMessage();
+			this._emitQueueUpdate();
+			return { text, mode: "followUp" };
+		}
+		if (this._steeringMessages.length > 0) {
+			const text = this._steeringMessages.pop() as string;
+			this.agent.removeLastSteeringMessage();
+			this._emitQueueUpdate();
+			return { text, mode: "steer" };
+		}
+		return null;
+	}
+
 	/** Number of pending messages (includes both steering and follow-up) */
 	get pendingMessageCount(): number {
 		return this._steeringMessages.length + this._followUpMessages.length;

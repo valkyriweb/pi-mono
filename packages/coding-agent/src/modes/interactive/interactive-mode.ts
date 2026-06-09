@@ -2165,6 +2165,20 @@ export class InteractiveMode {
 		}
 	}
 
+	/**
+	 * Core pre-input hook installed on the editor's `onPreInput` seam. Runs
+	 * before extension shortcuts and base editor handling. Composes the
+	 * built-in empty-editor behaviors in priority order: recall a queued
+	 * message on the up arrow, then extension footer navigation. Returns true
+	 * to consume the key.
+	 */
+	private handlePreInput(data: string): boolean {
+		if (this.keybindings.matches(data, "tui.editor.cursorUp") && this.recallQueuedMessageToEditor()) {
+			return true;
+		}
+		return this.handleExtensionFooterNavInput(data);
+	}
+
 	private handleExtensionFooterNavInput(data: string): boolean {
 		const ids = this.getVisibleExtensionFooterIds();
 		if (
@@ -2678,7 +2692,7 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
 		this.defaultEditor.onAction("app.session.fork", () => this.showUserMessageSelector());
 		this.defaultEditor.onAction("app.session.resume", () => this.showSessionSelector());
-		this.defaultEditor.onPreInput = (data: string) => this.handleExtensionFooterNavInput(data);
+		this.defaultEditor.onPreInput = (data: string) => this.handlePreInput(data);
 
 		this.defaultEditor.onChange = (text: string) => {
 			if (text.length > 0 && this.selectedExtensionFooterId) this.setSelectedExtensionFooterId(undefined);
@@ -4075,6 +4089,37 @@ export class InteractiveMode {
 			this.agent.abort();
 		}
 		return allQueued.length;
+	}
+
+	/**
+	 * Recall the most recently queued message into the editor for editing.
+	 * Reached from {@link handlePreInput} when the up arrow is pressed. The
+	 * message is removed from the queue as it is lifted into the editor, so
+	 * re-submitting replaces what was queued before, and clearing the editor
+	 * without re-submitting simply drops it from the queue. No-op (returns
+	 * false) when the editor already has text or nothing is queued, so the
+	 * caller can fall through to footer nav / prompt-history navigation.
+	 */
+	private recallQueuedMessageToEditor(): boolean {
+		if (this.editor.getText().length > 0) return false;
+
+		// Messages queued during compaction are the most recent; recall those first.
+		if (this.compactionQueuedMessages.length > 0) {
+			const recalled = this.compactionQueuedMessages.pop();
+			if (recalled) {
+				this.editor.setText(recalled.text);
+				this.updatePendingMessagesDisplay();
+				this.ui.requestRender();
+				return true;
+			}
+		}
+
+		const recalled = this.session.popLastQueuedMessage();
+		if (!recalled) return false;
+		this.editor.setText(recalled.text);
+		this.updatePendingMessagesDisplay();
+		this.ui.requestRender();
+		return true;
 	}
 
 	private queueCompactionMessage(text: string, mode: "steer" | "followUp"): void {
@@ -5890,7 +5935,7 @@ export class InteractiveMode {
 **Navigation**
 | Key | Action |
 |-----|--------|
-| \`${cursorUp}\` / \`${cursorDown}\` / \`${cursorLeft}\` / \`${cursorRight}\` | Move cursor / browse history (Up when empty) |
+| \`${cursorUp}\` / \`${cursorDown}\` / \`${cursorLeft}\` / \`${cursorRight}\` | Move cursor / recall queued message or browse history (Up when empty) |
 | \`${cursorWordLeft}\` / \`${cursorWordRight}\` | Move by word |
 | \`${cursorLineStart}\` | Start of line |
 | \`${cursorLineEnd}\` | End of line |
@@ -5926,7 +5971,7 @@ export class InteractiveMode {
 | \`${toggleThinking}\` | Toggle thinking block visibility |
 | \`${externalEditor}\` | Edit message in external editor |
 | \`${followUp}\` | Queue follow-up message |
-| \`${dequeue}\` | Restore queued messages |
+| \`${dequeue}\` | Restore all queued messages to editor |
 | \`${pasteImage}\` | Paste image from clipboard |
 | \`/\` | Slash commands |
 | \`!\` | Run bash command |
