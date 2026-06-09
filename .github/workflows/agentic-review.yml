@@ -122,6 +122,10 @@ jobs:
 
       - name: Configure GitHub Packages auth
         run: |
+          # ${NODE_AUTH_TOKEN} is written LITERALLY into .npmrc on purpose — npm
+          # expands it from the environment at read time, so single quotes are
+          # correct here. Silence shellcheck's "expressions don't expand" warning.
+          # shellcheck disable=SC2016
           printf '@valkyriweb:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' > "$HOME/.npmrc"
 
       - name: Install agentic-review pipeline (GitHub Packages)
