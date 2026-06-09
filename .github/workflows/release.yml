@@ -88,6 +88,7 @@ jobs:
         run: npm run check
 
       - name: Version or publish packages
+        id: changesets
         uses: changesets/action@v1
         with:
           cwd: pi-mono-fork
@@ -95,6 +96,22 @@ jobs:
           publish: npm run publish:changesets
           commit: "chore(release): version fork packages"
           title: "chore(release): version fork packages"
+          # We cut GitHub Releases ourselves (next step) with a bounded body.
+          # The package CHANGELOG.md files are upstream-owned Keep-a-Changelog
+          # (`## [x.y.z] - date`, 400KB+); the action can't match those headings
+          # to the version, so it dumps the whole file as the Release body and
+          # 422s past GitHub's 125000-char cap. See create-github-releases.mjs.
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Cut a GitHub Release per just-published package, with a small body that
+      # points at FORK-CHANGELOG.md (never the 400KB upstream changelog), so a
+      # Release is always created and publish never reds on changelog size.
+      - name: Create GitHub Releases (bounded body)
+        if: steps.changesets.outputs.published == 'true'
+        working-directory: pi-mono-fork
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/create-github-releases.mjs '${{ steps.changesets.outputs.publishedPackages }}'
