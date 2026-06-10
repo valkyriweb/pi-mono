@@ -77,7 +77,7 @@ jobs:
 
       - name: Build packages
         working-directory: pi-mono-fork
-        run: npm --prefix packages/tui run build && npm --prefix packages/ai run build && npm --prefix packages/agent run build && npm --prefix packages/coding-agent run build
+        run: npm --prefix packages/tui run build && npm --prefix packages/ai run build && npm --prefix packages/agent run build && npm --prefix packages/coding-agent run build:ts
 
       - name: Release gate
         working-directory: pi-mono-fork

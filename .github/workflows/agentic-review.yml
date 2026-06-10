@@ -107,7 +107,7 @@ jobs:
           npm --prefix packages/tui run build
           npm --prefix packages/ai run build
           npm --prefix packages/agent run build
-          npm --prefix packages/coding-agent run build
+          npm --prefix packages/coding-agent run build:ts
       # rusty-review --engine pi execs `pi` by name; CI only built the fork as a
       # node entrypoint. Expose a `pi` shim on PATH so the Correctness stage runs
       # the real engine instead of degrading to a manual diff review.
