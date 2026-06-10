@@ -478,7 +478,12 @@ function summarizeServerToolResult(block: ServerToolResultBlockLike): {
 	sources?: ServerToolSource[];
 	errorCode?: string;
 } {
-	const toolName = block.type === "web_fetch_tool_result" ? "web_fetch" : "web_search";
+	const toolName =
+		block.type === "web_fetch_tool_result"
+			? "web_fetch"
+			: block.type === "advisor_tool_result"
+				? "advisor"
+				: "web_search";
 	const content = block.content as Record<string, unknown> | unknown[] | null | undefined;
 
 	// Error shape: { type: "web_search_tool_result_error" | ..., error_code: "..." }
@@ -753,7 +758,8 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 							});
 						} else if (
 							event.content_block.type === "web_search_tool_result" ||
-							(event.content_block as { type?: string }).type === "web_fetch_tool_result"
+							(event.content_block as { type?: string }).type === "web_fetch_tool_result" ||
+							(event.content_block as { type?: string }).type === "advisor_tool_result"
 						) {
 							// Server-injected result block (full content present at start). Surface
 							// a compact display-only summary; never stored in output.content.
@@ -1632,6 +1638,24 @@ function convertOneTool(
 			max_content_tokens: schema.properties?.max_content_tokens?.default ?? null,
 			use_cache: schema.properties?.use_cache?.default,
 		};
+	}
+	if (model.provider === "claude-bridge" && tool.name === "advisor") {
+		// Server-side advisor (advisor_20260301, beta advisor-tool-2026-03-01).
+		// Anthropic runs the advisor call server-side and forwards the full
+		// conversation — the advisor rides the parent's prompt cache instead of
+		// paying full input cost on a client-built transcript. The advisor model
+		// comes from the schema's `model` default (set by the advisor extension);
+		// the bridge adds the beta header when it sees this typed block.
+		const schema = tool.parameters as { properties?: { model?: { default?: string } } };
+		const advisorModel = schema.properties?.model?.default;
+		if (typeof advisorModel === "string" && advisorModel.length > 0) {
+			return {
+				name: "advisor",
+				type: "advisor_20260301",
+				model: advisorModel,
+			} as unknown as Anthropic.Messages.ToolUnion;
+		}
+		// No advisor model configured → fall through to the client tool path.
 	}
 	if (model.provider === "claude-bridge" && (tool.name === "WebSearch" || tool.name === "web_search")) {
 		const schema = tool.parameters as {
