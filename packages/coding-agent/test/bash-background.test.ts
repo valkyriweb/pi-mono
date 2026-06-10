@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+	type BashBgJob,
 	createBashKillToolDefinition,
 	createBashOutputToolDefinition,
 	createBashToolDefinition,
 	killAllBashBgJobs,
 	listBashBgJobs,
+	subscribeBashBgTerminal,
 } from "../src/core/tools/bash.ts";
 
 function getText(result: any): string {
@@ -12,6 +14,54 @@ function getText(result: any): string {
 }
 
 const ctx: any = {};
+
+describe("subscribeBashBgTerminal — completion wake (Claude Code task_notification parity)", () => {
+	it("fires once with the job when a backgrounded command exits naturally", async () => {
+		const bash = createBashToolDefinition(process.cwd());
+		const fired: BashBgJob[] = [];
+		const unsubscribe = subscribeBashBgTerminal((job) => fired.push(job));
+		try {
+			const r = await bash.execute(
+				"term1",
+				{ command: "echo done", run_in_background: true },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const bgId = (r.details as any)?.bgId as string;
+			await new Promise((res) => setTimeout(res, 1000));
+			const matches = fired.filter((j) => j.id === bgId);
+			expect(matches).toHaveLength(1);
+			expect(matches[0]?.status).toBe("exited");
+			expect(matches[0]?.exitCode).toBe(0);
+			expect(matches[0]?.logPath).toContain(bgId);
+		} finally {
+			unsubscribe();
+		}
+	});
+
+	it("does NOT fire when a job is explicitly killed (the agent already knows it stopped it)", async () => {
+		const bash = createBashToolDefinition(process.cwd());
+		const kill = createBashKillToolDefinition();
+		const fired: BashBgJob[] = [];
+		const unsubscribe = subscribeBashBgTerminal((job) => fired.push(job));
+		try {
+			const r = await bash.execute(
+				"term2",
+				{ command: "sleep 30", run_in_background: true },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const bgId = (r.details as any)?.bgId as string;
+			await kill.execute("term3", { bgId }, undefined, undefined, ctx);
+			await new Promise((res) => setTimeout(res, 500));
+			expect(fired.filter((j) => j.id === bgId)).toHaveLength(0);
+		} finally {
+			unsubscribe();
+		}
+	});
+});
 
 describe("bash run_in_background", () => {
 	it("spawns detached, returns a bgId, and bash_output reads accumulated log", async () => {

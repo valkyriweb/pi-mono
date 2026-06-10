@@ -97,6 +97,31 @@ export function subscribeBashBgJobs(callback: () => void): () => void {
 	return () => bashBgSubscribers.delete(callback);
 }
 
+// Terminal listeners fire once when a background bash job reaches a *natural*
+// terminal status (process exit or spawn error). Explicit stops (bash_kill /
+// session dispose / killAll) do NOT fire — the agent already knows it stopped
+// them. This mirrors the agent background-run terminal listener so the owning
+// session can inject a completion notification, matching Claude Code's
+// task-notification wake ("you'll be notified when it finishes"). Without this,
+// a backgrounded command completes silently and a CC-trained model parks
+// forever waiting for a wake that never arrives.
+const bashBgTerminalListeners = new Set<(job: BashBgJob) => void>();
+
+export function subscribeBashBgTerminal(callback: (job: BashBgJob) => void): () => void {
+	bashBgTerminalListeners.add(callback);
+	return () => bashBgTerminalListeners.delete(callback);
+}
+
+function notifyBashBgTerminal(job: BashBgJob): void {
+	for (const listener of bashBgTerminalListeners) {
+		try {
+			listener(job);
+		} catch {
+			// A listener must never break the process exit/error handler.
+		}
+	}
+}
+
 function bashBgLogDir(): string {
 	const dir = join(homedir(), ".pi", "agent", "bash-bg");
 	mkdirSync(dir, { recursive: true });
@@ -213,6 +238,7 @@ export function spawnBashBackground(
 		job.endedAt = Date.now();
 		if (child.pid) untrackDetachedChildPid(child.pid);
 		notifyBashBgJobsChanged();
+		notifyBashBgTerminal(job);
 	});
 	child.on("exit", (code, signal) => {
 		job.exitCode = code;
@@ -223,6 +249,9 @@ export function spawnBashBackground(
 		}
 		if (child.pid) untrackDetachedChildPid(child.pid);
 		notifyBashBgJobsChanged();
+		// Only wake on natural completion. Signalled/killed jobs were stopped
+		// deliberately (bash_kill / dispose), so the agent already knows.
+		if (job.status === "exited") notifyBashBgTerminal(job);
 	});
 	// Don't keep the event loop alive on our behalf — caller decides.
 	child.unref();
@@ -274,6 +303,7 @@ function adoptBashBackground(child: ReturnType<typeof spawn>, command: string, c
 		} catch {}
 		if (child.pid) untrackDetachedChildPid(child.pid);
 		notifyBashBgJobsChanged();
+		notifyBashBgTerminal(job);
 	});
 	child.on("exit", (code, signal) => {
 		job.exitCode = code;
@@ -287,6 +317,7 @@ function adoptBashBackground(child: ReturnType<typeof spawn>, command: string, c
 		} catch {}
 		if (child.pid) untrackDetachedChildPid(child.pid);
 		notifyBashBgJobsChanged();
+		if (job.status === "exited") notifyBashBgTerminal(job);
 	});
 	child.unref();
 	return job;
@@ -1203,13 +1234,13 @@ export function createBashToolDefinition(
 	return {
 		name: toolName,
 		label,
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${BASH_MAX_OUTPUT_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Avoid running \`grep\`, \`rg\`, \`find\`, or \`ls\` standalone in Bash — use the native tools instead. Pipeline filters on command output (e.g. \`kubectl ... | grep Ready\`, \`ps ... | grep -v\`) are fine; the native tools only apply to files on disk. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites, watchers you'll come back to). Read accumulated output with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.\n\nTUI-only mode: pass tui_only:true to stream output live to the TUI but return only an exit/size summary to context. Use for monitoring loops (reboot waits, log tails, progress meters) where the streaming output is for human eyes and would burn tokens in context. The full output is still saved to a temp file when it would have been truncated. Incompatible with run_in_background.`,
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${BASH_MAX_OUTPUT_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nIMPORTANT: prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches, and Read/Edit/Write for file contents. Avoid running \`grep\`, \`rg\`, \`find\`, or \`ls\` standalone in Bash — use the native tools instead. Pipeline filters on command output (e.g. \`kubectl ... | grep Ready\`, \`ps ... | grep -v\`) are fine; the native tools only apply to files on disk. Use Bash for shell work and non-repo command output: pipelines like \`kubectl ... | jq\` or \`ps ... | awk\`, git, package managers, \`stat\`, \`wc\`, \`head\`, and \`tail\`.\n\nBackground mode: pass run_in_background:true to spawn the command detached and return immediately with a bgId. Use this whenever you don't need the result right away (long builds, installers, pushes, test suites). You will be notified with a task_notification (carrying the bgId and output log path) when the command finishes — do NOT poll, sleep, or re-run the command to "check"; continue with other work or hand back to the user and the harness re-invokes you on completion. Read accumulated output any time with bash_output(bgId) and stop it with bash_kill(bgId). For continuous streams you want to react to live (dev servers, log tails, queue consumers), use monitor_start instead \u2014 it wakes the agent on output batches.\n\nTUI-only mode: pass tui_only:true to stream output live to the TUI but return only an exit/size summary to context. Use for monitoring loops (reboot waits, log tails, progress meters) where the streaming output is for human eyes and would burn tokens in context. The full output is still saved to a temp file when it would have been truncated. Incompatible with run_in_background.`,
 		promptSnippet:
 			"Execute bash commands; set run_in_background:true for long-running work and read later with bash_output",
 		executionMode: "sequential",
 		promptGuidelines: [
 			"Use run_in_background:true for any command likely to exceed ~30s when you don't need the output immediately (builds, installers, kubectl rollouts, long test suites, dev servers).",
-			"Do NOT poll a background bash job with sleep loops. Call bash_output(bgId) when you need its current state, or use monitor_start instead if you want to be woken on every output batch.",
+			"A backgrounded bash job notifies you with a task_notification when it finishes (carrying the bgId + output log path). Do NOT poll it with sleep loops or re-run the command to check — continue other work and the harness re-invokes you on completion. Call bash_output(bgId) only to peek before it finishes, or use monitor_start to be woken on every output batch.",
 			"Always stop background jobs you started but no longer need with bash_kill(bgId).",
 			// Worded identically to system-prompt.ts so addGuideline deduplicates shared rules.
 			"Prefer native file tools for repo exploration: Find/Ls for paths, Grep for known text/regex, SemanticGrep for conceptual searches. Standalone `grep`/`rg`/`find`/`ls` in Bash is discouraged, but pipeline filters on command output (e.g. `kubectl ... | grep Ready`) are fine.",
