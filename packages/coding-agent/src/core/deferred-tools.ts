@@ -9,6 +9,34 @@ export interface DeferredToolDiscoveryResult {
 	missing: string[];
 	discoveredToolNames: string[];
 	referenceBlocks: DeferredToolReferenceBlock[];
+	guidelineBlocks: DeferredToolGuidelineBlock[];
+}
+
+export interface DeferredToolGuidelineBlock {
+	type: "text";
+	text: string;
+}
+
+/**
+ * CACHE CRITICAL: deferred tools keep their schemas out of the cached prefix
+ * via defer_loading; their prompt prose (promptSnippet/promptGuidelines) must
+ * follow the same rule. The system prompt never includes it (see
+ * agent-session._rebuildSystemPrompt); instead it is delivered here, in the
+ * tool_search result — transcript suffix, delta-only, persisted in history.
+ */
+export function buildDeferredToolGuidelineBlock(definition: ToolDefinition): DeferredToolGuidelineBlock | undefined {
+	const lines: string[] = [];
+	const snippet = definition.promptSnippet?.trim();
+	if (snippet) lines.push(snippet);
+	for (const guideline of definition.promptGuidelines ?? []) {
+		const trimmed = guideline.trim();
+		if (trimmed) lines.push(`- ${trimmed}`);
+	}
+	if (lines.length === 0) return undefined;
+	return {
+		type: "text",
+		text: `<tool-guidelines name="${definition.name}">\n${lines.join("\n")}\n</tool-guidelines>`,
+	};
 }
 
 export const DEFERRED_TOOL_STATE_CUSTOM_TYPE = "pi.deferred_tools.state";
@@ -30,6 +58,7 @@ export interface DeferredToolSearchPlan {
 	missingToolNames: string[];
 	discoveredToolNames: string[];
 	referenceBlocks: DeferredToolReferenceBlock[];
+	guidelineBlocks: DeferredToolGuidelineBlock[];
 	activateToolNames: string[];
 	cacheMayBust: boolean;
 	capabilities?: DeferredToolCapabilities;
@@ -95,6 +124,9 @@ export function discoverDeferredTools(
 		missing,
 		discoveredToolNames,
 		referenceBlocks: matches.map((definition) => ({ type: "tool_reference", name: definition.name })),
+		guidelineBlocks: matches
+			.map(buildDeferredToolGuidelineBlock)
+			.filter((block): block is DeferredToolGuidelineBlock => block !== undefined),
 	};
 }
 
@@ -114,6 +146,9 @@ export function planDeferredToolSearchResult(
 		missingToolNames: discovery.missing,
 		discoveredToolNames: discovery.discoveredToolNames,
 		referenceBlocks: options.nativeDeferredTools ? discovery.referenceBlocks : [],
+		// Guidelines ship in BOTH modes: fallback activations also need the prose
+		// that no longer lives in the system prompt.
+		guidelineBlocks: discovery.guidelineBlocks,
 		activateToolNames: options.nativeDeferredTools ? [] : matchedToolNames,
 		cacheMayBust: !options.nativeDeferredTools && matchedToolNames.length > 0,
 	};
