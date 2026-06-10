@@ -6,10 +6,11 @@ name: Agentic PR Review
 #
 # This is the pi-mono (fork) port of my-pi's reviewer. Differences from my-pi:
 #   - pi-mono builds the `pi` binary in place (no "checkout pi fork" + symlink).
-#   - The reviewer profile + scripts come from GitHub Packages
-#     (@valkyriweb/my-pi-actions provides the actions profile incl. the Workflow
-#     tool; @valkyriweb/agentic-review provides the pipeline scripts) instead of
-#     cloning my-pi.
+#   - The reviewer's `actions` profile is built from my-pi@main SOURCE (checked
+#     out below) against the fork under test — never a frozen npm pin — so a
+#     bundled-extension source fix or a fork-core API change can't leave the
+#     reviewer booting a stale/incompatible profile. @valkyriweb/agentic-review
+#     (GitHub Packages) still provides the pipeline scripts.
 #
 # SECURITY — this uses `pull_request_target`, so it runs with repo secrets and a
 # writable token, and (in the review job) checks out PR HEAD code. That is unsafe
@@ -145,13 +146,27 @@ jobs:
           path: pi-claude-bridge
           token: ${{ secrets.GH_CLONE_TOKEN }}
 
-      # NOTE: keep this @<version> pin current with the fork's extension API. The
-      # `actions` profile bundles native-tool-overrides etc.; when the fork core
-      # removes/renames an export those extensions consume, an old pin boots the
-      # reviewer against a stale profile and crashes before any review runs
-      # (e.g. 0.1.5 -> pi-native-tool-overrides@0.0.2 called the removed
-      # createTaskOutputToolDefinition). Bump both occurrences together.
-      - name: Stage pi agent config (bridge provider + actions profile + skills)
+      # Build the `actions` profile from my-pi@main SOURCE against the fork under
+      # test — not a frozen `npm:@valkyriweb/my-pi-actions@<pin>`. A pinned tarball
+      # bundles extensions frozen at publish time, so it skews two ways: a bundled
+      # extension fixed in source but not yet republished (the run-store drop), or a
+      # fork-core export it consumes being removed/renamed (createTaskOutput-
+      # ToolDefinition). Source can't predate itself and resolves against this fork,
+      # so both skew classes vanish and there is no pin to keep current.
+      - name: Checkout my-pi (actions profile source)
+        uses: actions/checkout@v4
+        with:
+          repository: valkyriweb/my-pi
+          ref: main
+          path: my-pi
+          token: ${{ secrets.GH_CLONE_TOKEN }}
+      - name: Install my-pi workspace deps (extension imports must resolve)
+        # Source extensions (pi-workflow etc.) import third-party + @valkyriweb
+        # deps; they must resolve from my-pi/node_modules at load time. The global
+        # ~/.npmrc configured above provides GitHub Packages auth. --ignore-scripts:
+        # pi loads the .ts extensions directly (jiti), so no build postinstall.
+        run: npm --prefix my-pi ci --ignore-scripts
+      - name: Stage pi agent config (bridge provider + actions profile source + skills)
         run: |
           mkdir -p "$HOME/.pi/agent"
           cp "$RUNNER_TEMP/ar/node_modules/@valkyriweb/agentic-review/ci-models.json" "$HOME/.pi/agent/models.json"
@@ -160,14 +175,14 @@ jobs:
             "defaultProvider": "claude-bridge",
             "defaultModel": "claude-opus-4-8",
             "enabledModels": ["claude-bridge/*"],
-            "packages": ["npm:@valkyriweb/my-pi-actions@0.1.11"]
+            "packages": ["$GITHUB_WORKSPACE/my-pi/packages/my-pi-actions"]
           }
           EOF
           ln -sfn "$GITHUB_WORKSPACE/agent-scripts/skills" "$HOME/.pi/agent/skills"
-          # Fetch the actions profile (provides the harness extensions + the
-          # Workflow tool the reviewer drives). pi-workflow comes from this profile,
-          # not from @valkyriweb/agentic-review.
-          pi install npm:@valkyriweb/my-pi-actions@0.1.11
+          # The `actions` profile is a local package (absolute path above); pi reads
+          # its package.json `pi.extensions` (../../extensions/...) in place, loading
+          # the harness extensions + the Workflow tool from my-pi@main source. A
+          # local path needs no `pi install`/download.
 
       - name: Start claude-bridge sidecar
         run: |
@@ -182,6 +197,21 @@ jobs:
             sleep 1
           done
           echo "bridge failed to start"; cat /tmp/bridge.log; exit 1
+
+      - name: Boot smoke (actions profile loads against this fork)
+        # Fail loudly and specifically if the profile can't boot against this fork,
+        # instead of the cryptic "no review result produced" from a crashed pi.
+        run: |
+          set +e
+          OUT=$(node packages/coding-agent/dist/cli.js -p "Reply with exactly: READY" 2>&1)
+          echo "$OUT"
+          if printf '%s' "$OUT" | grep -qiE "Failed to load extension|is not a function"; then
+            echo "::error::actions profile failed to load against this fork (extension/API skew) — see output above"; exit 1
+          fi
+          if ! printf '%s' "$OUT" | grep -q "READY"; then
+            echo "::error::boot smoke got no model reply (bridge/model issue) — see output above"; exit 1
+          fi
+          echo "boot smoke OK"
 
       - name: Configure git identity (autofix commits)
         run: |
