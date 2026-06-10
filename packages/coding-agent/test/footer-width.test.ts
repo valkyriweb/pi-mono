@@ -206,10 +206,41 @@ describe("FooterComponent width handling", () => {
 		expect(rendered).toContain("↑2.0k");
 		expect(rendered).toContain("R8.0k");
 		expect(rendered).toContain("W2.0k");
-		expect(rendered).toContain("cache 67% avg 67%");
+		// First assistant turn after a compaction: the cold full-prefix write is
+		// expected, so the cache label is informational, not drift-colored.
+		expect(rendered).toContain("cache 67% ⟳compact");
 		expect(rendered).toContain("t1");
 		expect(rendered).not.toContain("↑102k");
 		expect(rendered).not.toContain("t2");
+	});
+
+	it("drops the post-compaction marker from the second turn onward", () => {
+		const usage = (cacheRead: number, cacheWrite: number) => ({
+			role: "assistant" as const,
+			usage: { input: 0, output: 1, cacheRead, cacheWrite, cost: { total: 1 } },
+		});
+		const footer = new FooterComponent(
+			createSession({
+				sessionName: "",
+				entries: [
+					{
+						id: "compact",
+						type: "compaction",
+						timestamp: "2026-05-31T08:00:00.000Z",
+						summary: "summary",
+						firstKeptEntryId: "after",
+						tokensBefore: 100_000,
+					},
+					{ id: "after", type: "message", message: usage(8_000, 2_000) },
+					{ id: "warm", type: "message", message: usage(10_000, 0) },
+				],
+			}),
+			createFooterData(1),
+		);
+
+		const rendered = footer.render(140).join("\n");
+		expect(rendered).toContain("cache 100% avg 90%");
+		expect(rendered).not.toContain("⟳compact");
 	});
 
 	it("computes token and cache totals from the active branch only", () => {

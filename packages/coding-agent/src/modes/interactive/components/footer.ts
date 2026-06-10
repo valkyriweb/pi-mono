@@ -58,6 +58,9 @@ interface UsageTotals {
 	totalCost: number;
 	assistantTurns: number;
 	lastUsage?: UsageSnapshot;
+	/** True when the latest assistant turn is the first after a compaction —
+	 * its cold cache write is expected, not prefix drift. */
+	postCompactionTurn: boolean;
 }
 
 /**
@@ -76,6 +79,7 @@ export class FooterComponent implements Component {
 		totalCacheWrite: 0,
 		totalCost: 0,
 		assistantTurns: 0,
+		postCompactionTurn: false,
 	};
 	private selectedExtensionFooterId: string | undefined = undefined;
 
@@ -173,6 +177,7 @@ export class FooterComponent implements Component {
 			totalCost: 0,
 			assistantTurns: 0,
 			lastUsage,
+			postCompactionTurn: false,
 		};
 
 		const startIndex =
@@ -188,6 +193,12 @@ export class FooterComponent implements Component {
 			}
 		}
 
+		// The first assistant turn after a compaction rewrites the full prefix —
+		// an expected one-time cache write, not prefix drift. Flag it so render()
+		// doesn't alarm on the cold hit-rate (CC notifyCompaction analog: the
+		// compaction entry in the session IS the notification; no event needed).
+		totals.postCompactionTurn = latestCompaction !== null && totals.assistantTurns <= 1;
+
 		this.usageCacheKey = cacheKey;
 		this.usageCache = totals;
 		return totals;
@@ -195,8 +206,16 @@ export class FooterComponent implements Component {
 
 	render(width: number): string[] {
 		const state = this.session.state;
-		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, assistantTurns, lastUsage } =
-			this.getUsageTotals();
+		const {
+			totalInput,
+			totalOutput,
+			totalCacheRead,
+			totalCacheWrite,
+			totalCost,
+			assistantTurns,
+			lastUsage,
+			postCompactionTurn,
+		} = this.getUsageTotals();
 
 		const contextUsage = this.session.getContextUsage();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
@@ -255,7 +274,11 @@ export class FooterComponent implements Component {
 			// loose thresholds because turn 1 always writes the full prefix.
 			const steadyState = assistantTurns >= 10;
 			let colored: string;
-			if (steadyState) {
+			if (postCompactionTurn) {
+				// Expected one-time full-prefix rewrite right after compaction — show
+				// it as informational, never as drift.
+				colored = theme.fg("dim", `cache ${hitPct.toFixed(0)}% ⟳compact`);
+			} else if (steadyState) {
 				if (hitPct >= 90) colored = theme.fg("success", label);
 				else if (hitPct >= 80) colored = theme.fg("warning", label);
 				else colored = theme.fg("error", theme.bold(label));

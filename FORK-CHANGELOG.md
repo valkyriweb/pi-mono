@@ -6,6 +6,8 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Added
 
+- **Footer: first post-compaction turn's cold cache write rendered as expected, not drift.** The first assistant turn after a compaction rewrites the full prefix — a one-time expected cache write — but the footer alarm-colored it (red `cache 28%`). It now renders dim `cache N% ⟳compact` for that turn only; normal drift thresholds resume from turn 2. CC `notifyCompaction()` analog — the compaction session entry is the signal, no new event. (platform; cc-memory-parity-plan Phase 3)
+
 - **Server-side advisor tool (`advisor_20260301`) for claude-bridge models** (`packages/ai` anthropic provider): typed server tool passes through un-prefixed and renders advisory output; pairs with the my-pi advisor extension (valkyriweb/my-pi#169).
 
 ### Changed
