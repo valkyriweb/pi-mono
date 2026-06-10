@@ -31,8 +31,8 @@ describe("bash native tool guidance (soft, instruction-only)", () => {
 		const bash = createBashToolDefinition(process.cwd());
 
 		expect(bash.description).toContain("prefer native file tools for repo exploration");
-		expect(bash.description).toContain("Pipeline filters on command output");
-		expect(bash.description).toContain("kubectl ... | jq");
+		expect(bash.description).toContain("pipeline filters on command output");
+		expect(bash.description).toContain("kubectl ... | grep Ready");
 	});
 
 	it("detects redundant cd to the bash cwd", () => {
