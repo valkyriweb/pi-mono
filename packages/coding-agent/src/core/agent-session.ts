@@ -2132,7 +2132,18 @@ export class AgentSession {
 		if (this._disposed || this._idleWakeTimer !== undefined) return;
 		this._idleWakeTimer = setTimeout(() => {
 			this._idleWakeTimer = undefined;
-			if (this._disposed || this.isStreaming || this.isCompacting || this.agent.isProcessing) return;
+			if (this._disposed) return;
+			// Transient-busy at fire time (streaming, compaction, or an in-flight
+			// turn) must NOT drop the wake: the completion notification is already
+			// in history, but the turn-trigger would be lost forever. A turn already
+			// in progress has the notification in context and is self-healing, yet a
+			// threshold/overflow compaction overlapping this window rewrites history
+			// and leaves the session idle with an unhandled notification. Re-arm one
+			// debounce window later so the wake survives until genuinely idle.
+			if (this.isStreaming || this.isCompacting || this.agent.isProcessing) {
+				this._scheduleIdleWake();
+				return;
+			}
 			void this.sendCustomMessage(
 				{
 					customType: "idle-wake",

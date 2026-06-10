@@ -61,6 +61,32 @@ describe("subscribeBashBgTerminal — completion wake (Claude Code task_notifica
 			unsubscribe();
 		}
 	});
+
+	it("fires on an external crash (signal death while running), unlike a deliberate kill", async () => {
+		const bash = createBashToolDefinition(process.cwd());
+		const fired: BashBgJob[] = [];
+		const unsubscribe = subscribeBashBgTerminal((job) => fired.push(job));
+		try {
+			// Self-sent SIGTERM models an external crash (OOM SIGKILL, SIGSEGV, an
+			// outside SIGTERM): the process dies by signal while still "running" —
+			// we never called bash_kill, so the agent must be woken.
+			const r = await bash.execute(
+				"crash1",
+				{ command: "sh -c 'kill -TERM $$'", run_in_background: true },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const bgId = (r.details as any)?.bgId as string;
+			await new Promise((res) => setTimeout(res, 1000));
+			const matches = fired.filter((j) => j.id === bgId);
+			expect(matches).toHaveLength(1);
+			expect(matches[0]?.status).toBe("killed");
+			expect(matches[0]?.signal).toBe("SIGTERM");
+		} finally {
+			unsubscribe();
+		}
+	});
 });
 
 describe("bash run_in_background", () => {

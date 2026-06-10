@@ -131,6 +131,41 @@ describe("AgentSession wakeOnIdle", () => {
 		expect(harness.eventsOfType("agent_start")).toHaveLength(0);
 	});
 
+	it("re-arms instead of dropping the wake when compaction is in flight at fire time", async () => {
+		const harness = await createHarness();
+		harnesses.push(harness);
+		harness.setResponses([fauxAssistantMessage("wake survived compaction")]);
+
+		const session = harness.session as unknown as {
+			_compactionAbortController?: AbortController;
+		};
+
+		// Schedule the wake while idle (arms the debounce timer), THEN start
+		// compaction inside the window so the timer trips the transient-busy guard
+		// at fire time. A fire-once timer would drop the wake here, leaving the
+		// notification unhandled in history forever.
+		await harness.session.sendCustomMessage(completion("bash_completion"), {
+			deliverAs: "followUp",
+			wakeOnIdle: true,
+		});
+		session._compactionAbortController = new AbortController();
+		expect(harness.session.isCompacting).toBe(true);
+
+		// First debounce window elapses while still compacting: must re-arm, not wake.
+		await sleep(DEBOUNCE_MS + 150);
+		expect(idleWakeMessages(harness)).toHaveLength(0);
+		expect(harness.eventsOfType("agent_start")).toHaveLength(0);
+
+		// Compaction settles; the re-armed timer must now drive the wake.
+		session._compactionAbortController = undefined;
+		expect(harness.session.isCompacting).toBe(false);
+		await sleep(DEBOUNCE_MS + 150);
+		await harness.session.agent.waitForIdle();
+
+		expect(idleWakeMessages(harness)).toHaveLength(1);
+		expect(harness.eventsOfType("agent_start")).toHaveLength(1);
+	});
+
 	it("cancels the pending wake when a turn starts inside the debounce window", async () => {
 		const harness = await createHarness();
 		harnesses.push(harness);
