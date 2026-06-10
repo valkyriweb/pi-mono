@@ -6,6 +6,7 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Added
 
+- **`Tool.anthropicServerTool` sentinel (`packages/ai`): tool definitions opt into Anthropic server-tool blocks explicitly; name-based web_fetch/web_search interception dropped and `syncClaudeBridgeNativeTools` neutered** — client-side CC-parity web tools in my-pi are provider-agnostic; explicit opt-in beats name magic. Logged in `my-pi/docs/pi-fork-patch-inventory.md`; upstream PR candidate. (Entry added retroactively for `c87622dd7` — committed without its changelog line.)
 - **Footer: first post-compaction turn's cold cache write rendered as expected, not drift.** The first assistant turn after a compaction rewrites the full prefix — a one-time expected cache write — but the footer alarm-colored it (red `cache 28%`). It now renders dim `cache N% ⟳compact` for that turn only; normal drift thresholds resume from turn 2. CC `notifyCompaction()` analog — the compaction session entry is the signal, no new event. (platform; cc-memory-parity-plan Phase 3)
 
 - **Server-side advisor tool (`advisor_20260301`) for claude-bridge models** (`packages/ai` anthropic provider): typed server tool passes through un-prefixed and renders advisory output; pairs with the my-pi advisor extension (valkyriweb/my-pi#169).
