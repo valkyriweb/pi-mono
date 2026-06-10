@@ -153,6 +153,14 @@ export function killBashBgJob(id: string): { job: BashBgJob | undefined; error?:
 		try {
 			killProcessTree(job.pid);
 		} catch (err) {
+			// The kill was deliberate but signalling failed. Mark the job killed so the
+			// exit handler's wasRunning check stays silent instead of firing a spurious
+			// crash wake. ESRCH means the process already exited — the kill effectively
+			// succeeded, so report success; any other error is surfaced.
+			job.status = "killed";
+			job.endedAt = Date.now();
+			notifyBashBgJobsChanged();
+			if ((err as { code?: string })?.code === "ESRCH") return { job };
 			return { job, error: err instanceof Error ? err.message : String(err) };
 		}
 	}
@@ -233,12 +241,14 @@ export function spawnBashBackground(
 	bashBgJobs.set(id, job);
 	notifyBashBgJobsChanged();
 	child.on("error", (err) => {
-		job.status = "failed";
+		const wasRunning = job.status === "running";
 		job.error = err.message;
 		job.endedAt = Date.now();
+		if (wasRunning) job.status = "failed";
 		if (child.pid) untrackDetachedChildPid(child.pid);
 		notifyBashBgJobsChanged();
-		notifyBashBgTerminal(job);
+		// Stay silent if the job was already stopped deliberately (bash_kill/dispose).
+		if (wasRunning) notifyBashBgTerminal(job);
 	});
 	child.on("exit", (code, signal) => {
 		job.exitCode = code;
@@ -300,15 +310,17 @@ function adoptBashBackground(child: ReturnType<typeof spawn>, command: string, c
 	bashBgJobs.set(id, job);
 	notifyBashBgJobsChanged();
 	child.on("error", (err) => {
-		job.status = "failed";
+		const wasRunning = job.status === "running";
 		job.error = err.message;
 		job.endedAt = Date.now();
+		if (wasRunning) job.status = "failed";
 		try {
 			closeSync(fd);
 		} catch {}
 		if (child.pid) untrackDetachedChildPid(child.pid);
 		notifyBashBgJobsChanged();
-		notifyBashBgTerminal(job);
+		// Stay silent if the job was already stopped deliberately (bash_kill/dispose).
+		if (wasRunning) notifyBashBgTerminal(job);
 	});
 	child.on("exit", (code, signal) => {
 		job.exitCode = code;
