@@ -15,7 +15,6 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-
 import type { Agent, AgentEvent, AgentMessage, AgentState, AgentTool, ThinkingLevel } from "@valkyriweb/pi-agent-core";
 import type {
 	AssistantMessage,
@@ -38,7 +37,6 @@ import {
 } from "@valkyriweb/pi-ai";
 import { theme } from "../modes/interactive/theme/theme.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
-
 import { resolvePath } from "../utils/paths.ts";
 import { sleep } from "../utils/sleep.ts";
 import {
@@ -52,7 +50,6 @@ import type { AgentBackgroundCompletion } from "./agents/types.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
 import { createPromptCacheAffinityKey } from "./cache-affinity.ts";
-
 import {
 	type CompactionResult,
 	calculateContextTokens,
@@ -65,6 +62,7 @@ import {
 } from "./compaction/index.ts";
 import { CONTEXT_USAGE_SERVICE_ID, type ContextUsageSnapshotService } from "./context-usage.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
+import { isDeferredTool } from "./deferred-tools.ts";
 
 import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.ts";
 import { createToolHtmlRenderer } from "./export-html/tool-renderer.ts";
@@ -1511,6 +1509,14 @@ export class AgentSession {
 		const toolSnippets: Record<string, string> = {};
 		const promptGuidelines: string[] = [];
 		for (const name of validToolNames) {
+			// CACHE CRITICAL: deferred tools keep schemas out of the prefix via
+			// defer_loading; their prompt prose must follow. Guidelines/snippets for
+			// deferred tools are delivered in the tool_search result (transcript
+			// suffix) on discovery — never written into the cached system prompt.
+			const definition = this._toolDefinitions.get(name)?.definition;
+			if (definition && isDeferredTool(definition)) {
+				continue;
+			}
 			const snippet = this._toolPromptSnippets.get(name);
 			if (snippet) {
 				toolSnippets[name] = snippet;

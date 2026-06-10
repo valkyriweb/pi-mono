@@ -98,9 +98,11 @@ export function createDeferredToolSearchTool(
 			);
 			options.setDiscoveredToolNames(plan.discoveredToolNames);
 
+			// tool_reference blocks lead the content array (the history scan that
+			// reconstructs discovery state keys on them); guideline text follows.
+			const content = [...plan.referenceBlocks, ...plan.guidelineBlocks];
 			return {
-				content:
-					plan.referenceBlocks.length > 0 ? plan.referenceBlocks : [{ type: "text" as const, text: plan.message }],
+				content: content.length > 0 ? content : [{ type: "text" as const, text: plan.message }],
 				details: plan,
 			};
 		},
