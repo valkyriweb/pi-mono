@@ -433,6 +433,8 @@ export class AgentSession {
 	private _lastIdleCacheHintAssistantTimestamp: number | undefined = undefined;
 	private _cacheHeartbeatTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	private _cacheHeartbeatAbortController: AbortController | undefined = undefined;
+	/** Debounce timer for wakeOnIdle continuation turns (see sendCustomMessage). */
+	private _idleWakeTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	private _sessionHeartbeatTargetTimestamp: number | undefined = undefined;
 	private _sessionHeartbeatUsedTimestamp: number | undefined = undefined;
 	private _disposed = false;
@@ -1179,6 +1181,10 @@ export class AgentSession {
 			clearTimeout(this._cacheHeartbeatTimer);
 			this._cacheHeartbeatTimer = undefined;
 		}
+		if (this._idleWakeTimer) {
+			clearTimeout(this._idleWakeTimer);
+			this._idleWakeTimer = undefined;
+		}
 		this._cacheHeartbeatAbortController?.abort();
 		cleanupSessionResources(this.sessionId);
 	}
@@ -1575,6 +1581,11 @@ export class AgentSession {
 
 	private async _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void> {
 		try {
+			// A turn is starting — cancel any pending idle wake. The notification
+			// that scheduled it is already in messages[], so this turn reads it;
+			// firing the wake afterwards would add a spurious extra turn (even if
+			// this turn finishes before the debounce window elapses).
+			this._cancelIdleWake();
 			await this._refilterSystemPromptIfNeeded();
 			const heartbeatTarget = this._findLastAssistantMessage()?.timestamp;
 			this._sessionHeartbeatTargetTimestamp = heartbeatTarget;
@@ -1970,10 +1981,14 @@ export class AgentSession {
 	 * @param message Custom message with customType, content, display, details
 	 * @param options.triggerTurn If true and not streaming, triggers a new LLM turn
 	 * @param options.deliverAs Delivery mode: "steer", "followUp", or "nextTurn"
+	 * @param options.wakeOnIdle If true and the message lands via the idle branch
+	 *   (not streaming, no triggerTurn), schedule one debounced continuation turn so
+	 *   the model reads the notification autonomously. Busy delivery is unaffected —
+	 *   the queue already drains into the active run. No-op when triggerTurn is set.
 	 */
 	async sendCustomMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; wakeOnIdle?: boolean },
 	): Promise<void> {
 		const appMessage = {
 			role: "custom" as const,
@@ -2092,8 +2107,48 @@ export class AgentSession {
 			);
 			this._emit({ type: "message_start", message: appMessage });
 			this._emit({ type: "message_end", message: appMessage });
+			if (options?.wakeOnIdle) this._scheduleIdleWake();
 		}
 	}
+
+	/**
+	 * Schedule one debounced continuation turn after a wakeOnIdle message landed
+	 * at idle. N notifications arriving in the same window collapse into a single
+	 * wake. The busy re-check at fire time guards the race called out above
+	 * `_emitAgentCompletion`: a user prompt (or another wake) starting a turn
+	 * inside the window already has the notification in context — waking then
+	 * would add a spurious extra turn. Even a racing wake is safe: the busy
+	 * branch ordering in sendCustomMessage degrades triggerTurn to a queued
+	 * followUp, never a double run.
+	 */
+	private _cancelIdleWake(): void {
+		if (this._idleWakeTimer !== undefined) {
+			clearTimeout(this._idleWakeTimer);
+			this._idleWakeTimer = undefined;
+		}
+	}
+
+	private _scheduleIdleWake(): void {
+		if (this._disposed || this._idleWakeTimer !== undefined) return;
+		this._idleWakeTimer = setTimeout(() => {
+			this._idleWakeTimer = undefined;
+			if (this._disposed || this.isStreaming || this.isCompacting || this.agent.isProcessing) return;
+			void this.sendCustomMessage(
+				{
+					customType: "idle-wake",
+					content:
+						"Background work finished while you were idle (see the completion notification above). Handle it now: read the result, continue the task it unblocks, or report the outcome. Do not wait for further user input if the next step is clear.",
+					display: false,
+				},
+				{ deliverAs: "followUp", triggerTurn: true },
+			).catch(() => {
+				/* sendCustomMessage logs its own runtime errors; never crash the timer. */
+			});
+		}, AgentSession.IDLE_WAKE_DEBOUNCE_MS);
+		this._idleWakeTimer.unref?.();
+	}
+
+	private static readonly IDLE_WAKE_DEBOUNCE_MS = 300;
 
 	/**
 	 * Send a user message to the agent. Always triggers a turn.
@@ -3049,15 +3104,11 @@ export class AgentSession {
 	 *     emits message_start when the loop picks it up, and pi-goal's wake
 	 *     hook fires from there.
 	 *   - When the parent is idle, sendCustomMessage takes the "push to
-	 *     messages + emit message_start synchronously" branch. pi-goal sees a
-	 *     non-pi-goal customType in message_start and triggers its own
-	 *     continuation turn (which carries the goal's wake prompt + agent_completion
-	 *     already in conversation). Without a goal, the message sits in history
-	 *     and renders in the TUI; the next user prompt picks it up. Matches
-	 *     Claude Code's task-notification queue semantics.
-	 *
-	 * Auto-starting a turn here would race any user/test prompt arriving in
-	 * the same tick — the goal-wake path is the right place to drive the turn.
+	 *     messages + emit message_start synchronously" branch, then wakeOnIdle
+	 *     schedules one debounced continuation turn so the model reads the
+	 *     notification autonomously (the race with a user prompt arriving in
+	 *     the same tick is handled by the busy re-check in _scheduleIdleWake).
+	 *     Matches Claude Code's task-notification queue semantics.
 	 */
 	private _emitAgentCompletion(notification: AgentBackgroundCompletion): void {
 		const lines: string[] = [
@@ -3096,7 +3147,7 @@ export class AgentSession {
 				display: false,
 				details: notification,
 			},
-			{ deliverAs: "followUp" },
+			{ deliverAs: "followUp", wakeOnIdle: true },
 		).catch(() => {
 			/* sendCustomMessage logs its own runtime errors; don't crash the lifecycle listener. */
 		});
@@ -3110,9 +3161,10 @@ export class AgentSession {
 	 * session wires this to `subscribeBashBgTerminal`; without it a backgrounded
 	 * command completes silently and the model parks forever waiting for a wake.
 	 *
-	 * Delivery uses the same `deliverAs: "followUp"` strategy as agent
-	 * completions: queued when the loop is busy, picked up on the next drain;
-	 * synchronous message_start when idle so pi-goal's wake hook can continue.
+	 * Delivery uses the same `deliverAs: "followUp", wakeOnIdle: true` strategy
+	 * as agent completions: queued when the loop is busy, picked up on the next
+	 * drain; at idle, message_start fires synchronously and wakeOnIdle drives
+	 * one debounced continuation turn.
 	 */
 	public emitBashCompletion(job: BashBgJob): void {
 		const elapsedS = job.endedAt ? ((job.endedAt - job.startedAt) / 1000).toFixed(1) : "?";
@@ -3140,7 +3192,7 @@ export class AgentSession {
 				display: false,
 				details: { id: job.id, status: job.status, exitCode: job.exitCode, logPath: job.logPath },
 			},
-			{ deliverAs: "followUp" },
+			{ deliverAs: "followUp", wakeOnIdle: true },
 		).catch(() => {
 			/* sendCustomMessage logs its own errors; never crash the bg lifecycle listener. */
 		});
