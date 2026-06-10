@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getModel } from "../src/models.ts";
 import { allOf, isReasoning, pickModel, supportsThinkingLevel } from "./helpers/models.ts";
 
 // Adaptive-thinking Anthropic models are exactly the ones exposing the xhigh level
