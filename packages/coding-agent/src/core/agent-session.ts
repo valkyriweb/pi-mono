@@ -111,7 +111,7 @@ import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.ts";
 
-import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
+import { type BashBgJob, type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
 import { allToolNames, createAllToolDefinitions, type ToolName } from "./tools/index.ts";
 
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.ts";
@@ -3101,6 +3101,50 @@ export class AgentSession {
 			{ deliverAs: "followUp" },
 		).catch(() => {
 			/* sendCustomMessage logs its own runtime errors; don't crash the lifecycle listener. */
+		});
+	}
+
+	/**
+	 * Push a task_notification message when a background bash job completes
+	 * naturally. Mirrors `_emitAgentCompletion` and Claude Code's unified
+	 * task-notification wake: the model is told the job finished, given the
+	 * output log path, and instructed not to re-run or poll. The interactive
+	 * session wires this to `subscribeBashBgTerminal`; without it a backgrounded
+	 * command completes silently and the model parks forever waiting for a wake.
+	 *
+	 * Delivery uses the same `deliverAs: "followUp"` strategy as agent
+	 * completions: queued when the loop is busy, picked up on the next drain;
+	 * synchronous message_start when idle so pi-goal's wake hook can continue.
+	 */
+	public emitBashCompletion(job: BashBgJob): void {
+		const elapsedS = job.endedAt ? ((job.endedAt - job.startedAt) / 1000).toFixed(1) : "?";
+		const command = job.command.replace(/\s+/g, " ").trim();
+		const lines: string[] = [
+			`<task_notification>`,
+			`<task_id>${job.id}</task_id>`,
+			`<task_type>background_bash</task_type>`,
+			`<status>${job.status}</status>`,
+		];
+		if (typeof job.exitCode === "number") lines.push(`<exit_code>${job.exitCode}</exit_code>`);
+		lines.push(`<command>${command.length > 200 ? `${command.slice(0, 199)}\u2026` : command}</command>`);
+		lines.push(`<elapsed_s>${elapsedS}</elapsed_s>`);
+		lines.push(`<output_path>${job.logPath}</output_path>`);
+		if (job.error) lines.push(`<error>${job.error}</error>`);
+		lines.push(`</task_notification>`);
+		const exitNote = typeof job.exitCode === "number" ? `, exit ${job.exitCode}` : "";
+		lines.push(
+			`\nBackground bash job ${job.id} finished (${job.status}${exitNote}). Read output_path for stdout/stderr with Read or bash_output(${job.id}) \u2014 do NOT re-run the command to "check".`,
+		);
+		void this.sendCustomMessage(
+			{
+				customType: "bash_completion",
+				content: lines.join("\n"),
+				display: false,
+				details: { id: job.id, status: job.status, exitCode: job.exitCode, logPath: job.logPath },
+			},
+			{ deliverAs: "followUp" },
+		).catch(() => {
+			/* sendCustomMessage logs its own errors; never crash the bg lifecycle listener. */
 		});
 	}
 

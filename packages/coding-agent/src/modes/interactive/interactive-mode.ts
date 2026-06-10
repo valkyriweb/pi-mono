@@ -99,7 +99,7 @@ import { type SessionContext, SessionManager } from "../../core/session-manager.
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
-import { subscribeBashBgJobs } from "../../core/tools/bash.ts";
+import { subscribeBashBgJobs, subscribeBashBgTerminal } from "../../core/tools/bash.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasProjectConfigDir, hasProjectTrustInputs, ProjectTrustStore } from "../../core/trust-manager.ts";
 import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.ts";
@@ -344,6 +344,7 @@ export class InteractiveMode {
 	private unsubscribe?: () => void;
 	private unsubscribeAgentRuns?: () => void;
 	private unsubscribeBashBgJobs?: () => void;
+	private unsubscribeBashBgTerminal?: () => void;
 	private signalCleanupHandlers: Array<() => void> = [];
 
 	// Track if editor is in bash mode (text starts with !)
@@ -781,6 +782,14 @@ export class InteractiveMode {
 		this.unsubscribeBashBgJobs = subscribeBashBgJobs(() => {
 			this.footer.invalidate();
 			this.ui.requestRender();
+		});
+
+		// Wake the model when a background bash job finishes naturally, mirroring
+		// the agent background-run completion wake. Scoped to the single main
+		// interactive session (the bg-bash store is process-global, so wiring this
+		// here — not in every forked child session — avoids duplicate notifications).
+		this.unsubscribeBashBgTerminal = subscribeBashBgTerminal((job) => {
+			this.session.emitBashCompletion(job);
 		});
 
 		// Initialize available provider count for footer display
@@ -6209,6 +6218,10 @@ export class InteractiveMode {
 		if (this.unsubscribeBashBgJobs) {
 			this.unsubscribeBashBgJobs();
 			this.unsubscribeBashBgJobs = undefined;
+		}
+		if (this.unsubscribeBashBgTerminal) {
+			this.unsubscribeBashBgTerminal();
+			this.unsubscribeBashBgTerminal = undefined;
 		}
 		if (this.activeMainPane) this.hideExtensionMainPane(this.activeMainPane.id);
 		if (this.activeOverlay) this.hideExtensionOverlay(this.activeOverlay.id);

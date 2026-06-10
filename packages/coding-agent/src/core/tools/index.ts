@@ -43,6 +43,7 @@ export {
 	listBashBgJobs,
 	onBashTimeout,
 	subscribeBashBgJobs,
+	subscribeBashBgTerminal,
 } from "./bash.ts";
 export {
 	type BuildInterfaceDetails,

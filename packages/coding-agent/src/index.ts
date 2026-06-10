@@ -366,6 +366,7 @@ export {
 	type ReadToolOptions,
 	staticHarness,
 	subscribeBashBgJobs,
+	subscribeBashBgTerminal,
 	type ToolsOptions,
 	type TruncationOptions,
 	type TruncationResult,
