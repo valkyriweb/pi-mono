@@ -1617,27 +1617,12 @@ function convertOneTool(
 	supportsEagerToolInputStreaming: boolean,
 	deferLoading: boolean,
 ): Anthropic.Messages.ToolUnion {
-	if (model.provider === "claude-bridge" && (tool.name === "WebFetch" || tool.name === "web_fetch")) {
-		const schema = tool.parameters as {
-			properties?: {
-				allowed_domains?: { default?: string[] };
-				blocked_domains?: { default?: string[] };
-				max_content_tokens?: { default?: number };
-				use_cache?: { default?: boolean };
-			};
-		};
-		return {
-			name: "web_fetch",
-			type: "web_fetch_20260309",
-			// allowed_callers: ["direct"] lets models that don't support
-			// programmatic tool calling (e.g. claude-haiku-4-5) use web_fetch
-			// directly. Without this the API returns a 400 error on those models.
-			allowed_callers: ["direct"],
-			allowed_domains: schema.properties?.allowed_domains?.default ?? null,
-			blocked_domains: schema.properties?.blocked_domains?.default ?? null,
-			max_content_tokens: schema.properties?.max_content_tokens?.default ?? null,
-			use_cache: schema.properties?.use_cache?.default,
-		};
+	// Explicit server-tool opt-in: the tool definition supplies the exact
+	// Anthropic server tool block (web_search_20250305, web_fetch_20260309, ...).
+	// Replaces the old name-based web_fetch/web_search interception so client-side
+	// implementations may reuse those wire names.
+	if (model.provider === "claude-bridge" && tool.anthropicServerTool) {
+		return tool.anthropicServerTool as unknown as Anthropic.Messages.ToolUnion;
 	}
 	if (model.provider === "claude-bridge" && tool.name === "advisor") {
 		// Server-side advisor (advisor_20260301, beta advisor-tool-2026-03-01).
@@ -1656,20 +1641,6 @@ function convertOneTool(
 			} as unknown as Anthropic.Messages.ToolUnion;
 		}
 		// No advisor model configured → fall through to the client tool path.
-	}
-	if (model.provider === "claude-bridge" && (tool.name === "WebSearch" || tool.name === "web_search")) {
-		const schema = tool.parameters as {
-			properties?: {
-				allowed_domains?: { default?: string[] };
-				blocked_domains?: { default?: string[] };
-			};
-		};
-		return {
-			name: "web_search",
-			type: "web_search_20250305",
-			allowed_domains: schema.properties?.allowed_domains?.default ?? null,
-			blocked_domains: schema.properties?.blocked_domains?.default ?? null,
-		};
 	}
 	const schema = tool.parameters as { properties?: unknown; required?: string[] };
 	const properties = sortObjectKeysDeep(schema.properties ?? {}) as Record<string, unknown>;

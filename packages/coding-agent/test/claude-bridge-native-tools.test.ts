@@ -11,15 +11,13 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { nativeToolAliasesFactory } from "./native-tool-aliases-factory.ts";
 
-// Mirrors my-pi/extensions/native-tool-aliases for the four WebFetch/WebSearch
-// marker tools. WebFetch/WebSearch are claude-bridge native server tools whose
-// local execute() always throws — registering them here is enough for the
-// `claude-bridge` filter logic in agent-session.ts to gate them by provider.
+// web_fetch/web_search are client-side extension tools (Claude Code parity in
+// my-pi/extensions/native-tool-overrides). They are provider-agnostic: no
+// per-provider add/strip happens in agent-session.ts anymore. Server-tool
+// opt-in is per-definition via Tool.anthropicServerTool (pi-ai convertOneTool).
 const webFetchSchema = Type.Object({
-	allowed_domains: Type.Optional(Type.Array(Type.String())),
-	blocked_domains: Type.Optional(Type.Array(Type.String())),
-	max_content_tokens: Type.Optional(Type.Number()),
-	use_cache: Type.Optional(Type.Boolean()),
+	url: Type.String({ description: "The URL to fetch content from" }),
+	prompt: Type.String({ description: "The prompt to run on the fetched content" }),
 });
 const webSearchSchema = Type.Object({
 	query: Type.String({ description: "Search query" }),
@@ -27,29 +25,25 @@ const webSearchSchema = Type.Object({
 	blocked_domains: Type.Optional(Type.Array(Type.String())),
 });
 
-const webMarkerToolsFactory: ExtensionFactory = (pi) => {
-	for (const name of ["WebFetch", "web_fetch"] as const) {
-		pi.registerTool({
-			name,
-			label: name,
-			description: "WebFetch native marker",
-			parameters: webFetchSchema,
-			async execute() {
-				throw new Error("WebFetch should not execute locally");
-			},
-		});
-	}
-	for (const name of ["WebSearch", "web_search"] as const) {
-		pi.registerTool({
-			name,
-			label: name,
-			description: "WebSearch native marker",
-			parameters: webSearchSchema,
-			async execute() {
-				throw new Error("WebSearch should not execute locally");
-			},
-		});
-	}
+const webClientToolsFactory: ExtensionFactory = (pi) => {
+	pi.registerTool({
+		name: "web_fetch",
+		label: "WebFetch",
+		description: "Client-side WebFetch",
+		parameters: webFetchSchema,
+		async execute() {
+			return { content: [{ type: "text", text: "ok" }] };
+		},
+	});
+	pi.registerTool({
+		name: "web_search",
+		label: "WebSearch",
+		description: "Client-side WebSearch",
+		parameters: webSearchSchema,
+		async execute() {
+			return { content: [{ type: "text", text: "ok" }] };
+		},
+	});
 };
 
 function createModel(provider: string): Model<"anthropic-messages"> {
@@ -67,7 +61,7 @@ function createModel(provider: string): Model<"anthropic-messages"> {
 	};
 }
 
-describe("claude-bridge native tools", () => {
+describe("client-side web tools (provider-agnostic)", () => {
 	let tempDir: string;
 	let agentDir: string;
 
@@ -89,10 +83,7 @@ describe("claude-bridge native tools", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			// Read is now an extension-provided alias (PR #1C). Inject the test mirror
-			// of my-pi/extensions/native-tool-aliases so assertions that rely on Read
-			// being active see it.
-			extensionFactories: [nativeToolAliasesFactory, webMarkerToolsFactory],
+			extensionFactories: [nativeToolAliasesFactory, webClientToolsFactory],
 		});
 		await resourceLoader.reload();
 		return createAgentSession({
@@ -106,46 +97,31 @@ describe("claude-bridge native tools", () => {
 		});
 	}
 
-	it("adds WebFetch and WebSearch only for claude-bridge sessions", async () => {
-		const { session } = await createSession("claude-bridge");
-		try {
-			expect(session.getActiveToolNames()).toContain("WebFetch");
-			expect(session.getActiveToolNames()).toContain("WebSearch");
-			expect(
-				(session.getToolDefinition("WebSearch")?.parameters as { properties?: unknown }).properties,
-			).toHaveProperty("query");
-
-			await session.reload();
-			expect(session.getActiveToolNames()).toContain("WebFetch");
-			expect(session.getActiveToolNames()).toContain("WebSearch");
-		} finally {
-			session.dispose();
-		}
-	});
-
-	it("filters native WebFetch/WebSearch definitions when the provider is not claude-bridge", async () => {
-		const { session } = await createSession("anthropic", ["Read", "WebFetch", "WebSearch", "web_search"]);
-		try {
-			expect(session.getActiveToolNames()).toContain("Read");
-			expect(session.getActiveToolNames()).not.toContain("WebFetch");
-			expect(session.getActiveToolNames()).not.toContain("WebSearch");
-			expect(session.getActiveToolNames()).not.toContain("web_search");
-			expect(session.getToolDefinition("WebFetch")).toBeUndefined();
-			expect(session.getToolDefinition("WebSearch")).toBeUndefined();
-			expect(session.getToolDefinition("web_search")).toBeUndefined();
-		} finally {
-			session.dispose();
-		}
-	});
-
-	it("does not restore lowercase bridge aliases for claude-bridge sessions", async () => {
+	it("keeps web_fetch/web_search active for claude-bridge sessions", async () => {
 		const { session } = await createSession("claude-bridge", ["Read", "web_fetch", "web_search"]);
 		try {
+			expect(session.getActiveToolNames()).toContain("web_fetch");
+			expect(session.getActiveToolNames()).toContain("web_search");
+			expect(
+				(session.getToolDefinition("web_fetch")?.parameters as { properties?: unknown }).properties,
+			).toHaveProperty("url");
+
+			await session.reload();
+			expect(session.getActiveToolNames()).toContain("web_fetch");
+			expect(session.getActiveToolNames()).toContain("web_search");
+		} finally {
+			session.dispose();
+		}
+	});
+
+	it("keeps web_fetch/web_search active for non-bridge providers (client-side tools)", async () => {
+		const { session } = await createSession("anthropic", ["Read", "web_fetch", "web_search"]);
+		try {
 			expect(session.getActiveToolNames()).toContain("Read");
-			expect(session.getActiveToolNames()).toContain("WebFetch");
-			expect(session.getActiveToolNames()).toContain("WebSearch");
-			expect(session.getActiveToolNames()).not.toContain("web_fetch");
-			expect(session.getActiveToolNames()).not.toContain("web_search");
+			expect(session.getActiveToolNames()).toContain("web_fetch");
+			expect(session.getActiveToolNames()).toContain("web_search");
+			expect(session.getToolDefinition("web_fetch")).toBeDefined();
+			expect(session.getToolDefinition("web_search")).toBeDefined();
 		} finally {
 			session.dispose();
 		}

@@ -390,19 +390,11 @@ function extensionForMimeType(mimeType: string): string {
 // AgentSession Class
 // ============================================================================
 
-// Wire names match the Anthropic-native server tools (web_fetch/web_search); the
-// extension registers these lowercase names and displays "WebFetch"/"WebSearch" via label.
-const CLAUDE_BRIDGE_NATIVE_TOOL_NAMES = ["web_fetch", "web_search"] as const;
-const CLAUDE_BRIDGE_NATIVE_TOOL_ALIASES = new Set<string>([
-	...CLAUDE_BRIDGE_NATIVE_TOOL_NAMES,
-	"WebFetch",
-	"WebSearch",
-]);
-
-function syncClaudeBridgeNativeTools(toolNames: string[], model: Model<any> | undefined): string[] {
-	const withoutNativeTools = toolNames.filter((toolName) => !CLAUDE_BRIDGE_NATIVE_TOOL_ALIASES.has(toolName));
-	if (model?.provider !== "claude-bridge") return withoutNativeTools;
-	return [...withoutNativeTools, ...CLAUDE_BRIDGE_NATIVE_TOOL_NAMES];
+// web_fetch/web_search are now client-side extension tools (Claude Code parity)
+// and provider-agnostic; no per-provider add/strip is needed. Server-tool opt-in
+// happens via ToolDefinition.anthropicServerTool in pi-ai's convertOneTool.
+function syncClaudeBridgeNativeTools(toolNames: string[], _model: Model<any> | undefined): string[] {
+	return toolNames;
 }
 
 function isToolAvailableForModel(definition: unknown, model: Model<any> | undefined): boolean {
@@ -3441,15 +3433,7 @@ export class AgentSession {
 				}
 			}
 		} else if (options?.includeAllExtensionTools) {
-			const isBridgeOnly = (name: string): boolean =>
-				CLAUDE_BRIDGE_NATIVE_TOOL_ALIASES.has(name) && this.model?.provider !== "claude-bridge";
 			for (const tool of wrappedExtensionTools) {
-				// Match the syncClaudeBridgeNativeTools filter applied to base active
-				// names earlier in _buildRuntime: bridge-only marker tools (WebFetch /
-				// WebSearch / web_fetch / web_search) only auto-activate for
-				// claude-bridge sessions. Explicit setActiveToolsByName still keeps
-				// them activatable for any session.
-				if (isBridgeOnly(tool.name)) continue;
 				const sourceInfo = definitionRegistry.get(tool.name)?.sourceInfo;
 				if (sourceInfo?.source === "builtin") continue;
 				nextActiveToolNames.push(tool.name);

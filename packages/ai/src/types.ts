@@ -365,6 +365,14 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	searchHint?: string;
 	/** Optional provider allow-list. Runtime surfaces should hide the tool for other providers. */
 	providers?: string[];
+	/**
+	 * When set, Anthropic-family providers send this exact server tool block
+	 * (e.g. { type: "web_search_20250305", name: "web_search", max_uses: 8 })
+	 * instead of a client tool schema. The tool then executes on Anthropic's
+	 * infrastructure; local execute() never runs. Explicit opt-in replaces the
+	 * old name-based web_fetch/web_search interception.
+	 */
+	anthropicServerTool?: Record<string, unknown>;
 }
 
 export interface Context {

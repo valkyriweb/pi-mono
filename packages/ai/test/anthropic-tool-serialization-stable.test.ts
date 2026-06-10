@@ -151,15 +151,18 @@ describe("Anthropic convertTools — cache-stable serialization", () => {
 		expect(bytesB).toBe(bytesA);
 	});
 
-	it("emits native WebSearch for claude-bridge only", async () => {
+	it("emits the supplied anthropicServerTool block for claude-bridge only", async () => {
 		const webSearch: Tool = {
-			name: "WebSearch",
+			name: "web_search",
 			description: "Search the web",
 			parameters: Type.Object({
 				query: Type.String(),
-				allowed_domains: Type.Optional(Type.Array(Type.String())),
-				blocked_domains: Type.Optional(Type.Array(Type.String())),
 			}),
+			anthropicServerTool: {
+				name: "web_search",
+				type: "web_search_20250305",
+				max_uses: 8,
+			},
 		};
 
 		const claudeBridgeBody = await captureRequestBody(createContext([webSearch]), { provider: "claude-bridge" });
@@ -167,15 +170,15 @@ describe("Anthropic convertTools — cache-stable serialization", () => {
 			{
 				name: "web_search",
 				type: "web_search_20250305",
-				allowed_domains: null,
-				blocked_domains: null,
+				max_uses: 8,
 			},
 		]);
 
+		// Non-bridge providers fall back to the client schema.
 		const anthropicBody = await captureRequestBody(createContext([webSearch]));
 		expect(anthropicBody.tools).toEqual([
 			expect.objectContaining({
-				name: "WebSearch",
+				name: "web_search",
 				input_schema: expect.objectContaining({
 					required: ["query"],
 				}),
@@ -194,18 +197,19 @@ describe("Anthropic convertTools — cache-stable serialization", () => {
 			description: "Run a command",
 			parameters: Type.Object({ command: Type.String() }),
 		};
-		const webSearchUpper: Tool = {
-			name: "WebSearch",
-			description: "Search the web",
-			parameters: Type.Object({ query: Type.String() }),
-		};
-		const webSearchLower: Tool = {
+		const webSearchClient: Tool = {
 			name: "web_search",
 			description: "Search the web",
 			parameters: Type.Object({ query: Type.String() }),
 		};
+		const webSearchServer: Tool = {
+			name: "web_search",
+			description: "Search the web",
+			parameters: Type.Object({ query: Type.String() }),
+			anthropicServerTool: { name: "web_search", type: "web_search_20250305", max_uses: 8 },
+		};
 
-		const body = await captureRequestBody(createContext([bashLower, bashUpper, webSearchUpper, webSearchLower]), {
+		const body = await captureRequestBody(createContext([bashLower, bashUpper, webSearchClient, webSearchServer]), {
 			provider: "claude-bridge",
 			apiKey: "sk-ant-oat-test",
 		});
