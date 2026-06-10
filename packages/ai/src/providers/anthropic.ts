@@ -955,7 +955,16 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			}
 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error("An unknown error occurred");
+				// Preserve the upstream stop reason: "refusal"/"sensitive" map to
+				// "error" in mapStopReason, and a generic message both hides the
+				// cause from the user and prevents the agent-session retry
+				// classifier from distinguishing safety stops (never retry) from
+				// transient stream drops (retryable).
+				throw new Error(
+					rawStopReason
+						? `Provider ended turn with stop reason: ${rawStopReason}`
+						: "Stream ended before message_stop",
+				);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
