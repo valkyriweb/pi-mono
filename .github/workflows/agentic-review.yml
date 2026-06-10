@@ -145,6 +145,12 @@ jobs:
           path: pi-claude-bridge
           token: ${{ secrets.GH_CLONE_TOKEN }}
 
+      # NOTE: keep this @<version> pin current with the fork's extension API. The
+      # `actions` profile bundles native-tool-overrides etc.; when the fork core
+      # removes/renames an export those extensions consume, an old pin boots the
+      # reviewer against a stale profile and crashes before any review runs
+      # (e.g. 0.1.5 -> pi-native-tool-overrides@0.0.2 called the removed
+      # createTaskOutputToolDefinition). Bump both occurrences together.
       - name: Stage pi agent config (bridge provider + actions profile + skills)
         run: |
           mkdir -p "$HOME/.pi/agent"
@@ -154,14 +160,14 @@ jobs:
             "defaultProvider": "claude-bridge",
             "defaultModel": "claude-opus-4-8",
             "enabledModels": ["claude-bridge/*"],
-            "packages": ["npm:@valkyriweb/my-pi-actions@0.1.5"]
+            "packages": ["npm:@valkyriweb/my-pi-actions@0.1.11"]
           }
           EOF
           ln -sfn "$GITHUB_WORKSPACE/agent-scripts/skills" "$HOME/.pi/agent/skills"
           # Fetch the actions profile (provides the harness extensions + the
           # Workflow tool the reviewer drives). pi-workflow comes from this profile,
           # not from @valkyriweb/agentic-review.
-          pi install npm:@valkyriweb/my-pi-actions@0.1.5
+          pi install npm:@valkyriweb/my-pi-actions@0.1.11
 
       - name: Start claude-bridge sidecar
         run: |
