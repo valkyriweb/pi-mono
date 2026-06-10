@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { getModel } from "../src/models.ts";
 import { allOf, isReasoning, pickModel, supportsThinkingLevel } from "./helpers/models.ts";
 
 // Adaptive-thinking Anthropic models are exactly the ones exposing the xhigh level
 // (opus 4.6+); budget-based reasoning models do not expose xhigh.
 const budgetBasedReasoningModel = allOf(isReasoning, (model) => !supportsThinkingLevel("xhigh")(model));
-const adaptiveReasoningModel = allOf(isReasoning, supportsThinkingLevel("xhigh"));
+// Fable 5 exposes xhigh but cannot be turned off (off: null) and never sends
+// thinking.type=disabled, so adaptive predicates also require "off" support.
+const adaptiveReasoningModel = allOf(isReasoning, supportsThinkingLevel("xhigh"), supportsThinkingLevel("off"));
 // Models whose xhigh level maps to the "xhigh" effort (opus 4.7+); opus 4.6 maps to "max".
-const xhighEffortReasoningModel = allOf(isReasoning, (model) => model.thinkingLevelMap?.xhigh === "xhigh");
+const xhighEffortReasoningModel = allOf(
+	isReasoning,
+	(model) => model.thinkingLevelMap?.xhigh === "xhigh",
+	supportsThinkingLevel("off"),
+);
 
 import { streamSimple } from "../src/stream.ts";
 import type { Context, Model, SimpleStreamOptions } from "../src/types.ts";
@@ -137,6 +144,13 @@ describe("Anthropic thinking disable payload", () => {
 		const payload = await capturePayload(pickModel("anthropic", adaptiveReasoningModel));
 
 		expect(payload.thinking).toEqual({ type: "disabled" });
+		expect(payload.output_config).toBeUndefined();
+	});
+
+	it("omits thinking.type=disabled for Claude Fable 5 when thinking is off", async () => {
+		const payload = await capturePayload(getModel("anthropic", "claude-fable-5"));
+
+		expect(payload.thinking).toBeUndefined();
 		expect(payload.output_config).toBeUndefined();
 	});
 
