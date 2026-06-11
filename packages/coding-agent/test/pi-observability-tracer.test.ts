@@ -84,6 +84,7 @@ describe("pi-observability tracer (issue 09)", () => {
 		abort: () => {},
 		hasPendingMessages: () => false,
 		shutdown: () => {},
+		reload: async () => {},
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",

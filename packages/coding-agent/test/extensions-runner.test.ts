@@ -87,6 +87,7 @@ describe("ExtensionRunner", () => {
 		abort: () => {},
 		hasPendingMessages: () => false,
 		shutdown: () => {},
+		reload: async () => {},
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",
@@ -585,6 +586,30 @@ describe("ExtensionRunner", () => {
 
 			const ctx = runner.createContext();
 			expect(ctx.isProjectTrusted()).toBe(false);
+		});
+
+		it("exposes reload on ExtensionContext", async () => {
+			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+			const runner = new ExtensionRunner(
+				result.extensions,
+				result.deferredExtensions,
+				result.runtime,
+				result.eventBus,
+				tempDir,
+				sessionManager,
+				modelRegistry,
+			);
+			let reloads = 0;
+			runner.bindCore(extensionActions, {
+				...extensionContextActions,
+				reload: async () => {
+					reloads += 1;
+				},
+			});
+
+			const ctx = runner.createContext();
+			await ctx.reload();
+			expect(reloads).toBe(1);
 		});
 
 		it("exposes rpc mode with hasUI true when an RPC UI context is provided", async () => {

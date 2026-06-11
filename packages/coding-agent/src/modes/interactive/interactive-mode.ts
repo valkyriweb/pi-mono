@@ -1760,6 +1760,9 @@ export class InteractiveMode {
 				shutdown: () => {
 					this.shutdownRequested = true;
 				},
+				reload: async () => {
+					await this.handleReloadCommand();
+				},
 				getContextUsage: () => session.getContextUsage(),
 				compact: (options) => {
 					void (async () => {

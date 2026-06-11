@@ -390,6 +390,7 @@ export class ExtensionRunner {
 		this.abortFn = contextActions.abort;
 		this.hasPendingMessagesFn = contextActions.hasPendingMessages;
 		this.shutdownHandler = contextActions.shutdown;
+		this.reloadHandler = contextActions.reload;
 		this.getContextUsageFn = contextActions.getContextUsage;
 		this.compactFn = contextActions.compact;
 		this.getSystemPromptFn = contextActions.getSystemPrompt;
@@ -941,6 +942,10 @@ export class ExtensionRunner {
 			shutdown: () => {
 				runner.assertActive();
 				runner.shutdownHandler();
+			},
+			reload: () => {
+				runner.assertActive();
+				return runner.reloadHandler();
 			},
 			getContextUsage: () => {
 				runner.assertActive();
