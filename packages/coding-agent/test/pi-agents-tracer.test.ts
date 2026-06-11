@@ -90,6 +90,7 @@ describe("pi-agents tracer (issue 07)", () => {
 		abort: () => {},
 		hasPendingMessages: () => false,
 		shutdown: () => {},
+		reload: async () => {},
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",

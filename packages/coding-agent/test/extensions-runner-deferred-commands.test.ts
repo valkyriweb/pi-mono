@@ -69,6 +69,7 @@ describe("ExtensionRunner deferred extension commands", () => {
 		abort: () => {},
 		hasPendingMessages: () => false,
 		shutdown: () => {},
+		reload: async () => {},
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",

@@ -3355,6 +3355,9 @@ export class AgentSession {
 				shutdown: () => {
 					this._extensionShutdownHandler?.();
 				},
+				reload: async () => {
+					await this.reload();
+				},
 				getContextUsage: () => this.getContextUsage(),
 				compact: (options) => {
 					void (async () => {

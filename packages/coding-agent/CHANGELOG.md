@@ -7,5 +7,9 @@ This package's release notes are split:
 - **Upstream history** (earendil-works/pi-mono, Keep-a-Changelog format) is
   archived in [`CHANGELOG.upstream.md`](./CHANGELOG.upstream.md).
 
+## Unreleased
+
+- Expose `ctx.reload()` on extension event contexts so model-switch handlers can rebuild provider-specific runtime resources without queuing slash-command text.
+
 This file is fork-owned (`.gitattributes` `merge=ours`) so upstream syncs no
 longer append their full changelog here.
