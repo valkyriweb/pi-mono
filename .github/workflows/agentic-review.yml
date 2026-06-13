@@ -92,12 +92,12 @@ jobs:
       NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: npm
@@ -134,13 +134,13 @@ jobs:
 
       # Skills (private) + bridge (private) — need a PAT with repo read.
       - name: Checkout skills (agent-scripts)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: valkyriweb/agent-scripts
           path: agent-scripts
           token: ${{ secrets.GH_CLONE_TOKEN }}
       - name: Checkout claude-bridge
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: valkyriweb/pi-claude-bridge
           path: pi-claude-bridge
@@ -154,7 +154,7 @@ jobs:
       # ToolDefinition). Source can't predate itself and resolves against this fork,
       # so both skew classes vanish and there is no pin to keep current.
       - name: Checkout my-pi (actions profile source)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: valkyriweb/my-pi
           ref: main
