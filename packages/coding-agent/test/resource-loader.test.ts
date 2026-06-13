@@ -465,7 +465,7 @@ Project skill content`,
 			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(agentDir, "AGENTS.md"))).toBe(
 				true,
 			);
-			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(cwd, "AGENTS.md"))).toBe(true);
+			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(cwd, "AGENTS.md"))).toBe(false);
 			expect(loader.getExtensions().extensions).toHaveLength(0);
 			expect(loader.getExtensions().errors).toEqual([]);
 			expect(loader.getSkills().skills.some((skill) => skill.name === "project-skill")).toBe(false);
