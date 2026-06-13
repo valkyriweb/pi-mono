@@ -18,6 +18,8 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ### Changed
 
+- **Synced upstream `earendil-works/pi-mono` 0.79.1 -> 0.79.3 (`6f29450e`, merge).** Took upstream releases v0.79.2/v0.79.3 plus the current adaptive-thinking model expectation fix, kept the fork's `@valkyriweb/*` package scope with all fork workspace package versions/internal deps at `0.79.3`, preserved Anthropic pause-turn/raw stop-reason behavior while adopting upstream refusal `stop_details`, and regenerated the root lockfile plus coding-agent shrinkwrap. Full `npm run check`, `npm run build` (including `test:build-gate` + sibling `my-pi` extension gate), and compiled `dist/pi --version` (`0.79.3`) passed.
+
 - **Synced upstream `earendil-works/pi-mono` 0.79.1 (`0ab2aa86a` → `406a2214a`, merge).** One upstream commit: refined first-time-setup copy (now mentions `/privacy`). 10 conflicts resolved mechanically: 4× `package.json` kept `@valkyriweb/*` names exact-pinned; lock/shrinkwrap regenerated; `supports-xhigh.test.ts` kept the fork's capability-based suite (upstream's added Bedrock Fable 5 test duplicated an existing fork test); `startup-ui.ts`/`settings-manager.ts`/`first-time-setup.ts` kept fork import scope while taking upstream's refined setup copy. Full `npm run check` green.
 
 - **Slimmed the Bash tool description to contract-only prose (~2KB/request saved).** The description repeated promptGuidelines coaching (background-mode etiquette, monitor_start, TUI-only use cases, native-tool detail) verbatim; that guidance already ships once via the system prompt. Kept: truncation limits, timeout, `run_in_background`, `tui_only`, and the native-file-tools pointer. One-time cache prefix re-warm on rollout. Refs valkyriweb/my-pi#170.
