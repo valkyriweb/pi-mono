@@ -125,20 +125,20 @@ export type { Skill } from "./skills.ts";
 export type { Tool } from "./tools/index.ts";
 
 export {
-	withFileMutationQueue,
+	createBashTool,
 	// Tool factories (for custom cwd)
 	createCodingTools,
+	createEditTool,
+	createFindTool,
+	createGrepTool,
+	createLsTool,
 	createReadOnlyTools,
 	createReadTool,
-	createBashTool,
-	createEditTool,
-	createWriteTool,
-	createGrepTool,
-	createFindTool,
-	createLsTool,
 	createTaskTool,
 	createUppercaseAgentTool,
 	createUppercaseBashTool,
+	createWriteTool,
+	withFileMutationQueue,
 };
 
 // Helper Functions
