@@ -166,7 +166,7 @@ export async function executeBuildInterface(
 	ctx: ExtensionContext | undefined,
 	signal?: AbortSignal,
 ): Promise<{ content: TextContent[]; details: BuildInterfaceDetails }> {
-	if (!ctx || !ctx.hasUI) {
+	if (!ctx?.hasUI) {
 		throw new Error("BuildInterface requires an interactive UI; the current mode does not provide one.");
 	}
 	if (signal?.aborted) throw new Error("Operation aborted");

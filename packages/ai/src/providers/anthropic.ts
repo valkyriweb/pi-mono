@@ -5,6 +5,7 @@ import type {
 	MessageCreateParamsStreaming,
 	MessageParam,
 	RawMessageStreamEvent,
+	RefusalStopDetails,
 } from "@anthropic-ai/sdk/resources/messages.js";
 import { calculateCost } from "../models.ts";
 import type {
@@ -875,7 +876,12 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 					} else if (event.type === "message_delta") {
 						if (event.delta.stop_reason) {
 							rawStopReason = event.delta.stop_reason;
-							output.stopReason = mapStopReason(event.delta.stop_reason);
+							const { stopReason, errorMessage } = mapStopReason(
+								event.delta.stop_reason,
+								event.delta.stop_details,
+							);
+							output.stopReason = stopReason;
+							output.errorMessage = errorMessage;
 						}
 						// Only update usage fields if present (not null).
 						// Preserves input_tokens from message_start when proxies omit it in message_delta.
@@ -967,9 +973,10 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 				// classifier from distinguishing safety stops (never retry) from
 				// transient stream drops (retryable).
 				throw new Error(
-					rawStopReason
-						? `Provider ended turn with stop reason: ${rawStopReason}`
-						: "Stream ended before message_stop",
+					output.errorMessage ??
+						(rawStopReason
+							? `Provider ended turn with stop reason: ${rawStopReason}`
+							: "Stream ended before message_stop"),
 				);
 			}
 
@@ -1689,16 +1696,22 @@ function convertTools(
 	return convertedTools;
 }
 
-function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReason {
+function mapStopReason(
+	reason: Anthropic.Messages.StopReason | string,
+	stopDetails?: RefusalStopDetails | null,
+): { stopReason: StopReason; errorMessage?: string } {
 	switch (reason) {
 		case "end_turn":
-			return "stop";
+			return { stopReason: "stop" };
 		case "max_tokens":
-			return "length";
+			return { stopReason: "length" };
 		case "tool_use":
-			return "toolUse";
+			return { stopReason: "toolUse" };
 		case "refusal":
-			return "error";
+			return {
+				stopReason: "error",
+				errorMessage: stopDetails?.explanation || `The model refused to complete the request`,
+			};
 		case "pause_turn":
 			// pause_turn is resolved inside `streamAnthropic` by echoing the
 			// partial assistant turn back to Anthropic until a real terminal
@@ -1706,11 +1719,11 @@ function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReas
 			// caller wiring `mapStopReason` directly), surface it as "stop"
 			// so the agent loop at least halts cleanly instead of looping on
 			// an unknown value. (#thinking-roundtrip)
-			return "stop";
+			return { stopReason: "stop" };
 		case "stop_sequence":
-			return "stop"; // We don't supply stop sequences, so this should never happen
+			return { stopReason: "stop" }; // We don't supply stop sequences, so this should never happen
 		case "sensitive": // Content flagged by safety filters (not yet in SDK types)
-			return "error";
+			return { stopReason: "error" };
 		default:
 			// Handle unknown stop reasons gracefully (API may add new values)
 			throw new Error(`Unhandled stop reason: ${reason}`);

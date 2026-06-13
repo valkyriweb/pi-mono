@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getModel } from "../src/models.ts";
 import { convertMessages } from "../src/providers/openai-completions.ts";
 import { streamSimple } from "../src/stream.ts";
 import type { AssistantMessage, Model, Tool, ToolResultMessage } from "../src/types.ts";
@@ -865,6 +866,12 @@ describe("openai-completions tool_choice", () => {
 
 		const params = payload as { messages?: Array<{ role?: string }> };
 		expect(params.messages?.[0]?.role).toBe("developer");
+	});
+
+	it("stores OpenRouter Kimi K2.6 reasoning replay compat in built-in metadata", () => {
+		const model = getModel("openrouter", "moonshotai/kimi-k2.6")!;
+		expect(model.compat?.supportsDeveloperRole).toBe(false);
+		expect(model.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
 	});
 
 	it("stores Xiaomi MiMo reasoning replay compat in built-in metadata", () => {
