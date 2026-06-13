@@ -4,6 +4,10 @@ Fork-specific changes maintained by valkyriweb. Upstream package changelogs stay
 
 ## [Unreleased]
 
+### Changed
+
+- Versioned the fork packages as `0.79.4`, carrying the upstream `0.79.3` sync plus the extension event-context `ctx.reload()` patch into the publishable package set.
+
 ### Fixed
 
 - **Background-job wakes survived two failure modes that left idle sessions parked forever** (`packages/coding-agent/src/core/tools/bash.ts`, `core/agent-session.ts`; entry covers `b1fcbc66`). (1) **Crash/signal-death of a `run_in_background` bash job was silently swallowed** — the exit handler only fired the terminal notification for a clean `"exited"` status, so a process killed by a signal (SIGSEGV, OOM SIGKILL, an external SIGTERM) landed as `"killed"` and never woke the agent. It now wakes on any terminal transition the agent did *not* initiate: deliberate stops (`bash_kill`/dispose/`killAll`) flip status off `"running"` *before* the exit fires and stay silent as before, but a signal death while still `"running"` now notifies (status `killed`, with `signal`). This silence is now race-safe on both edges: a deliberate `bash_kill` whose target already exited (`killProcessTree` throws `ESRCH`) still marks the job `killed` (and reports success) instead of leaving it `"running"` and tripping a spurious wake, and both background `error` handlers gained the same `wasRunning` gate so a `spawn`-error event on an already-stopped job stays silent too (regression test `test/bash-bg-kill-esrch.test.ts`). (2) **The idle-wake debounce timer dropped the wake if it fired mid-compaction** — the fire-once timer was already cleared, so a threshold/overflow compaction overlapping the 300 ms window stranded the notification in history with no retry; it now re-arms one debounce window later and fires once genuinely idle. Both paths covered by regression tests proven to fail on baseline and pass with the fix (`test/bash-background.test.ts`, `test/suite/agent-session-wake-on-idle.test.ts`). CC `<task-notification>` parity: a crashed/killed background job is a first-class terminal event, not a special silent path.
