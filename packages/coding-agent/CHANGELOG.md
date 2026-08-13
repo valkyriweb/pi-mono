@@ -9,6 +9,8 @@ This package's release notes are split:
 
 ## Unreleased
 
+- `BuildInterface` announces `herdr:blocked` while its dialog is mounted, so a pane parked on a human reads as blocked rather than working. The bracket opens at the mount, not at the top of the tool — composing the interface graph is ordinary work — and closes in a `finally`, so an abort or a renderer throw cannot leave the pane blocked forever. Scoped to this tool rather than the shared `ui.custom()` seam, because the herdr listener ranks `blocked` above `working` and hooking the seam would paint the pane blocked whenever the user opened a picker themselves.
+
 - TUI: default-shell tool calls and results use a compact, width-safe panel adapted from prime-agent 0.7.0, removing the one-line vertical padding above and below each row while adding two-cell side padding, cached composition, and preserving existing lifecycle backgrounds. No system-prompt or tool-schema bytes change.
 
 - Fix: `Glob` root-path relativization (issue #6104) now also applies on the timeout path and to the `rg` pattern filter. Both sites kept an inline `slice(searchPath.length + 1)` copy, which ate the first character of every result when the search root ended in a separator (`/`, `I:\`); they now go through `relativizeGlobResultPath`.
